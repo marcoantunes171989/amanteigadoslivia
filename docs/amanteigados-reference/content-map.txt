@@ -1,0 +1,35 @@
+ESTRUTURA DA PÁGINA
+
+HEADER
+Início | Produtos | Festas | Personalizados | Contato | Fazer pedido
+
+HERO
+Amanteigados
+feitos com amor
+Sabores irresistíveis para presentear, celebrar e compartilhar.
+[Ver produtos] [Conheça nosso trabalho]
+
+PARA CADA MOMENTO
+Encomendas
+Perfeitos para presentear e adoçar o dia de quem você ama.
+
+Festas
+Deixe sua celebração ainda mais especial e saborosa.
+
+Personalizados
+Detalhes únicos que tornam cada momento inesquecível.
+
+BENEFÍCIOS
+Produção artesanal — Feito à mão, com ingredientes selecionados.
+Feitos com carinho — Receitas tradicionais que conquistam corações.
+Sob encomenda — Tudo preparado especialmente para você.
+
+CTA
+Seu momento merece um sabor especial
+Encomende com facilidade e receba com todo carinho.
+[Fazer meu pedido]
+
+FOOTER
+Amanteigados feitos com amor para adoçar seus melhores momentos.
+Siga-nos | Instagram
+Fale conosco | WhatsApp

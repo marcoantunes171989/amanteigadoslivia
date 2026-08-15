@@ -1,0 +1,159 @@
+{
+  "source": {
+    "filename": "8C590598-97A8-49C9-A922-DA4F55F436F0.jpeg",
+    "referenceSizePx": {
+      "width": 1536,
+      "height": 1024
+    },
+    "importantNote": "A imagem enviada é raster. SVGs originais, fotos-fonte e a fonte exata não podem ser recuperados matematicamente 100% a partir do JPG. Os SVGs neste pacote são recriações funcionais e a referência JPG deve ser usada para comparação visual."
+  },
+  "visualTokens": {
+    "colors": {
+      "page": "#F8F4EC",
+      "surface": "#FFFDFC",
+      "primary": "#E55A53",
+      "primaryStrong": "#E94F4A",
+      "heading": "#3B201B",
+      "text": "#28211E",
+      "muted": "#665E59",
+      "border": "#E7DDD3",
+      "lineArt": "#EAA092",
+      "whatsapp": "#19B75B"
+    },
+    "typography": {
+      "displayRecommendation": "Cormorant Garamond / DM Serif Display / Georgia fallback",
+      "bodyRecommendation": "Inter / system-ui",
+      "brandScript": "Use a arte real do logotipo; não simular o lettering se o arquivo original existir.",
+      "desktopHeroTitle": "56–62px, line-height 0.98–1.04, weight 600",
+      "mobileHeroTitle": "31–36px, line-height 0.98–1.05, weight 600",
+      "sectionTitle": "30–34px desktop; 20–23px mobile"
+    },
+    "radii": {
+      "page": "14px",
+      "button": "7–8px",
+      "card": "10–12px",
+      "featureBar": "12px"
+    },
+    "shadows": {
+      "page": "0 8px 28px rgba(57,38,26,.10)",
+      "card": "0 1px 4px rgba(57,38,26,.06)"
+    }
+  },
+  "desktop": {
+    "referencePageBoxPx": {
+      "x": 14,
+      "y": 15,
+      "width": 1127,
+      "height": 993
+    },
+    "header": {
+      "height": 74,
+      "logoVisual": "aprox. 145x145 sobrepondo header/hero",
+      "navGap": "38–46px"
+    },
+    "hero": {
+      "height": "355–370px",
+      "layout": "duas colunas; copy ~46%; fotografia ~54%",
+      "copyMaxWidth": "440px",
+      "contentLeft": "120–135px da borda da página de referência",
+      "buttons": "inline, gap 16px, altura ~43px"
+    },
+    "moments": {
+      "titleCentered": true,
+      "grid": "3 colunas iguais",
+      "cardImageAspect": "aprox. 1.8:1",
+      "gap": "18–20px"
+    },
+    "benefits": {
+      "layout": "3 colunas dentro de uma barra única",
+      "height": "70–76px"
+    },
+    "cta": {
+      "layout": "texto à esquerda + botão à direita",
+      "height": "85–90px"
+    },
+    "footer": {
+      "height": "70–75px",
+      "layout": "marca | frase | social | contato"
+    }
+  },
+  "mobile": {
+    "breakpointGuidance": ">= 900 desktop; 640–899 tablet; <640 mobile",
+    "header": {
+      "height": "78–84px",
+      "layout": "logo esquerda; menu + sacola direita"
+    },
+    "hero": {
+      "layout": "copy, botões empilhados, fotografia",
+      "title": "duas linhas",
+      "buttonWidth": "100%",
+      "heroImageHeight": "185–205px"
+    },
+    "moments": {
+      "layout": "3 cards horizontais empilhados",
+      "cardHeight": "78–88px",
+      "imageWidth": "35–38%",
+      "content": "texto central + ícone à direita"
+    },
+    "benefits": {
+      "layout": "3 colunas compactas",
+      "fontSize": "9–11px"
+    },
+    "cta": {
+      "layout": "texto + botão; ornamento floral nas extremidades"
+    },
+    "footer": {
+      "layout": "somente social/contato em linha conforme referência"
+    }
+  },
+  "content": {
+    "nav": [
+      "Início",
+      "Produtos",
+      "Festas",
+      "Personalizados",
+      "Contato"
+    ],
+    "hero": {
+      "titleLine1": "Amanteigados",
+      "titleLine2": "feitos com amor",
+      "subtitle": "Sabores irresistíveis para presentear, celebrar e compartilhar.",
+      "primaryButton": "Ver produtos",
+      "secondaryButton": "Conheça nosso trabalho"
+    },
+    "sectionTitle": "Para cada momento",
+    "cards": [
+      {
+        "title": "Encomendas",
+        "body": "Perfeitos para presentear e adoçar o dia de quem você ama."
+      },
+      {
+        "title": "Festas",
+        "body": "Deixe sua celebração ainda mais especial e saborosa."
+      },
+      {
+        "title": "Personalizados",
+        "body": "Detalhes únicos que tornam cada momento inesquecível."
+      }
+    ],
+    "benefits": [
+      {
+        "title": "Produção artesanal",
+        "body": "Feito à mão, com ingredientes selecionados."
+      },
+      {
+        "title": "Feitos com carinho",
+        "body": "Receitas tradicionais que conquistam corações."
+      },
+      {
+        "title": "Sob encomenda",
+        "body": "Tudo preparado especialmente para você."
+      }
+    ],
+    "cta": {
+      "title": "Seu momento merece um sabor especial",
+      "body": "Encomende com facilidade e receba com todo carinho.",
+      "button": "Fazer meu pedido"
+    }
+  }
+}
