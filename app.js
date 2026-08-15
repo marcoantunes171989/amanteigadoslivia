@@ -33,3 +33,19 @@ const observer = new IntersectionObserver((entries) => {
 }, { rootMargin: '-45% 0px -50% 0px' });
 
 sections.forEach(s => observer.observe(s));
+
+// Scroll-reveal effects (progressive enhancement: no JS => tudo visível)
+const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if ('IntersectionObserver' in window && !prefersReduced) {
+  const revealEls = document.querySelectorAll('.moments-head, .card, .benefit, .cta, .site-footer');
+  revealEls.forEach(el => el.classList.add('will-reveal'));
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('revealed');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+  revealEls.forEach(el => revealObserver.observe(el));
+}
