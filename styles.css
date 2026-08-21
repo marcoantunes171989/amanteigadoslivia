@@ -244,6 +244,7 @@ a{ color:inherit; text-decoration:none; }
   .cta-orn.right{ width:88px; }
   .nav{
     position:fixed; inset:0 0 auto 0; top:82px; margin:0;
+    grid-column:auto; justify-self:stretch; width:auto;
     flex-direction:column; gap:0; background:var(--surface);
     border-bottom:1px solid var(--border); box-shadow:var(--sh-page);
     padding:6px var(--pad) 16px; transform:translateY(-130%); transition:transform .3s ease; z-index:20;
