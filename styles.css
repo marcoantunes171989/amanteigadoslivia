@@ -310,3 +310,112 @@ a{ color:inherit; text-decoration:none; }
   .fs-group span{ font-size:.82rem; }
   .hero-copy h1{ font-size:1.95rem; }
 }
+
+/* ============================================================
+   PÁGINA DE PRODUTOS (/produtos) — regras 100% aditivas.
+   Reaproveita tokens, .hero, .moments, .card, .benefits, .btn
+   já existentes; nada abaixo altera seletores da Home.
+   ============================================================ */
+
+/* Hero "Nossos produtos": mesma base .hero, sem CTAs -> um pouco mais baixo */
+.hero-products{ min-height:340px; }
+.hero-products .hero-copy{ max-width:480px; }
+
+/* Barra de filtros + ordenação */
+.filters-bar{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  box-shadow:var(--sh-card); padding:14px 18px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  margin:22px 0 26px;
+}
+.filters-cats{ display:flex; align-items:center; gap:10px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.filters-cats::-webkit-scrollbar{ display:none; }
+.pill{
+  flex:0 0 auto; display:inline-flex; align-items:center; height:38px; padding:0 16px;
+  border-radius:999px; border:1.5px solid transparent; background:transparent; color:var(--muted);
+  font-family:var(--sans); font-weight:500; font-size:.88rem; cursor:pointer; transition:.18s ease; white-space:nowrap;
+}
+.pill:hover{ background:rgba(229,90,83,.08); color:var(--primary); }
+.pill.active{ background:var(--primary); color:#fff; }
+.filters-sort{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+.filters-sort label{ font-size:.85rem; color:var(--muted); white-space:nowrap; }
+.sort-select{
+  height:38px; padding:0 32px 0 14px; border-radius:8px; border:1.5px solid var(--border);
+  background:var(--page)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23665E59' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    right 8px center / 16px no-repeat;
+  color:var(--text); font-family:var(--sans); font-size:.88rem; cursor:pointer; appearance:none; -webkit-appearance:none;
+}
+.pill:focus-visible, .sort-select:focus-visible, .product-cta:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
+
+/* Grid de produtos: 4 colunas desktop -> 3 notebook -> 2 tablet -> 1 (cards horizontais) mobile */
+.products-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:22px; align-items:stretch; }
+.products-empty{ text-align:center; color:var(--muted); padding:60px 20px; font-size:1rem; }
+
+.product-card .card-img{ aspect-ratio:4/3; }
+.product-card .card-foot{ flex:1; flex-direction:column; align-items:stretch; gap:10px; padding:16px 18px 18px; }
+.product-name{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.08rem; line-height:1.25; }
+.product-desc{
+  color:var(--muted); font-size:.86rem; line-height:1.4; margin-top:2px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.product-meta{ display:flex; align-items:baseline; gap:6px; margin-top:4px; }
+.product-price{ font-family:var(--serif); font-weight:700; color:var(--primary); font-size:1.18rem; }
+.product-weight{ color:var(--muted); font-size:.82rem; }
+.product-cta{ width:100%; margin-top:auto; }
+
+@media (max-width:1279px){
+  .products-grid{ grid-template-columns:repeat(3,1fr); }
+}
+@media (max-width:1023px){
+  .products-grid{ grid-template-columns:repeat(2,1fr); gap:16px; }
+}
+/* Tablet (640–1023): grade de 2 colunas com cards verticais — neutraliza o modo
+   "linha horizontal" herdado de .card, que abaixo de 900px é o padrão do site. */
+@media (max-width:1023px) and (min-width:640px){
+  .products-grid .product-card{ flex-direction:column; }
+  .products-grid .product-card .card-img{ flex:none; aspect-ratio:4/3; }
+}
+/* Mobile (<640): 1 coluna, cards horizontais (imagem à esquerda) */
+@media (max-width:639px){
+  .products-grid{ grid-template-columns:1fr; gap:14px; }
+  .products-grid .product-card{ flex-direction:row; }
+  .products-grid .product-card .card-img{ flex:0 0 38%; aspect-ratio:auto; }
+  .products-grid .product-card .card-foot{ padding:12px 14px; gap:6px; }
+  .product-name{ font-size:1rem; }
+  .product-desc{ font-size:.8rem; }
+  .product-cta{ height:38px; font-size:.85rem; margin-top:8px; }
+
+  .filters-bar{ flex-direction:column; align-items:stretch; padding:14px; gap:12px; }
+  .filters-sort{ width:100%; }
+  .filters-sort label{ flex:0 0 auto; }
+  .sort-select{ flex:1; width:100%; }
+}
+
+/* Faixa de 4 benefícios (produtos) — reaproveita .benefits/.benefit, 4 colunas */
+.benefits-4{ grid-template-columns:repeat(4,1fr); }
+@media (max-width:899px){
+  .benefits-4{ grid-template-columns:repeat(2,1fr); row-gap:16px; }
+  .benefits-4 .benefit{ border-left:none; padding:0 6px; }
+}
+@media (max-width:639px){
+  .benefits-4 .benefit{ flex-direction:column; text-align:center; gap:6px; }
+  .benefits-4 .benefit p{ display:block; font-size:.72rem; }
+  .benefits-4 .benefit h4{ font-size:.78rem; }
+}
+@media (max-width:479px){
+  .benefits-4{ grid-template-columns:1fr; }
+}
+
+/* CTA fixo "Fazer pedido" — apenas mobile/tablet (<900px) */
+.mobile-order-bar{ display:none; }
+@media (max-width:899px){
+  body.products-page{ padding-bottom:78px; }
+  .mobile-order-bar{
+    display:flex; position:fixed; left:0; right:0; bottom:0; z-index:30;
+    background:var(--primary);
+    padding:12px var(--pad) calc(12px + env(safe-area-inset-bottom));
+    box-shadow:0 -6px 18px rgba(57,38,26,.18);
+  }
+  .mobile-order-bar .btn{ width:100%; background:#fff; color:var(--primary); font-weight:600; }
+}

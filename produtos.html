@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Produtos — Amanteigados Lívia</title>
+  <meta name="description" content="Conheça nosso cardápio de amanteigados: tradicionais, recheados, especiais e personalizados. Feitos à mão com ingredientes selecionados." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23e55a53'/%3E%3Ctext x='50' y='66' font-size='48' text-anchor='middle' fill='white' font-family='Georgia'%3EA%3C/text%3E%3C/svg%3E" />
+</head>
+<body class="products-page">
+
+  <!-- Icon symbols (same sprite as Home, plus i-gift/i-truck for benefits) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-bag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l1 12H5L6 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-bowl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16c0 4.5-3.2 8-8 8s-8-3.5-8-8Z"/><path d="M7 20h10"/><path d="M9 4c1 1 .2 2-.5 3s-1 2 .2 3M14 3c1.2 1.2.3 2.4-.4 3.4-.8 1.1-.9 2.1.3 3.1"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></symbol>
+      <symbol id="i-instagram" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-whatsapp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3.5 20l1.2-4.1A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8.7 7.8c.2-.4.5-.4.8-.4h.5c.2 0 .4.1.5.4l.8 1.9c.1.3 0 .5-.2.7l-.6.7c-.2.2-.2.4-.1.6.6 1.2 1.5 2.1 2.7 2.7.2.1.4.1.6-.1l.8-1c.2-.2.4-.3.7-.2l1.8.9c.3.1.4.3.4.6 0 .6-.3 1.4-.8 1.8-.5.5-1.3.8-2.1.7-1.5-.2-3.7-1.1-5.6-3-1.8-1.8-2.7-4-2.9-5.4-.1-.4.3-.8.7-.9Z"/></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="11" rx="1.4"/><path d="M3 9h18M12 9v11"/><path d="M8 9c-1.8 0-3-1.1-3-2.6C5 4.9 6.2 4 7.6 4 9.8 4 11.3 6 12 9c.7-3 2.2-5 4.4-5C17.8 4 19 4.9 19 6.4 19 7.9 17.8 9 16 9"/></symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="7" width="13" height="9" rx="1"/><path d="M14.5 10h4l3 3v3h-2"/><path d="M14.5 16H8"/><circle cx="6" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="page">
+
+    <!-- ===================== HEADER (reutilizado da Home) ===================== -->
+    <header class="site-header">
+      <a href="/" class="brand" aria-label="Amanteigados Lívia — Início">
+        <img src="assets/logo.jpg" alt="Amanteigados Lívia — Feitos com amor" />
+      </a>
+
+      <nav class="nav" id="mainNav">
+        <a href="/">Início</a>
+        <a href="/produtos" class="active">Produtos</a>
+        <a href="/#festas">Festas</a>
+        <a href="/#personalizados">Personalizados</a>
+        <a href="/#contato">Contato</a>
+      </nav>
+
+      <div class="header-actions">
+        <a href="https://wa.me/5500000000000?text=Ol%C3%A1%21%20Gostaria%20de%20fazer%20um%20pedido%20dos%20amanteigados." target="_blank" rel="noopener" class="btn btn-primary order-btn">
+          <svg class="ico"><use href="#i-bag"/></svg> Fazer pedido
+        </a>
+        <button class="icon-btn bag-btn" aria-label="Pedido"><svg class="ico"><use href="#i-bag"/></svg></button>
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false"><svg class="ico"><use href="#i-menu"/></svg></button>
+      </div>
+    </header>
+
+    <main>
+      <!-- ===================== HERO (mesma linguagem visual da Home) ===================== -->
+      <section class="hero hero-products">
+        <div class="hero-copy">
+          <h1>Nossos <span class="accent">produtos</span></h1>
+          <p class="hero-sub">Amanteigados feitos com ingredientes selecionados e muito carinho em cada detalhe.</p>
+        </div>
+        <img class="hero-photo" src="assets/hero.jpg" alt="Prato de biscoitos amanteigados com tulipas e caixa de presente" />
+      </section>
+
+      <!-- ===================== CATÁLOGO ===================== -->
+      <section class="moments products-listing" id="catalogo">
+
+        <!-- filtros + ordenação -->
+        <div class="filters-bar">
+          <div class="filters-cats" id="filterCats" role="group" aria-label="Filtrar por categoria">
+            <button type="button" class="pill active" data-category="Todos os produtos">Todos os produtos</button>
+            <button type="button" class="pill" data-category="Tradicionais">Tradicionais</button>
+            <button type="button" class="pill" data-category="Recheados">Recheados</button>
+            <button type="button" class="pill" data-category="Especiais">Especiais</button>
+            <button type="button" class="pill" data-category="Personalizados">Personalizados</button>
+          </div>
+          <div class="filters-sort">
+            <label for="sortSelect">Ordenar por</label>
+            <select id="sortSelect" class="sort-select">
+              <option value="bestseller">Mais vendidos</option>
+              <option value="price-asc">Menor preço</option>
+              <option value="price-desc">Maior preço</option>
+              <option value="name-asc">Nome A–Z</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- grid de produtos (renderizado via produtos.js) -->
+        <div class="products-grid" id="productsGrid" aria-live="polite"></div>
+        <p class="products-empty" id="productsEmpty" hidden>Nenhum produto encontrado nesta categoria.</p>
+
+        <!-- ===================== BENEFÍCIOS (4 itens) ===================== -->
+        <div class="benefits benefits-4">
+          <div class="benefit">
+            <span class="b-icon"><svg class="ico"><use href="#i-heart"/></svg></span>
+            <div><h4>Feito com amor</h4><p>Receitas artesanais e ingredientes selecionados.</p></div>
+          </div>
+          <div class="benefit">
+            <span class="b-icon"><svg class="ico"><use href="#i-bowl"/></svg></span>
+            <div><h4>Ingredientes de qualidade</h4><p>Utilizamos ingredientes frescos e de confiança.</p></div>
+          </div>
+          <div class="benefit">
+            <span class="b-icon"><svg class="ico"><use href="#i-gift"/></svg></span>
+            <div><h4>Embalagem especial</h4><p>Tudo preparado com cuidado para encantar você.</p></div>
+          </div>
+          <div class="benefit">
+            <span class="b-icon"><svg class="ico"><use href="#i-truck"/></svg></span>
+            <div><h4>Entrega rápida</h4><p>Receba no conforto da sua casa com segurança e agilidade.</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===================== FOOTER (reutilizado da Home) ===================== -->
+    <footer class="site-footer">
+      <div class="footer-brand" role="img" aria-label="Amanteigados Lívia — Feitos com amor">
+        <svg viewBox="0 0 240 66" xmlns="http://www.w3.org/2000/svg">
+          <text class="fb-script" x="120" y="36" text-anchor="middle">Amanteigados Lívia</text>
+          <text class="fb-caps" x="120" y="55" text-anchor="middle">FEITOS COM AMOR</text>
+        </svg>
+      </div>
+      <p class="footer-tag">Amanteigados feitos com amor para adoçar<br>seus melhores momentos.</p>
+      <div class="footer-social">
+        <div class="fs-group">
+          <span>Siga-nos</span>
+          <a href="https://instagram.com" target="_blank" rel="noopener" class="fs-link ig" aria-label="Instagram"><svg class="ico"><use href="#i-instagram"/></svg></a>
+        </div>
+        <span class="fs-sep"></span>
+        <div class="fs-group">
+          <span>Fale conosco</span>
+          <a href="https://wa.me/5500000000000" target="_blank" rel="noopener" class="fs-link wa" aria-label="WhatsApp"><svg class="ico"><use href="#i-whatsapp"/></svg></a>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- CTA fixo mobile -->
+  <div class="mobile-order-bar">
+    <a href="https://wa.me/5500000000000?text=Ol%C3%A1%21%20Gostaria%20de%20fazer%20um%20pedido%20dos%20amanteigados." target="_blank" rel="noopener" class="btn">
+      Fazer pedido <svg class="ico"><use href="#i-bag"/></svg>
+    </a>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="produtos.js"></script>
+</body>
+</html>
