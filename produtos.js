@@ -43,6 +43,29 @@ function formatPrice(value) {
   return isValidPrice(value) ? priceFormatter.format(value) : null;
 }
 
+// Preço efetivamente cobrado: o promocional só é válido quando existe um
+// preço-base válido E o promocional é estritamente menor que ele — nunca
+// interpreta promotionalPrice isolado (sem price) como promoção real.
+function getEffectivePrice(product) {
+  const regular = product.price;
+  const promo = product.promotionalPrice;
+  if (isValidPrice(regular) && isValidPrice(promo) && promo < regular) {
+    return promo;
+  }
+  if (isValidPrice(regular)) {
+    return regular;
+  }
+  return null;
+}
+
+// Combina peso e unidade sem duplicar nem inventar dado ausente.
+function getWeightUnitLabel(product, separator) {
+  const parts = [];
+  if (product.weight) parts.push(product.weight);
+  if (product.unit) parts.push(product.unit);
+  return parts.length ? parts.join(separator) : null;
+}
+
 // ===================== VALIDAÇÃO / SELEÇÃO DE DADOS =====================
 // Produto malformado nunca deve quebrar a página — exige o mínimo (id,
 // nome, active) para ser considerado renderizável.
@@ -108,8 +131,11 @@ function filterBySearch(list, query) {
   });
 }
 
-function hasValidPrices(list) {
-  return list.some((p) => isValidPrice(p.price));
+// Ordenação por preço só é oferecida quando TODOS os produtos considerados
+// têm price-base válido — evita UX inconsistente em catálogo parcialmente
+// precificado (um "Menor preço" que não pode realmente comparar todo mundo).
+function hasCompleteValidPrices(list) {
+  return list.length > 0 && list.every((p) => isValidPrice(p.price));
 }
 
 function getSortOptions(activeList) {
@@ -118,8 +144,8 @@ function getSortOptions(activeList) {
     { value: 'name-desc', label: 'Nome Z–A' },
   ];
   // "Mais vendidos" não existe (sem dado real de vendas). Preço só entra
-  // quando houver ao menos um produto ativo com preço homologado.
-  if (hasValidPrices(activeList)) {
+  // quando 100% dos produtos ativos têm price-base homologado.
+  if (hasCompleteValidPrices(activeList)) {
     options.push({ value: 'price-asc', label: 'Menor preço' });
     options.push({ value: 'price-desc', label: 'Maior preço' });
   }
@@ -353,10 +379,11 @@ if (els.grid) {
       priceEl.textContent = priceText;
       metaEl.appendChild(priceEl);
     }
-    if (product.weight) {
+    const weightUnitLabel = getWeightUnitLabel(product, ' · ');
+    if (weightUnitLabel) {
       const weightEl = document.createElement('span');
       weightEl.className = 'product-weight';
-      weightEl.textContent = product.weight;
+      weightEl.textContent = weightUnitLabel;
       metaEl.appendChild(weightEl);
     }
     if (metaEl.childNodes.length) info.appendChild(metaEl);
@@ -484,13 +511,14 @@ if (els.grid) {
     els.qtyMinus.disabled = state.quantity <= min;
     els.qtyPlus.disabled = max !== null && state.quantity >= max;
 
-    const priceText = formatPrice(product.price);
-    if (priceText) {
-      const total = product.price * state.quantity;
+    const effectivePrice = getEffectivePrice(product);
+    const effectivePriceText = formatPrice(effectivePrice);
+    if (effectivePriceText) {
+      const total = effectivePrice * state.quantity;
       clearChildren(els.qtyTotalRow);
       const line = document.createElement('p');
       line.className = 'qty-line';
-      line.textContent = `${priceText} × ${state.quantity}`;
+      line.textContent = `${effectivePriceText} × ${state.quantity}`;
       const totalLine = document.createElement('p');
       totalLine.className = 'qty-total';
       const totalLabel = document.createElement('span');
@@ -516,17 +544,7 @@ if (els.grid) {
     setFieldText(els.dialogCategory, category ? category.name : null);
     setFieldText(els.dialogDesc, product.description || product.shortDescription || null);
 
-    clearChildren(els.dialogMeta);
-    const metaParts = [];
-    if (product.weight) metaParts.push(product.weight);
-    if (product.unit) metaParts.push(product.unit);
-    if (metaParts.length) {
-      els.dialogMeta.hidden = false;
-      els.dialogMeta.textContent = metaParts.join(' — ');
-    } else {
-      els.dialogMeta.hidden = true;
-      els.dialogMeta.textContent = '';
-    }
+    setFieldText(els.dialogMeta, getWeightUnitLabel(product, ' — '));
 
     els.dialogCustomizable.hidden = product.customizable !== true;
     setFieldText(els.dialogProductionTime, product.productionTime);
