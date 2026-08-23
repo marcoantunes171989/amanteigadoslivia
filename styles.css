@@ -1,28 +1,66 @@
-/* ===================== TOKENS (design-spec.json) ===================== */
+/* ===================== DESIGN SYSTEM — Amanteigados Lívia (Fase 1) =====================
+   Paleta oficial + tokens semânticos. Os nomes de variáveis pré-existentes
+   (--primary, --heading, --text, --muted, --page, --outer, --line-art) são
+   mantidos como aliases para não quebrar nenhum seletor já existente no
+   arquivo — apenas os VALORES mudam para refletir a nova identidade visual. */
 :root{
-  --page:        #F8F4EC;
-  --surface:     #FFFDFC;
-  --primary:     #E55A53;
-  --primary-strong:#E94F4A;
-  --heading:     #3B201B;
-  --text:        #28211E;
-  --muted:       #665E59;
-  --border:      #E7DDD3;
-  --line-art:    #EAA092;
-  --whatsapp:    #19B75B;
-  --outer:       #EFEBE2;
+  /* ---- Paleta oficial (cores de marca) ---- */
+  --bordo:      #7A3E48; /* Bordô Lívia — CTA principal, estados ativos */
+  --cacau:      #4A2E2A; /* títulos, textos fortes */
+  --manteiga:   #E7C08A; /* destaques/badges decorativos — nunca como texto pequeno */
+  --rose:       #B96C62; /* destaques secundários, elementos auxiliares */
+  --creme:      #FFF8F2; /* background principal */
+  --baunilha:   #F6EBDD; /* backgrounds alternativos / seções */
+  --branco:     #FFFFFF; /* cards, superfícies, formulários */
+  --texto:      #2E201D; /* texto principal */
 
-  --serif: "Playfair Display", "Cormorant Garamond", Georgia, serif;
+  /* ---- Tokens semânticos ---- */
+  --primary:        var(--bordo);
+  --primary-hover:  #672F3A; /* bordô ~12% mais escuro, usado no hover */
+  --secondary:      var(--rose);
+  --accent:         var(--manteiga);
+  --background:     var(--creme);
+  --surface:        var(--branco);
+  --surface-muted:  var(--baunilha);
+  --text-primary:   var(--texto);
+  --text-secondary: #6E5A52;
+  --border:         #E7DCCB;
+  --success:        #4F7A5A;
+  --warning:        #B4792E;
+  --error:          #A83E3E;
+
+  /* ---- Aliases retrocompatíveis (todo o CSS abaixo continua funcionando) ---- */
+  --primary-strong: var(--primary-hover);
+  --heading:  var(--cacau);
+  --text:     var(--text-primary);
+  --muted:    var(--text-secondary);
+  --page:     var(--background);
+  --outer:    var(--baunilha);
+  --line-art: var(--secondary);
+  --whatsapp: #19B75B; /* cor de marca do WhatsApp — preservada intencionalmente */
+
+  /* ---- Tipografia ---- */
+  --serif: "Fraunces", Georgia, serif;
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
-  --script:"Dancing Script", cursive;
+  --script:"Dancing Script", cursive; /* mantida: assinatura do rodapé (fora do escopo tipográfico) */
 
+  /* Escala tipográfica fluida (clamp: mobile -> desktop, conforme guia de marca) */
+  --fs-h1:            clamp(2.625rem, 5.5vw, 4.25rem);   /* 42px -> 68px */
+  --fs-h2:            clamp(2rem, 3.2vw, 2.75rem);       /* 32px -> 44px */
+  --fs-h3:            clamp(1.4375rem, 1.5vw, 1.625rem); /* 23px -> 26px */
+  --fs-product-title: clamp(1.1875rem, 1vw, 1.3125rem);  /* 19px -> 21px */
+  --fs-body:          clamp(1rem, .4vw, 1.125rem);       /* 16px -> 18px */
+  --fs-button:        clamp(.9375rem, .3vw, 1rem);       /* 15px -> 16px */
+  --fs-caption:       clamp(.8125rem, .15vw, .875rem);   /* 13px -> 14px */
+
+  /* ---- Raio (Pequeno/Médio/Grande, conforme guia) ---- */
   --r-page: 14px;
-  --r-btn: 8px;
-  --r-card: 11px;
-  --r-bar: 12px;
+  --r-btn: 8px;   /* Pequeno */
+  --r-bar: 12px;  /* Médio */
+  --r-card: 16px; /* Grande — cards de produto/imagem */
 
-  --sh-page: 0 8px 28px rgba(57,38,26,.10);
-  --sh-card: 0 1px 4px rgba(57,38,26,.06);
+  --sh-page: 0 8px 28px rgba(74,46,42,.09);
+  --sh-card: 0 1px 4px rgba(74,46,42,.05);
 
   --pad: clamp(20px, 3.3vw, 40px);
   --maxw: 1160px;
@@ -52,18 +90,25 @@ a{ color:inherit; text-decoration:none; }
   position:relative;
 }
 
-/* ===================== BUTTONS ===================== */
+/* ===================== BUTTONS =====================
+   Variantes: Primary (.btn-primary), Secondary (.btn-ghost / alias .btn-secondary,
+   contorno bordô) e Ghost (.btn-tertiary, sem fundo/borda — baixa prioridade).
+   Estados obrigatórios: default, hover, focus-visible, disabled. */
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:.5em;
-  font-family:var(--sans); font-weight:500; font-size:.95rem;
+  font-family:var(--sans); font-weight:500; font-size:var(--fs-button);
   height:44px; padding:0 1.35em; border-radius:var(--r-btn);
   border:1.5px solid transparent; cursor:pointer; transition:.18s ease; white-space:nowrap;
 }
 .btn .ico{ font-size:1.15em; }
+.btn:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
+.btn:disabled, .btn[aria-disabled="true"]{ opacity:.5; cursor:not-allowed; pointer-events:none; }
 .btn-primary{ background:var(--primary); color:#fff; }
-.btn-primary:hover{ background:var(--primary-strong); }
-.btn-ghost{ background:transparent; color:var(--primary); border-color:var(--primary); }
-.btn-ghost:hover{ background:rgba(229,90,83,.08); }
+.btn-primary:hover{ background:var(--primary-hover); }
+.btn-ghost, .btn-secondary{ background:transparent; color:var(--primary); border-color:var(--primary); }
+.btn-ghost:hover, .btn-secondary:hover{ background:rgba(122,62,72,.08); }
+.btn-tertiary{ background:transparent; border-color:transparent; color:var(--primary); }
+.btn-tertiary:hover{ background:rgba(122,62,72,.08); }
 .btn-white{ background:#fff; color:var(--primary); font-weight:600; }
 .btn-white:hover{ background:#fff; transform:translateY(-1px); }
 
@@ -82,8 +127,9 @@ a{ color:inherit; text-decoration:none; }
 .nav a:hover{ color:var(--primary); }
 .nav a.active{ color:var(--primary); }
 .nav a.active::after{ content:""; position:absolute; left:0; right:0; bottom:-3px; height:1.5px; background:var(--primary); border-radius:2px; }
+.nav a:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
 .header-actions{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; }
-.order-btn{ height:42px; }
+.order-btn{ height:44px; }
 .order-btn .ico{ font-size:1.2em; }
 .icon-btn{
   display:none; align-items:center; justify-content:center;
@@ -98,7 +144,7 @@ a{ color:inherit; text-decoration:none; }
   min-height:432px;
   padding:54px var(--pad) 48px;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='360' fill='none' stroke='%23EAA092' stroke-width='1.1' opacity='.5'%3E%3Cpath d='M70 340 C30 280 40 180 100 150'/%3E%3Cpath d='M100 150 c-16 0 -24 -18 -24 -30 0 0 11 9 24 9 s24 -9 24 -9 c0 12 -8 30 -24 30z'/%3E%3Cpath d='M120 210 C86 196 74 150 100 128'/%3E%3Cpath d='M50 250 C20 220 26 175 66 160'/%3E%3C/svg%3E") -20px 40px / 260px auto no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='360' fill='none' stroke='%23B96C62' stroke-width='1.1' opacity='.5'%3E%3Cpath d='M70 340 C30 280 40 180 100 150'/%3E%3Cpath d='M100 150 c-16 0 -24 -18 -24 -30 0 0 11 9 24 9 s24 -9 24 -9 c0 12 -8 30 -24 30z'/%3E%3Cpath d='M120 210 C86 196 74 150 100 128'/%3E%3Cpath d='M50 250 C20 220 26 175 66 160'/%3E%3C/svg%3E") -20px 40px / 260px auto no-repeat,
     var(--page);
   overflow:hidden;
 }
@@ -111,7 +157,7 @@ a{ color:inherit; text-decoration:none; }
 .hero-copy{ position:relative; z-index:2; max-width:462px; }
 .hero-copy h1{
   font-family:var(--serif); font-weight:600; color:var(--heading);
-  font-size:clamp(2.9rem,4.6vw,3.85rem); line-height:1.0; letter-spacing:-.005em;
+  font-size:var(--fs-h1); line-height:1.0; letter-spacing:-.005em;
 }
 .hero-copy h1 .accent{ color:var(--primary); }
 .hero-sub{ color:var(--muted); font-size:1.02rem; margin:18px 0 26px; }
@@ -120,7 +166,7 @@ a{ color:inherit; text-decoration:none; }
 /* ===================== MOMENTS ===================== */
 .moments{ padding:6px var(--pad) 30px; }
 .moments-head{ display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 24px; }
-.moments-head h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:clamp(1.7rem,2.6vw,2.05rem); }
+.moments-head h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); }
 .ornament{ color:var(--line-art); width:64px; }
 .ornament svg{ width:100%; height:auto; }
 .ornament.flip{ transform:scaleX(-1); }
@@ -137,7 +183,7 @@ a{ color:inherit; text-decoration:none; }
 /* effects when selecting/hovering a card */
 .card:hover, .card:focus-within{
   transform:translateY(-7px);
-  box-shadow:0 16px 34px -16px rgba(57,38,26,.32);
+  box-shadow:0 16px 34px -16px rgba(74,46,42,.32);
   border-color:#e6d6c6;
 }
 .card:hover .card-img img, .card:focus-within .card-img img{ transform:scale(1.07); }
@@ -145,11 +191,11 @@ a{ color:inherit; text-decoration:none; }
 .card:hover .card-icon, .card:focus-within .card-icon{ background:var(--primary); color:#fff; transform:rotate(-8deg) scale(1.08); }
 .card:active{ transform:translateY(-3px); }
 .card-foot{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px 18px; }
-.card-txt h3{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.32rem; margin-bottom:4px; transition:color .25s ease; }
+.card-txt h3{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h3); margin-bottom:4px; transition:color .25s ease; }
 .card-txt p{ color:var(--muted); font-size:.9rem; line-height:1.4; max-width:15em; }
 .card-icon{
   flex:0 0 auto; width:46px; height:46px; border-radius:50%;
-  background:rgba(229,90,83,.08); color:var(--primary);
+  background:rgba(231,192,138,.35); color:var(--primary); /* manteiga: badge decorativo, sem uso como texto */
   display:flex; align-items:center; justify-content:center; font-size:1.35rem;
   transition:background .25s ease, color .25s ease, transform .3s cubic-bezier(.22,.61,.36,1);
 }
@@ -202,6 +248,7 @@ a{ color:inherit; text-decoration:none; }
 .fs-link.ig{ color:var(--primary); }
 .fs-link.wa{ color:var(--whatsapp); }
 .fs-link:hover{ transform:translateY(-2px); }
+.fs-link:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
 .fs-sep{ width:1px; height:22px; background:var(--border); }
 
 /* ===================== MOTION / EFEITOS ===================== */
@@ -341,12 +388,13 @@ a{ color:inherit; text-decoration:none; }
 .filters-sort{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .filters-sort label{ font-size:.85rem; color:var(--muted); white-space:nowrap; }
 .sort-select{
-  height:38px; padding:0 32px 0 14px; border-radius:8px; border:1.5px solid var(--border);
+  height:38px; padding:0 32px 0 14px; border-radius:var(--r-btn); border:1.5px solid var(--border);
   background:var(--page)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23665E59' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236E5A52' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
     right 8px center / 16px no-repeat;
   color:var(--text); font-family:var(--sans); font-size:.88rem; cursor:pointer; appearance:none; -webkit-appearance:none;
 }
+.sort-select:disabled{ opacity:.5; cursor:not-allowed; }
 .pill:focus-visible, .sort-select:focus-visible, .product-cta:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
 
 /* Grid de produtos: 4 colunas desktop -> 3 notebook -> 2 tablet -> 1 (cards horizontais) mobile */
@@ -355,7 +403,7 @@ a{ color:inherit; text-decoration:none; }
 
 .product-card .card-img{ aspect-ratio:4/3; }
 .product-card .card-foot{ flex:1; flex-direction:column; align-items:stretch; gap:10px; padding:16px 18px 18px; }
-.product-name{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.08rem; line-height:1.25; }
+.product-name{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-product-title); line-height:1.25; }
 .product-desc{
   color:var(--muted); font-size:.86rem; line-height:1.4; margin-top:2px;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
