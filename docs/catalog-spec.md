@@ -16,8 +16,22 @@ index.html      → Home
 produtos.html    → /produtos (catálogo atual)
 produtos.js      → dados + filtro + ordenação (100% client-side, array hardcoded)
 styles.css       → estilos compartilhados (Home + Produtos)
-app.js           → menu mobile + scroll-spy da Home (não usado por produtos.html)
+app.js           → lógica compartilhada do menu mobile entre Home e Produtos;
+                   contém também o scroll-spy, cujo efeito prático é
+                   utilizado na Home
 ```
+
+`produtos.html` carrega `app.js` e `produtos.js`, nessa ordem
+(`<script src="app.js"></script>` seguido de
+`<script src="produtos.js"></script>`) — ou seja, `app.js` **é** usado por
+`/produtos`, não é exclusivo da Home. O `scroll-spy` de `app.js` (que marca
+o link ativo do menu com base nos ids `#inicio`/`#encomendas`/
+`#festas-momentos`/`#personalizados-historia`) só produz efeito visível na
+Home porque `/produtos` não possui nenhum desses ids — mas o menu mobile
+(abrir/fechar, ESC, fechar ao clicar em link) roda igualmente nas duas
+páginas a partir do mesmo arquivo. **Qualquer alteração futura em `app.js`
+deverá ser validada obrigatoriamente em `/` e em `/produtos`** — a lógica do
+menu não deve ser duplicada exclusivamente em `produtos.js`.
 
 `produtos.js` mantém um array `PRODUCTS` com 9 registros fixos no código-fonte,
 renderizados via `innerHTML` diretamente no DOM, com filtro por `category`
@@ -38,9 +52,11 @@ cardápio. **Nenhum dos três documentos de referência do projeto menciona um
 catálogo de produtos** — todos descrevem apenas a Home (Hero, "Para cada
 momento", diferenciais, CTA, footer). O commit que introduziu `produtos.js`
 (`ef94cca`, "Adiciona tela de Produtos") descreve a criação de um "catalogo
-centralizado (9 itens)" sem citar nenhuma fonte externa — ou seja, os 9
-produtos foram **inventados nessa implementação**, não fornecidos pelo
-negócio.
+centralizado (9 itens)" sem citar nenhuma fonte externa. **Não foi
+encontrada origem comercial/documental que permita homologar os 9 produtos
+atuais** — os registros foram criados durante a implementação do catálogo de
+demonstração e não possuem lastro documental/comercial identificável no
+repositório.
 
 Evidências adicionais de que os dados são placeholder:
 - Todos os 9 produtos têm peso idêntico (`250g`) — uniformidade típica de
@@ -359,10 +375,24 @@ descrito.
 1. **WhatsApp**: número atual é `5500000000000` (`produtos.js`,
    `produtos.html` ×3, `index.html` ×1) — placeholder auto-documentado no
    próprio `README.md` ("Troque o número do WhatsApp... pelos dados reais
-   da loja"). Nenhum produto deve continuar direcionando para esse número;
-   não substituir por número inventado.
+   da loja"). Não substituir por número inventado. **Regra definitiva por
+   página:**
+   - **Home**: a Fase 3 não deve alterar a Home só para corrigir contatos.
+     O placeholder permanece na Home, documentado como pendência comercial,
+     até que o número oficial seja fornecido.
+   - **Produtos**: como `/produtos` será reconstruída na Fase 3, a nova
+     experiência **não deve** apresentar nenhuma ação funcional apontando
+     para `https://wa.me/5500000000000` como se fosse um contato oficial —
+     a ação deve ser removida/não renderizada em `/produtos` enquanto não
+     houver número real. Não substituir por outro telefone, `#`,
+     `javascript:void(0)` ou qualquer destino inválido; não criar botão
+     visualmente ativo sem destino válido.
 2. **Instagram**: link atual `https://instagram.com`, sem usuário — não é
-   um perfil oficial confirmado.
+   um perfil oficial confirmado. Mesma regra por página do item acima:
+   permanece documentado como pendência na Home; em `/produtos`, a Fase 3
+   não deve apresentá-lo como perfil oficial (remover/não renderizar essa
+   ação ali). Quando os contatos oficiais forem fornecidos, ambos serão
+   restaurados/atualizados nas páginas cabíveis.
 3. **Alegação de entrega**: "Entrega rápida — Receba no conforto da sua
    casa com segurança e agilidade" (`produtos.html`, faixa de benefícios) —
    nenhuma documentação do projeto confirma um serviço de entrega real.
@@ -392,18 +422,28 @@ descrito.
 
 ## 19. Recomendação
 
-**FASE 3 PODE SER INICIADA: SIM**, desde que respeite as condições abaixo:
+**FASE 3 PODE SER INICIADA: SIM**, somente sob as seguintes condições:
 
-1. Implementar toda a arquitetura funcional (categorias, busca, filtros
-   combinados, cards, dialog de detalhe, quantidade, estados vazios,
-   responsividade, modelo de dados, segurança de renderização) conforme
-   especificado neste documento.
-2. **Não publicar os 9 produtos placeholder atuais como catálogo real** —
-   usar o estado vazio "Nosso cardápio está sendo atualizado" em produção
-   até que dados comerciais reais sejam fornecidos e confirmados.
-3. Não implementar carrinho, checkout, "Adicionar ao pedido" ou qualquer
-   ação comercial no dialog de detalhe — apenas "Fechar" e quantidade.
-4. Remover (ou marcar como pendente, não exibir) a alegação de "Entrega
-   rápida" até haver política de entrega confirmada.
-5. Manter o número de WhatsApp e o link de Instagram como estão até receber
-   os dados reais — não inventar substitutos.
+1. Os 9 produtos atuais não podem ser publicados como catálogo oficial —
+   permanecem classificados como PLACEHOLDER/NÃO HOMOLOGADO (seção 2).
+2. Enquanto não existirem produtos homologados, `/produtos` deverá utilizar
+   o estado seguro "Nosso cardápio está sendo atualizado" (seção 9.1).
+3. A Fase 3 pode implementar toda a arquitetura — categorias, busca,
+   filtros, ordenação segura, cards, dialog, quantidades, estados vazios,
+   responsividade, modelo `Product`, modelo `Category`, renderização
+   segura — mesmo com `PRODUCTS` vazio.
+4. Nenhum carrinho, checkout, pagamento ou pedido será criado nesta fase.
+5. Nenhuma ação comercial de produto em `/produtos` utilizará o WhatsApp
+   placeholder (`5500000000000`) como se fosse contato oficial (seção 17,
+   item 1).
+6. O Instagram genérico (`https://instagram.com`) não será apresentado como
+   perfil oficial em `/produtos` (seção 17, item 2).
+7. A Home não será redesenhada nesta fase — os placeholders de WhatsApp e
+   Instagram que já existem nela permanecem como estão, documentados como
+   pendência comercial.
+8. `app.js` continua sendo código compartilhado entre Home e Produtos;
+   qualquer alteração nele deverá ser validada obrigatoriamente em `/` e em
+   `/produtos` (seção 1).
+9. A alegação "Entrega rápida" deverá ser removida de `/produtos` na Fase 3
+   enquanto não houver política comercial de entrega confirmada (seção 17,
+   item 3).
