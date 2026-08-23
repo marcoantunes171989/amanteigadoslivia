@@ -1,181 +1,648 @@
-// ===================== DADOS DOS PRODUTOS =====================
-// Estrutura centralizada — trocar por dados reais/API sem alterar a renderização.
-// Product = { id, name, description, price, weight, image, category, bestSeller }
-const PRODUCTS = [
-  {
-    id: 'goiabada',
-    name: 'Amanteigado com Goiabada',
-    description: 'Clássico e irresistível, com goiabada selecionada.',
-    price: 29.90,
-    weight: '250g',
-    image: 'assets/encomendas.jpg',
-    category: 'Tradicionais',
-    bestSeller: true,
-  },
-  {
-    id: 'chocolate',
-    name: 'Amanteigado de Chocolate',
-    description: 'Massa amanteigada com toque de chocolate e sabor marcante.',
-    price: 29.90,
-    weight: '250g',
-    image: 'assets/festas.jpg',
-    category: 'Tradicionais',
-    bestSeller: true,
-  },
-  {
-    id: 'coco',
-    name: 'Amanteigado de Coco',
-    description: 'Leve, crocante e com o sabor delicado do coco.',
-    price: 29.90,
-    weight: '250g',
-    image: 'assets/personalizados.jpg',
-    category: 'Tradicionais',
-  },
-  {
-    id: 'goiaba',
-    name: 'Amanteigado de Goiaba',
-    description: 'Recheado com goiabada cremosa e sabor inconfundível.',
-    price: 32.90,
-    weight: '250g',
-    image: 'assets/encomendas.jpg',
-    category: 'Recheados',
-    bestSeller: true,
-  },
-  {
-    id: 'mesclado',
-    name: 'Amanteigado Mesclado',
-    description: 'A combinação perfeita entre baunilha e chocolate.',
-    price: 32.90,
-    weight: '250g',
-    image: 'assets/festas.jpg',
-    category: 'Especiais',
-  },
-  {
-    id: 'limao',
-    name: 'Amanteigado de Limão',
-    description: 'Sabor cítrico suave com toque refrescante de limão.',
-    price: 29.90,
-    weight: '250g',
-    image: 'assets/personalizados.jpg',
-    category: 'Tradicionais',
-  },
-  {
-    id: 'gotas',
-    name: 'Amanteigado com Gotas',
-    description: 'Tradicional com gotas de chocolate que derretem na boca.',
-    price: 32.90,
-    weight: '250g',
-    image: 'assets/encomendas.jpg',
-    category: 'Especiais',
-  },
-  {
-    id: 'especial',
-    name: 'Amanteigado Especial',
-    description: 'Uma seleção especial para momentos que pedem carinho.',
-    price: 34.90,
-    weight: '250g',
-    image: 'assets/festas.jpg',
-    category: 'Especiais',
-  },
-  {
-    id: 'personalizado',
-    name: 'Amanteigado Personalizado',
-    description: 'Com iniciais, mensagens ou tema especial para sua ocasião.',
-    price: 36.90,
-    weight: '250g',
-    image: 'assets/personalizados.jpg',
-    category: 'Personalizados',
-  },
+// ===================== CATÁLOGO — DADOS =====================
+// Arquitetura definida em docs/catalog-spec.md (Fase 2.2/2.2.1), aprovada
+// para implementação na Fase 3.
+//
+// Nenhum produto foi homologado comercialmente até o momento (ver auditoria
+// em docs/catalog-spec.md, seção 2): os 9 registros de demonstração usados
+// nas fases anteriores foram removidos da experiência pública. Os arrays
+// abaixo permanecem vazios em produção até que a Amanteigados Lívia forneça
+// um catálogo real (nomes, preços, pesos, categorias e fotos específicas).
+//
+// A interface funciona corretamente com os dois arrays vazios — isso é
+// testado e é o estado esperado em produção nesta fase.
+
+const CATEGORIES = [
+  // { id: 'slug', slug: 'slug', name: 'Nome', active: true, order: 10 }
 ];
 
-const WHATSAPP_NUMBER = '5500000000000';
+const PRODUCTS = [
+  // { id, slug, name, shortDescription, description, categoryId, price,
+  //   promotionalPrice, unit, weight, image, images, customizable,
+  //   minQuantity, quantityStep, maxQuantity, productionTime, featured,
+  //   active, order }
+];
 
-function buildOrderLink(productName) {
-  const text = encodeURIComponent(`Olá! Tenho interesse no ${productName}.`);
-  return `https://wa.me/${WHATSAPP_NUMBER}?text=${text}`;
+// ===================== NORMALIZAÇÃO DE BUSCA =====================
+// Nativo, sem biblioteca externa — case-insensitive e accent-insensitive.
+function normalizeSearch(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// ===================== FORMATAÇÃO DE PREÇO =====================
+const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function isValidPrice(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function formatPrice(value) {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return isValidPrice(value) ? priceFormatter.format(value) : null;
 }
 
-// ===================== ESTADO =====================
-let activeCategory = 'Todos os produtos';
-let activeSort = 'bestseller';
+// ===================== VALIDAÇÃO / SELEÇÃO DE DADOS =====================
+// Produto malformado nunca deve quebrar a página — exige o mínimo (id,
+// nome, active) para ser considerado renderizável.
+function isValidProduct(p) {
+  return !!p && typeof p === 'object'
+    && (typeof p.id === 'string' || typeof p.id === 'number')
+    && typeof p.name === 'string' && p.name.trim() !== ''
+    && p.active === true;
+}
 
-const grid = document.getElementById('productsGrid');
-const emptyMsg = document.getElementById('productsEmpty');
-const sortSelect = document.getElementById('sortSelect');
-const filterButtons = document.querySelectorAll('#filterCats .pill');
+function getActiveProducts() {
+  return PRODUCTS.filter(isValidProduct);
+}
 
-function getVisibleProducts() {
-  const list = activeCategory === 'Todos os produtos'
-    ? PRODUCTS.slice()
-    : PRODUCTS.filter((p) => p.category === activeCategory);
+function getCategoryById(categoryId) {
+  if (!categoryId) return null;
+  return CATEGORIES.find((c) => c && c.id === categoryId && c.active === true) || null;
+}
 
-  switch (activeSort) {
+// Só categorias ativas e com pelo menos um produto ativo associado —
+// nunca expõe uma categoria "vazia" ou não homologada.
+function getAvailableCategories() {
+  const active = getActiveProducts();
+  return CATEGORIES
+    .filter((c) => c && c.active === true)
+    .filter((c) => active.some((p) => p.categoryId === c.id))
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function getQuantityMin(product) {
+  return Number.isInteger(product?.minQuantity) && product.minQuantity > 0 ? product.minQuantity : 1;
+}
+function getQuantityStep(product) {
+  return Number.isInteger(product?.quantityStep) && product.quantityStep > 0 ? product.quantityStep : 1;
+}
+function getQuantityMax(product) {
+  return Number.isInteger(product?.maxQuantity) && product.maxQuantity > 0 ? product.maxQuantity : null;
+}
+function clampQuantity(product, value) {
+  const min = getQuantityMin(product);
+  const max = getQuantityMax(product);
+  let v = value;
+  if (v < min) v = min;
+  if (max !== null && v > max) v = max;
+  return v;
+}
+
+// ===================== FILTROS / ORDENAÇÃO =====================
+// Pipeline obrigatório: ativos -> categoria -> busca -> ordenação -> render.
+function filterByCategory(list, categoryId) {
+  if (categoryId === 'all') return list;
+  return list.filter((p) => p.categoryId === categoryId);
+}
+
+function filterBySearch(list, query) {
+  const q = normalizeSearch(query);
+  if (!q) return list;
+  return list.filter((p) => {
+    const category = getCategoryById(p.categoryId);
+    const haystacks = [p.name, p.shortDescription, p.description, category ? category.name : ''];
+    return haystacks.some((text) => text && normalizeSearch(text).includes(q));
+  });
+}
+
+function hasValidPrices(list) {
+  return list.some((p) => isValidPrice(p.price));
+}
+
+function getSortOptions(activeList) {
+  const options = [
+    { value: 'name-asc', label: 'Nome A–Z' },
+    { value: 'name-desc', label: 'Nome Z–A' },
+  ];
+  // "Mais vendidos" não existe (sem dado real de vendas). Preço só entra
+  // quando houver ao menos um produto ativo com preço homologado.
+  if (hasValidPrices(activeList)) {
+    options.push({ value: 'price-asc', label: 'Menor preço' });
+    options.push({ value: 'price-desc', label: 'Maior preço' });
+  }
+  return options;
+}
+
+function sortProducts(list, sort) {
+  const sorted = list.slice();
+  switch (sort) {
+    case 'name-desc':
+      sorted.sort((a, b) => b.name.localeCompare(a.name, 'pt-BR'));
+      break;
     case 'price-asc':
-      list.sort((a, b) => a.price - b.price);
+      sorted.sort((a, b) => (isValidPrice(a.price) ? a.price : Infinity) - (isValidPrice(b.price) ? b.price : Infinity));
       break;
     case 'price-desc':
-      list.sort((a, b) => b.price - a.price);
+      sorted.sort((a, b) => (isValidPrice(b.price) ? b.price : -Infinity) - (isValidPrice(a.price) ? a.price : -Infinity));
       break;
-    case 'name-asc':
-      list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-      break;
-    default: // bestseller (Mais vendidos)
-      list.sort((a, b) => (b.bestSeller ? 1 : 0) - (a.bestSeller ? 1 : 0));
-      break;
+    default:
+      sorted.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
+  return sorted;
+}
+
+function getVisibleProducts() {
+  let list = getActiveProducts();
+  list = filterByCategory(list, state.category);
+  list = filterBySearch(list, state.query);
+  list = sortProducts(list, state.sort);
   return list;
 }
 
-function renderProducts() {
-  const list = getVisibleProducts();
-  grid.innerHTML = '';
+// ===================== ESTADO =====================
+const state = {
+  query: '',
+  category: 'all',
+  sort: 'name-asc',
+  selectedProductId: null,
+  quantity: 1,
+};
 
-  if (!list.length) {
-    emptyMsg.hidden = false;
-    return;
+// ===================== ELEMENTOS =====================
+const els = {
+  searchInput: document.getElementById('searchInput'),
+  clearSearchBtn: document.getElementById('clearSearchBtn'),
+  categoriesBar: document.getElementById('categoriesBar'),
+  sortWrap: document.getElementById('sortWrap'),
+  sortSelect: document.getElementById('sortSelect'),
+  resultsStatus: document.getElementById('resultsStatus'),
+  grid: document.getElementById('productsGrid'),
+  stateNoData: document.getElementById('stateNoData'),
+  stateCategoryEmpty: document.getElementById('stateCategoryEmpty'),
+  stateSearchEmpty: document.getElementById('stateSearchEmpty'),
+  searchEmptyTitle: document.getElementById('searchEmptyTitle'),
+  viewAllBtn: document.getElementById('viewAllBtn'),
+  clearSearchEmptyBtn: document.getElementById('clearSearchEmptyBtn'),
+  dialog: document.getElementById('productDialog'),
+  dialogClose: document.getElementById('dialogClose'),
+  dialogTitle: document.getElementById('dialogTitle'),
+  dialogImageWrap: document.getElementById('dialogImageWrap'),
+  dialogCategory: document.getElementById('dialogCategory'),
+  dialogDesc: document.getElementById('dialogDesc'),
+  dialogMeta: document.getElementById('dialogMeta'),
+  dialogCustomizable: document.getElementById('dialogCustomizable'),
+  dialogProductionTime: document.getElementById('dialogProductionTime'),
+  dialogPriceRow: document.getElementById('dialogPriceRow'),
+  qtyRow: document.getElementById('qtyRow'),
+  qtyMinus: document.getElementById('qtyMinus'),
+  qtyPlus: document.getElementById('qtyPlus'),
+  qtyValue: document.getElementById('qtyValue'),
+  qtyTotalRow: document.getElementById('qtyTotalRow'),
+};
+
+// Página pode não ter todos os elementos (defensivo) — sai cedo se o
+// contêiner principal do catálogo não existir.
+if (els.grid) {
+
+  // ===================== HELPERS DE RENDERIZAÇÃO SEGURA =====================
+  // Nunca innerHTML com dados de produto/URL/busca — sempre DOM API.
+  function clearChildren(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
   }
-  emptyMsg.hidden = true;
 
-  const frag = document.createDocumentFragment();
-  list.forEach((p) => {
+  function setFieldText(el, value) {
+    if (!el) return;
+    if (value === null || value === undefined || value === '') {
+      el.hidden = true;
+      el.textContent = '';
+    } else {
+      el.hidden = false;
+      el.textContent = String(value);
+    }
+  }
+
+  function renderImagePlaceholder(container) {
+    clearChildren(container);
+    const ph = document.createElement('div');
+    ph.className = 'product-image-placeholder';
+    const orn = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    orn.setAttribute('viewBox', '0 0 40 24');
+    orn.setAttribute('class', 'placeholder-ornament');
+    orn.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', '#i-leaf');
+    orn.appendChild(use);
+    const label = document.createElement('span');
+    label.textContent = 'Imagem em atualização';
+    ph.appendChild(orn);
+    ph.appendChild(label);
+    container.appendChild(ph);
+  }
+
+  function renderProductImage(container, product) {
+    clearChildren(container);
+    if (!product.image) {
+      renderImagePlaceholder(container);
+      return;
+    }
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = product.name;
+    img.addEventListener('error', () => renderImagePlaceholder(container), { once: true });
+    img.src = product.image;
+    container.appendChild(img);
+  }
+
+  // ===================== CATEGORIAS =====================
+  function renderCategories() {
+    clearChildren(els.categoriesBar);
+    const available = getAvailableCategories();
+
+    if (available.length === 0) {
+      els.categoriesBar.hidden = true;
+      return;
+    }
+    els.categoriesBar.hidden = false;
+
+    const makeChip = (id, label) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'category-chip';
+      btn.textContent = label;
+      btn.dataset.categoryId = id;
+      if (state.category === id) {
+        btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
+      } else {
+        btn.setAttribute('aria-pressed', 'false');
+      }
+      btn.addEventListener('click', () => {
+        state.category = id;
+        renderCategories();
+        renderCatalog();
+      });
+      return btn;
+    };
+
+    els.categoriesBar.appendChild(makeChip('all', 'Todos'));
+    available.forEach((c) => els.categoriesBar.appendChild(makeChip(c.id, c.name)));
+  }
+
+  // ===================== CONTADOR (status curto e objetivo) =====================
+  function renderResultsStatus(count, activeCount) {
+    if (activeCount === 0) {
+      els.resultsStatus.textContent = '';
+      return;
+    }
+    els.resultsStatus.textContent = count === 1 ? '1 produto' : `${count} produtos`;
+  }
+
+  // ===================== ORDENAÇÃO (select) =====================
+  function renderSortOptions(activeList) {
+    if (activeList.length === 0) {
+      els.sortWrap.hidden = true;
+      return;
+    }
+    els.sortWrap.hidden = false;
+    const options = getSortOptions(activeList);
+    clearChildren(els.sortSelect);
+    options.forEach((opt) => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.textContent = opt.label;
+      els.sortSelect.appendChild(option);
+    });
+    if (!options.some((o) => o.value === state.sort)) {
+      state.sort = options[0].value;
+    }
+    els.sortSelect.value = state.sort;
+  }
+
+  // ===================== CARD =====================
+  function createProductCard(product) {
     const article = document.createElement('article');
     article.className = 'card product-card';
-    article.innerHTML = `
-      <div class="card-img"><img src="${p.image}" alt="${p.name}" loading="lazy" /></div>
-      <div class="card-foot">
-        <div class="product-info">
-          <h3 class="product-name">${p.name}</h3>
-          <p class="product-desc">${p.description}</p>
-          <div class="product-meta">
-            <span class="product-price">${formatPrice(p.price)}</span>
-            ${p.weight ? `<span class="product-weight">/ ${p.weight}</span>` : ''}
-          </div>
-        </div>
-        <a class="btn btn-primary product-cta" href="${buildOrderLink(p.name)}" target="_blank" rel="noopener" aria-label="Ver detalhes de ${p.name}">
-          Ver detalhes <svg class="ico"><use href="#i-arrow"/></svg>
-        </a>
-      </div>`;
-    frag.appendChild(article);
+
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'card-img';
+    renderProductImage(imgWrap, product);
+    article.appendChild(imgWrap);
+
+    const foot = document.createElement('div');
+    foot.className = 'card-foot';
+
+    const info = document.createElement('div');
+    info.className = 'product-info';
+
+    const category = getCategoryById(product.categoryId);
+    const categoryEl = document.createElement('p');
+    categoryEl.className = 'product-category';
+    setFieldText(categoryEl, category ? category.name : null);
+    info.appendChild(categoryEl);
+
+    const nameEl = document.createElement('h3');
+    nameEl.className = 'product-name';
+    nameEl.textContent = product.name;
+    info.appendChild(nameEl);
+
+    const descEl = document.createElement('p');
+    descEl.className = 'product-desc';
+    setFieldText(descEl, product.shortDescription);
+    info.appendChild(descEl);
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'product-meta';
+    const priceText = formatPrice(product.price);
+    if (priceText) {
+      const priceEl = document.createElement('span');
+      priceEl.className = 'product-price';
+      priceEl.textContent = priceText;
+      metaEl.appendChild(priceEl);
+    }
+    if (product.weight) {
+      const weightEl = document.createElement('span');
+      weightEl.className = 'product-weight';
+      weightEl.textContent = product.weight;
+      metaEl.appendChild(weightEl);
+    }
+    if (metaEl.childNodes.length) info.appendChild(metaEl);
+
+    if (product.customizable === true) {
+      const badge = document.createElement('span');
+      badge.className = 'badge-customizable';
+      badge.textContent = 'Personalizável';
+      info.appendChild(badge);
+    }
+
+    foot.appendChild(info);
+
+    const ctaBtn = document.createElement('button');
+    ctaBtn.type = 'button';
+    ctaBtn.className = 'btn btn-primary product-cta';
+    ctaBtn.setAttribute('aria-label', `Ver detalhes de ${product.name}`);
+    ctaBtn.textContent = 'Ver detalhes ';
+    const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    arrowSvg.setAttribute('class', 'ico');
+    const arrowUse = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    arrowUse.setAttribute('href', '#i-arrow');
+    arrowSvg.appendChild(arrowUse);
+    ctaBtn.appendChild(arrowSvg);
+    ctaBtn.addEventListener('click', () => openProductDetails(product, ctaBtn));
+    foot.appendChild(ctaBtn);
+
+    article.appendChild(foot);
+    return article;
+  }
+
+  // ===================== ESTADOS VAZIOS =====================
+  function hideAllStates() {
+    els.stateNoData.hidden = true;
+    els.stateCategoryEmpty.hidden = true;
+    els.stateSearchEmpty.hidden = true;
+  }
+
+  function renderEmptyState(activeList, categoryFiltered, visibleList) {
+    hideAllStates();
+    if (activeList.length === 0) {
+      els.stateNoData.hidden = false;
+      return;
+    }
+    if (categoryFiltered.length === 0) {
+      els.stateCategoryEmpty.hidden = false;
+      return;
+    }
+    if (visibleList.length === 0) {
+      els.searchEmptyTitle.replaceChildren(
+        'Nenhum amanteigado encontrado para “',
+        document.createTextNode(state.query),
+        '”'
+      );
+      els.stateSearchEmpty.hidden = false;
+    }
+  }
+
+  // ===================== RENDER PRINCIPAL =====================
+  function renderCatalog() {
+    const activeList = getActiveProducts();
+    const categoryFiltered = filterByCategory(activeList, state.category);
+    const visibleList = sortProducts(filterBySearch(categoryFiltered, state.query), state.sort);
+
+    renderSortOptions(activeList);
+    renderResultsStatus(visibleList.length, activeList.length);
+
+    clearChildren(els.grid);
+    if (visibleList.length === 0) {
+      els.grid.hidden = true;
+      renderEmptyState(activeList, categoryFiltered, visibleList);
+      return;
+    }
+    els.grid.hidden = false;
+    hideAllStates();
+    const frag = document.createDocumentFragment();
+    visibleList.forEach((p) => frag.appendChild(createProductCard(p)));
+    els.grid.appendChild(frag);
+  }
+
+  // ===================== BUSCA =====================
+  function updateClearButton() {
+    els.clearSearchBtn.hidden = state.query.trim() === '';
+  }
+
+  els.searchInput.addEventListener('input', () => {
+    state.query = els.searchInput.value;
+    updateClearButton();
+    renderCatalog();
   });
-  grid.appendChild(frag);
+
+  els.clearSearchBtn.addEventListener('click', () => {
+    state.query = '';
+    els.searchInput.value = '';
+    updateClearButton();
+    renderCatalog();
+    els.searchInput.focus();
+  });
+
+  els.clearSearchEmptyBtn?.addEventListener('click', () => {
+    state.query = '';
+    els.searchInput.value = '';
+    updateClearButton();
+    renderCatalog();
+  });
+
+  els.viewAllBtn?.addEventListener('click', () => {
+    state.category = 'all';
+    renderCategories();
+    renderCatalog();
+  });
+
+  els.sortSelect.addEventListener('change', () => {
+    state.sort = els.sortSelect.value;
+    renderCatalog();
+  });
+
+  // ===================== DIALOG DE DETALHES =====================
+  let lastTrigger = null;
+
+  function renderQuantityUI(product) {
+    const min = getQuantityMin(product);
+    const max = getQuantityMax(product);
+    els.qtyValue.textContent = String(state.quantity);
+    els.qtyMinus.disabled = state.quantity <= min;
+    els.qtyPlus.disabled = max !== null && state.quantity >= max;
+
+    const priceText = formatPrice(product.price);
+    if (priceText) {
+      const total = product.price * state.quantity;
+      clearChildren(els.qtyTotalRow);
+      const line = document.createElement('p');
+      line.className = 'qty-line';
+      line.textContent = `${priceText} × ${state.quantity}`;
+      const totalLine = document.createElement('p');
+      totalLine.className = 'qty-total';
+      const totalLabel = document.createElement('span');
+      totalLabel.textContent = 'Total';
+      const totalValue = document.createElement('strong');
+      totalValue.textContent = formatPrice(total) || '';
+      totalLine.appendChild(totalLabel);
+      totalLine.appendChild(totalValue);
+      els.qtyTotalRow.appendChild(line);
+      els.qtyTotalRow.appendChild(totalLine);
+      els.qtyTotalRow.hidden = false;
+    } else {
+      clearChildren(els.qtyTotalRow);
+      els.qtyTotalRow.hidden = true;
+    }
+  }
+
+  function renderProductDetails(product) {
+    els.dialogTitle.textContent = product.name;
+    renderProductImage(els.dialogImageWrap, product);
+
+    const category = getCategoryById(product.categoryId);
+    setFieldText(els.dialogCategory, category ? category.name : null);
+    setFieldText(els.dialogDesc, product.description || product.shortDescription || null);
+
+    clearChildren(els.dialogMeta);
+    const metaParts = [];
+    if (product.weight) metaParts.push(product.weight);
+    if (product.unit) metaParts.push(product.unit);
+    if (metaParts.length) {
+      els.dialogMeta.hidden = false;
+      els.dialogMeta.textContent = metaParts.join(' — ');
+    } else {
+      els.dialogMeta.hidden = true;
+      els.dialogMeta.textContent = '';
+    }
+
+    els.dialogCustomizable.hidden = product.customizable !== true;
+    setFieldText(els.dialogProductionTime, product.productionTime);
+
+    const priceText = formatPrice(product.price);
+    clearChildren(els.dialogPriceRow);
+    if (priceText) {
+      els.dialogPriceRow.hidden = false;
+      const priceEl = document.createElement('span');
+      priceEl.className = 'dialog-price';
+      priceEl.textContent = priceText;
+      els.dialogPriceRow.appendChild(priceEl);
+      const promo = formatPrice(product.promotionalPrice);
+      if (promo && isValidPrice(product.promotionalPrice) && product.promotionalPrice < product.price) {
+        priceEl.classList.add('dialog-price-strike');
+        const promoEl = document.createElement('span');
+        promoEl.className = 'dialog-price-promo';
+        promoEl.textContent = promo;
+        els.dialogPriceRow.appendChild(promoEl);
+      }
+    } else {
+      els.dialogPriceRow.hidden = true;
+    }
+
+    state.quantity = getQuantityMin(product);
+    els.qtyRow.hidden = false;
+    renderQuantityUI(product);
+  }
+
+  function openProductDetails(product, triggerEl) {
+    state.selectedProductId = product.id;
+    lastTrigger = triggerEl || document.activeElement;
+    renderProductDetails(product);
+    if (typeof els.dialog.showModal === 'function') {
+      els.dialog.showModal();
+    } else {
+      els.dialog.setAttribute('open', '');
+    }
+    els.dialogClose.focus();
+  }
+
+  function closeProductDetails() {
+    if (typeof els.dialog.close === 'function' && els.dialog.open) {
+      els.dialog.close();
+    } else {
+      els.dialog.removeAttribute('open');
+    }
+  }
+
+  els.dialog.addEventListener('close', () => {
+    state.selectedProductId = null;
+    state.quantity = 1;
+    if (lastTrigger && typeof lastTrigger.focus === 'function') lastTrigger.focus();
+    lastTrigger = null;
+  });
+
+  // Fecha ao clicar no backdrop (fora do painel de conteúdo)
+  els.dialog.addEventListener('click', (e) => {
+    if (e.target === els.dialog) closeProductDetails();
+  });
+
+  els.dialogClose.addEventListener('click', () => closeProductDetails());
+
+  // showModal() torna o restante da página inert (não clicável/focável),
+  // mas o Tab a partir do último controle nem sempre volta a ciclar dentro
+  // do dialog nesta engine — reforça manualmente só esse ciclo (ESC e o
+  // resto do comportamento continuam 100% nativos).
+  els.dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const focusable = Array.from(
+      els.dialog.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter((el) => !el.disabled && el.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
+  els.qtyMinus.addEventListener('click', () => {
+    const product = getActiveProducts().find((p) => p.id === state.selectedProductId);
+    if (!product) return;
+    state.quantity = clampQuantity(product, state.quantity - getQuantityStep(product));
+    renderQuantityUI(product);
+  });
+
+  els.qtyPlus.addEventListener('click', () => {
+    const product = getActiveProducts().find((p) => p.id === state.selectedProductId);
+    if (!product) return;
+    state.quantity = clampQuantity(product, state.quantity + getQuantityStep(product));
+    renderQuantityUI(product);
+  });
+
+  // ===================== URL (?q= e ?categoria=) =====================
+  function syncFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    if (q) {
+      state.query = q;
+      els.searchInput.value = q;
+      updateClearButton();
+    }
+    const categoria = params.get('categoria');
+    if (categoria) {
+      const match = getAvailableCategories().find((c) => c.slug === categoria || c.id === categoria);
+      if (match) state.category = match.id;
+    }
+  }
+
+  // ===================== INICIALIZAÇÃO =====================
+  syncFromUrl();
+  renderCategories();
+  renderCatalog();
 }
-
-filterButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    filterButtons.forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeCategory = btn.dataset.category;
-    renderProducts();
-  });
-});
-
-sortSelect.addEventListener('change', () => {
-  activeSort = sortSelect.value;
-  renderProducts();
-});
-
-renderProducts();
