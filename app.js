@@ -17,8 +17,18 @@ nav.querySelectorAll('a').forEach(link => {
   });
 });
 
+// Close menu with ESC (mobile)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && nav.classList.contains('open')) {
+    nav.classList.remove('open');
+    toggle.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.focus();
+  }
+});
+
 // Active link highlight on scroll
-const sections = ['inicio', 'produtos', 'festas', 'personalizados', 'contato']
+const sections = ['inicio', 'encomendas', 'festas', 'personalizados']
   .map(id => document.getElementById(id))
   .filter(Boolean);
 const navLinks = [...nav.querySelectorAll('a')];
@@ -37,7 +47,7 @@ sections.forEach(s => observer.observe(s));
 // Scroll-reveal effects (progressive enhancement: no JS => tudo visível)
 const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 if ('IntersectionObserver' in window && !prefersReduced) {
-  const revealEls = document.querySelectorAll('.moments-head, .card, .benefit, .cta, .site-footer');
+  const revealEls = document.querySelectorAll('.moments-head, .card, .benefit, .diferencial, .catalog-cta, .brand-story, .feature-block, .step, .cta, .site-footer');
   revealEls.forEach(el => el.classList.add('will-reveal'));
   const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {

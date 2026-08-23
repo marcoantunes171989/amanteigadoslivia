@@ -49,7 +49,9 @@
   /* ---- Tipografia ---- */
   --serif: "Fraunces", Georgia, serif;
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
-  --script:"Dancing Script", cursive; /* mantida: assinatura do rodapé (fora do escopo tipográfico) */
+  /* --script (Dancing Script) removida na Fase 2: órfã desde que o rodapé
+     passou a usar assets/footer-brand.png (Fase 1.1). Fraunces + Inter são
+     as únicas fontes externas do Design System. */
 
   /* Escala tipográfica fluida (clamp: mobile -> desktop, conforme guia de marca) */
   --fs-h1:            clamp(2.625rem, 5.5vw, 4.25rem);   /* 42px -> 68px */
@@ -120,14 +122,20 @@ a{ color:inherit; text-decoration:none; }
 .btn-white:hover{ background:#fff; transform:translateY(-1px); }
 
 /* ===================== HEADER ===================== */
+/* Sticky avaliado e descartado: .page usa overflow:hidden para recortar os
+   cantos arredondados do "cartão flutuante" (compartilhado com /produtos),
+   e isso impede position:sticky de funcionar corretamente dentro dela.
+   Mantido position:relative + isolation para um empilhamento robusto do
+   menu mobile, sem o comportamento sticky. */
 .site-header{
-  position:relative; z-index:6;
-  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px;
-  height:74px; padding:0 var(--pad);
+  position:relative; z-index:40; isolation:isolate;
+  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;
+  padding:10px var(--pad);
   background:var(--surface);
   border-bottom:1px solid rgba(231,221,211,.55);
+  box-shadow:0 2px 10px rgba(74,46,42,.05);
 }
-.brand{ position:absolute; left:calc(var(--pad) - 6px); top:5px; width:132px; height:132px; z-index:7; }
+.brand{ width:104px; height:104px; flex:0 0 auto; }
 .brand img{ width:100%; height:100%; border-radius:50%; object-fit:contain; background:var(--surface); box-shadow:0 5px 16px rgba(57,38,26,.14); }
 .nav{ grid-column:2; justify-self:center; display:flex; gap:clamp(20px,2.6vw,44px); font-size:.95rem; font-weight:500; }
 .nav a{ position:relative; color:var(--text); padding:4px 0; transition:color .18s; }
@@ -138,6 +146,10 @@ a{ color:inherit; text-decoration:none; }
 .header-actions{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; }
 .order-btn{ height:44px; }
 .order-btn .ico{ font-size:1.2em; }
+.mobile-cardapio{
+  display:none; align-items:center; height:44px; padding:0 8px;
+  font-family:var(--sans); font-weight:600; font-size:.92rem; color:var(--primary);
+}
 .icon-btn{
   display:none; align-items:center; justify-content:center;
   width:44px; height:44px; border-radius:var(--r-btn); border:none; cursor:pointer;
@@ -145,11 +157,27 @@ a{ color:inherit; text-decoration:none; }
 }
 .icon-btn.bag-btn{ background:var(--primary); color:#fff; }
 
+/* ===================== EDITORIAL TYPE HELPERS ===================== */
+/* Eyebrow + subtítulo curto, reaproveitados em Hero e em todas as novas
+   seções editoriais da Fase 2. */
+.eyebrow{
+  font-family:var(--sans); font-weight:600; font-size:.8rem;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--primary);
+  margin-bottom:10px;
+}
+/* Único uso controlado de --brand-coral: ponto decorativo (não-texto, sem
+   requisito de contraste) junto ao eyebrow — herança visual do logotipo. */
+.eyebrow::before{
+  content:""; display:inline-block; width:6px; height:6px; margin-right:8px;
+  border-radius:50%; background:var(--brand-coral); vertical-align:middle;
+}
+.section-sub{ color:var(--muted); font-size:1rem; max-width:46em; }
+
 /* ===================== HERO ===================== */
 .hero{
   position:relative;
   min-height:432px;
-  padding:54px var(--pad) 48px;
+  padding:64px var(--pad) 56px;
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='360' fill='none' stroke='%23B96C62' stroke-width='1.1' opacity='.5'%3E%3Cpath d='M70 340 C30 280 40 180 100 150'/%3E%3Cpath d='M100 150 c-16 0 -24 -18 -24 -30 0 0 11 9 24 9 s24 -9 24 -9 c0 12 -8 30 -24 30z'/%3E%3Cpath d='M120 210 C86 196 74 150 100 128'/%3E%3Cpath d='M50 250 C20 220 26 175 66 160'/%3E%3C/svg%3E") -20px 40px / 260px auto no-repeat,
     var(--page);
@@ -161,22 +189,33 @@ a{ color:inherit; text-decoration:none; }
   -webkit-mask-image:linear-gradient(to right, transparent 0%, #000 20%);
   mask-image:linear-gradient(to right, transparent 0%, #000 20%);
 }
-.hero-copy{ position:relative; z-index:2; max-width:462px; }
+.hero-copy{ position:relative; z-index:2; max-width:480px; }
 .hero-copy h1{
   font-family:var(--serif); font-weight:600; color:var(--heading);
-  font-size:var(--fs-h1); line-height:1.0; letter-spacing:-.005em;
+  font-size:var(--fs-h1); line-height:1.05; letter-spacing:-.005em;
 }
 .hero-copy h1 .accent{ color:var(--primary); }
 .hero-sub{ color:var(--muted); font-size:1.02rem; margin:18px 0 26px; }
 .hero-cta{ display:flex; gap:14px; flex-wrap:wrap; }
+.hero-proof{
+  display:flex; flex-wrap:wrap; gap:10px 22px; list-style:none;
+  margin-top:26px; padding-top:20px; border-top:1px solid var(--border);
+}
+.hero-proof li{ display:flex; align-items:center; gap:8px; color:var(--muted); font-size:.86rem; }
+.hero-proof .ico{ color:var(--primary); font-size:1.05em; flex:0 0 auto; }
 
 /* ===================== MOMENTS ===================== */
 .moments{ padding:6px var(--pad) 30px; }
-.moments-head{ display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 24px; }
-.moments-head h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); }
-.ornament{ color:var(--line-art); width:64px; }
+.moments-head{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:10px; margin:36px auto 34px; max-width:640px;
+}
+.moments-head-txt h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); }
+.moments-head-txt .section-sub{ margin:8px auto 0; }
+.moments-head-txt.center{ text-align:center; margin:0 auto 40px; max-width:640px; }
+.moments-head-txt.center h2{ font-size:var(--fs-h2); }
+.ornament{ color:var(--line-art); width:56px; flex:0 0 auto; }
 .ornament svg{ width:100%; height:auto; }
-.ornament.flip{ transform:scaleX(-1); }
 
 .cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
 .card{
@@ -207,6 +246,67 @@ a{ color:inherit; text-decoration:none; }
   transition:background .25s ease, color .25s ease, transform .3s cubic-bezier(.22,.61,.36,1);
 }
 
+/* ===================== CATALOG CTA ("Conheça nossos sabores") ===================== */
+.catalog-cta{
+  display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:clamp(28px,4vw,56px);
+  margin:64px var(--pad) 0; padding:clamp(28px,3.6vw,44px);
+  background:var(--surface-muted); border-radius:var(--r-card);
+}
+.catalog-cta-photo{ border-radius:var(--r-card); overflow:hidden; aspect-ratio:6/5; }
+.catalog-cta-photo img{ width:100%; height:100%; object-fit:cover; object-position:center; }
+.catalog-cta-txt h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); line-height:1.15; }
+.catalog-cta-txt p{ color:var(--muted); margin:14px 0 22px; max-width:34em; }
+
+/* ===================== BRAND STORY ("Nosso jeito de fazer") ===================== */
+.brand-story{ padding:72px var(--pad) 0; }
+.brand-story-txt{ max-width:640px; margin:0 auto; text-align:center; }
+.brand-story-txt h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); line-height:1.15; }
+.brand-story-txt .section-sub{ margin:12px auto 0; }
+
+.diferenciais{
+  margin-top:40px; display:grid; grid-template-columns:repeat(4,1fr); gap:28px;
+}
+.diferencial{ text-align:center; }
+.d-icon{
+  width:52px; height:52px; margin:0 auto 14px; border-radius:50%;
+  background:rgba(231,192,138,.35); color:var(--primary);
+  display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+}
+.diferencial h4{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.02rem; margin-bottom:4px; }
+.diferencial p{ color:var(--muted); font-size:.86rem; line-height:1.4; }
+
+/* ===================== EVENTS / PERSONALIZED (blocos editoriais grandes) ===================== */
+.feature-block{
+  display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:clamp(28px,4.5vw,64px);
+  margin:80px var(--pad) 0;
+}
+.feature-block-reverse{ direction:rtl; }
+.feature-block-reverse > *{ direction:ltr; }
+.feature-photo{ border-radius:var(--r-card); overflow:hidden; aspect-ratio:6/5; box-shadow:var(--sh-card); }
+.feature-photo img{ width:100%; height:100%; object-fit:cover; }
+.feature-txt h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); line-height:1.15; margin-bottom:14px; }
+.feature-txt p{ color:var(--muted); max-width:34em; }
+.feature-txt .btn{ margin-top:22px; }
+.feature-tags{ list-style:none; display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+.feature-tags li{
+  font-size:.8rem; font-weight:500; color:var(--primary); background:rgba(122,62,72,.08);
+  border:1px solid rgba(122,62,72,.18); border-radius:999px; padding:5px 13px;
+}
+
+/* ===================== HOW IT WORKS ("Como funciona") ===================== */
+.how-it-works{ padding:80px var(--pad) 0; }
+.steps{
+  list-style:none; display:grid; grid-template-columns:repeat(4,1fr); gap:24px; counter-reset:step;
+}
+.step{ text-align:center; }
+.step-n{
+  display:flex; align-items:center; justify-content:center; margin:0 auto 14px;
+  width:44px; height:44px; border-radius:50%; border:1.5px solid var(--primary);
+  font-family:var(--serif); font-weight:600; color:var(--primary); font-size:1.1rem;
+}
+.step h4{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.05rem; margin-bottom:6px; }
+.step p{ color:var(--muted); font-size:.88rem; line-height:1.45; }
+
 /* ===================== BENEFITS ===================== */
 .benefits{
   margin-top:22px;
@@ -224,22 +324,28 @@ a{ color:inherit; text-decoration:none; }
 /* ===================== CTA ===================== */
 .cta{
   position:relative; overflow:hidden;
-  margin:26px var(--pad) 0;
+  margin:80px var(--pad) 0;
   background:linear-gradient(100deg, var(--primary) 0%, var(--primary-strong) 100%);
   border-radius:var(--r-bar); color:#fff;
-  min-height:86px; padding:20px clamp(26px,3.4vw,46px);
+  min-height:86px; padding:32px clamp(26px,3.4vw,46px);
   display:flex; align-items:center; justify-content:space-between; gap:22px; flex-wrap:wrap;
 }
-.cta-text{ position:relative; z-index:2; }
+.cta-text{ position:relative; z-index:2; max-width:34em; }
 .cta-text h2{ font-family:var(--serif); font-weight:600; font-size:clamp(1.35rem,2.1vw,1.7rem); line-height:1.1; }
-.cta-text p{ font-size:.98rem; opacity:.96; margin-top:3px; }
-.cta .btn-white{ position:relative; z-index:2; }
+.cta-text p{ font-size:.98rem; opacity:.96; margin-top:8px; }
+.cta-actions{ position:relative; z-index:2; display:flex; gap:12px; flex-wrap:wrap; }
+.btn-outline-light{ background:transparent; color:#fff; border-color:rgba(255,255,255,.55); }
+.btn-outline-light:hover{ background:rgba(255,255,255,.12); }
 .cta-orn{ position:absolute; top:50%; transform:translateY(-50%); width:104px; color:rgba(255,255,255,.32); pointer-events:none; z-index:0; }
 .cta-orn svg{ width:100%; height:auto; }
 .cta-orn.left{ left:8px; }
 .cta-orn.right{ right:8px; transform:translateY(-50%) scaleX(-1); }
 
 /* ===================== FOOTER ===================== */
+/* .site-footer (base) permanece como antes da Fase 2 — usado por /produtos
+   sem alteração. .footer--home é um modificador aditivo, aplicado somente
+   no rodapé da Home, que reorganiza o rodapé em colunas (marca+mensagem,
+   navegação, contato/social) sem tocar em nenhuma regra de base. */
 .site-footer{
   display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:28px;
   padding:22px var(--pad);
@@ -255,6 +361,17 @@ a{ color:inherit; text-decoration:none; }
 .fs-link:hover{ transform:translateY(-2px); }
 .fs-link:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
 .fs-sep{ width:1px; height:22px; background:var(--border); }
+
+.footer--home{
+  display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:32px;
+  padding:56px var(--pad) 28px;
+}
+.footer-brand-col{ display:flex; flex-direction:column; align-items:center; gap:10px; max-width:260px; }
+.footer-col-title{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:.95rem; margin-bottom:2px; }
+.footer-nav{ display:flex; flex-direction:column; gap:9px; }
+.footer-nav a{ color:var(--muted); font-size:.92rem; transition:color .18s; }
+.footer-nav a:hover{ color:var(--primary); }
+.footer-nav a:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
 
 /* ===================== MOTION / EFEITOS ===================== */
 @keyframes fadeUp   { from{ opacity:0; transform:translateY(18px); } to{ opacity:1; transform:none; } }
@@ -288,23 +405,27 @@ a{ color:inherit; text-decoration:none; }
   body{ padding:0; }
   .page{ border-radius:0; box-shadow:none; max-width:none; }
 
-  .site-header{ display:flex; align-items:center; height:auto; padding:12px var(--pad); }
-  .brand{ position:static; width:58px; height:58px; }
+  .site-header{ display:flex; align-items:center; height:auto; padding:10px var(--pad); }
+  .brand{ width:72px; height:72px; }
   .header-actions{ margin-left:auto; }
   .hero{ background-image:none; }
   .cta-orn.left{ display:none; }
   .cta-orn.right{ width:88px; }
   .nav{
-    position:fixed; inset:0 0 auto 0; top:82px; margin:0;
+    position:fixed; inset:0 0 auto 0; top:92px; margin:0;
     grid-column:auto; justify-self:stretch; width:auto;
     flex-direction:column; gap:0; background:var(--surface);
     border-bottom:1px solid var(--border); box-shadow:var(--sh-page);
-    padding:6px var(--pad) 16px; transform:translateY(-130%); transition:transform .3s ease; z-index:20;
+    padding:6px var(--pad) 16px; transform:translateY(-130%); z-index:20;
+    visibility:hidden; transition:transform .3s ease, visibility 0s linear .3s;
   }
-  .nav.open{ transform:translateY(0); }
+  /* fechado: visibility:hidden remove os links do menu da ordem de tabulação
+     enquanto ele está fora da tela (evita foco "invisível" via teclado) */
+  .nav.open{ transform:translateY(0); visibility:visible; transition:transform .3s ease, visibility 0s linear 0s; }
   .nav a{ padding:13px 0; border-bottom:1px solid var(--border); width:100%; }
   .nav a.active::after{ display:none; }
   .order-btn{ display:none; }
+  .mobile-cardapio{ display:inline-flex; }
   .icon-btn{ display:inline-flex; }
 
   /* hero one column: copy, buttons, photo */
@@ -335,11 +456,25 @@ a{ color:inherit; text-decoration:none; }
   .benefit h4{ font-size:.82rem; }
   .benefit p{ font-size:.68rem; line-height:1.28; }
 
-  .cta{ margin:22px var(--pad) 0; flex-direction:column; align-items:flex-start; gap:14px; }
-  .cta .btn-white{ width:100%; }
+  .cta{ margin:56px var(--pad) 0; flex-direction:column; align-items:flex-start; gap:14px; }
+  .cta-actions{ flex-direction:column; width:100%; }
+  .cta-actions .btn{ width:100%; }
   .cta-orn{ width:90px; }
 
   .site-footer{ grid-template-columns:1fr; justify-items:center; gap:16px; text-align:center; padding:22px var(--pad) 26px; }
+  .footer--home{ flex-direction:column; align-items:center; text-align:center; gap:36px; padding:48px var(--pad) 24px; }
+  .footer-nav{ align-items:center; }
+
+  /* Catalog CTA / Brand story / Feature blocks / How it works: 1 coluna */
+  .catalog-cta{ grid-template-columns:1fr; margin:48px var(--pad) 0; padding:22px; gap:22px; }
+  .catalog-cta-photo{ aspect-ratio:16/10; }
+  .brand-story{ padding:56px var(--pad) 0; }
+  .diferenciais{ grid-template-columns:repeat(2,1fr); row-gap:28px; }
+  .feature-block{ grid-template-columns:1fr; margin:56px var(--pad) 0; gap:22px; }
+  .feature-block-reverse{ direction:ltr; }
+  .feature-photo{ aspect-ratio:16/10; }
+  .how-it-works{ padding:56px var(--pad) 0; }
+  .steps{ grid-template-columns:repeat(2,1fr); row-gap:28px; }
 }
 
 /* ===================== MOBILE (<640) ===================== */
@@ -348,14 +483,18 @@ a{ color:inherit; text-decoration:none; }
   .benefit{ flex-direction:row; gap:8px; justify-content:center; }
   .benefit h4{ font-size:.74rem; font-weight:500; }
   .b-icon{ font-size:1.15rem; }
-  .moments-head{ gap:10px; }
-  .moments-head h2{ font-size:1.35rem; white-space:nowrap; }
-  .moments-head .ornament{ width:30px; }
+  .moments-head-txt h2{ font-size:1.5rem; }
+  .moments-head .ornament{ width:34px; }
   .hero{ background-image:none; }
+  .hero-proof{ gap:8px 16px; }
   .cta-orn.left{ display:none; }
   .cta-orn.right{ width:80px; }
   .footer-social{ gap:12px; }
   .footer-brand{ width:170px; }
+
+  .diferenciais{ grid-template-columns:1fr; gap:26px; }
+  .steps{ grid-template-columns:1fr; gap:26px; }
+  .feature-tags li{ font-size:.76rem; padding:4px 11px; }
 }
 
 /* very small phones */

@@ -7,7 +7,7 @@
   <meta name="description" content="Conheça nosso cardápio de amanteigados: tradicionais, recheados, especiais e personalizados. Feitos à mão com ingredientes selecionados." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%237A3E48'/%3E%3Ctext x='50' y='66' font-size='48' text-anchor='middle' fill='white' font-family='Georgia'%3EA%3C/text%3E%3C/svg%3E" />
 </head>
@@ -36,21 +36,21 @@
         <img src="assets/logo.jpg" alt="" />
       </a>
 
-      <nav class="nav" id="mainNav">
+      <div class="header-actions">
+        <a href="https://wa.me/5500000000000?text=Ol%C3%A1%21%20Gostaria%20de%20fazer%20um%20pedido%20dos%20amanteigados." target="_blank" rel="noopener" class="btn btn-primary order-btn">
+          <svg class="ico"><use href="#i-bag"/></svg> Fazer pedido
+        </a>
+        <button class="icon-btn bag-btn" aria-label="Pedido"><svg class="ico"><use href="#i-bag"/></svg></button>
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="mainNav"><svg class="ico"><use href="#i-menu"/></svg></button>
+      </div>
+
+      <nav class="nav" id="mainNav" aria-label="Navegação principal">
         <a href="/">Início</a>
         <a href="/produtos" class="active">Produtos</a>
         <a href="/#festas">Festas</a>
         <a href="/#personalizados">Personalizados</a>
         <a href="/#contato">Contato</a>
       </nav>
-
-      <div class="header-actions">
-        <a href="https://wa.me/5500000000000?text=Ol%C3%A1%21%20Gostaria%20de%20fazer%20um%20pedido%20dos%20amanteigados." target="_blank" rel="noopener" class="btn btn-primary order-btn">
-          <svg class="ico"><use href="#i-bag"/></svg> Fazer pedido
-        </a>
-        <button class="icon-btn bag-btn" aria-label="Pedido"><svg class="ico"><use href="#i-bag"/></svg></button>
-        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false"><svg class="ico"><use href="#i-menu"/></svg></button>
-      </div>
     </header>
 
     <main>
