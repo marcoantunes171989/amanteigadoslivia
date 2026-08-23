@@ -272,7 +272,7 @@ a{ color:inherit; text-decoration:none; }
   background:rgba(231,192,138,.35); color:var(--primary);
   display:flex; align-items:center; justify-content:center; font-size:1.4rem;
 }
-.diferencial h4{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.02rem; margin-bottom:4px; }
+.diferencial h3{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.02rem; margin-bottom:4px; }
 .diferencial p{ color:var(--muted); font-size:.86rem; line-height:1.4; }
 
 /* ===================== EVENTS / PERSONALIZED (blocos editoriais grandes) ===================== */
@@ -304,7 +304,7 @@ a{ color:inherit; text-decoration:none; }
   width:44px; height:44px; border-radius:50%; border:1.5px solid var(--primary);
   font-family:var(--serif); font-weight:600; color:var(--primary); font-size:1.1rem;
 }
-.step h4{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.05rem; margin-bottom:6px; }
+.step h3{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.05rem; margin-bottom:6px; }
 .step p{ color:var(--muted); font-size:.88rem; line-height:1.45; }
 
 /* ===================== BENEFITS ===================== */

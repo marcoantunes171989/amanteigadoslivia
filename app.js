@@ -27,8 +27,9 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Active link highlight on scroll
-const sections = ['inicio', 'encomendas', 'festas', 'personalizados']
+// Active link highlight on scroll (ids batem com os hrefs do menu:
+// Cardápio é uma rota própria, /produtos, e não participa do scroll-spy)
+const sections = ['inicio', 'encomendas', 'festas-momentos', 'personalizados-historia']
   .map(id => document.getElementById(id))
   .filter(Boolean);
 const navLinks = [...nav.querySelectorAll('a')];
