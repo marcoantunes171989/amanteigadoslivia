@@ -14,6 +14,13 @@
   --branco:     #FFFFFF; /* cards, superfícies, formulários */
   --texto:      #2E201D; /* texto principal */
 
+  /* ---- Token de marca (Fase 1.1) ----
+     Amostrado por média de pixels do logotipo oficial (assets/logo.jpg,
+     região de fundo do círculo, longe de texto/ilustrações). Uso
+     estritamente decorativo/opcional — NÃO substitui --primary nem
+     nenhum token semântico já definido na Fase 1. */
+  --brand-coral: #E95C53;
+
   /* ---- Tokens semânticos ---- */
   --primary:        var(--bordo);
   --primary-hover:  #672F3A; /* bordô ~12% mais escuro, usado no hover */
@@ -121,7 +128,7 @@ a{ color:inherit; text-decoration:none; }
   border-bottom:1px solid rgba(231,221,211,.55);
 }
 .brand{ position:absolute; left:calc(var(--pad) - 6px); top:5px; width:132px; height:132px; z-index:7; }
-.brand img{ width:100%; height:100%; border-radius:50%; object-fit:cover; box-shadow:0 5px 16px rgba(57,38,26,.14); }
+.brand img{ width:100%; height:100%; border-radius:50%; object-fit:contain; background:var(--surface); box-shadow:0 5px 16px rgba(57,38,26,.14); }
 .nav{ grid-column:2; justify-self:center; display:flex; gap:clamp(20px,2.6vw,44px); font-size:.95rem; font-weight:500; }
 .nav a{ position:relative; color:var(--text); padding:4px 0; transition:color .18s; }
 .nav a:hover{ color:var(--primary); }
@@ -238,9 +245,7 @@ a{ color:inherit; text-decoration:none; }
   padding:22px var(--pad);
 }
 .footer-brand{ width:196px; height:auto; }
-.footer-brand svg{ width:100%; height:auto; display:block; overflow:visible; }
-.fb-script{ font-family:var(--script); font-weight:700; font-size:32px; fill:var(--primary); }
-.fb-caps{ font-family:var(--sans); font-weight:600; font-size:9px; letter-spacing:4.2px; fill:var(--primary); }
+.footer-brand img{ width:100%; height:auto; display:block; }
 .footer-tag{ color:var(--muted); font-size:.92rem; text-align:center; line-height:1.45; }
 .footer-social{ display:flex; align-items:center; gap:16px; white-space:nowrap; }
 .fs-group{ display:flex; align-items:center; gap:9px; color:var(--text); font-size:.92rem; }
