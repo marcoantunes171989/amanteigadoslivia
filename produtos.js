@@ -1,35 +1,31 @@
 // ===================== CATÁLOGO — FONTE DE DADOS =====================
 // Arquitetura definida em docs/catalog-spec.md (Fase 2.2/2.2.1). Desde a
-// Fase 3.3, os dados vêm de uma camada externa carregada antes deste
-// arquivo (ver produtos.html) — hoje catalog-demo-data.js, com
-// window.CATALOG_DATA.mode='demo' e produtos/categorias fictícios
-// autorizados apenas para demonstração de frontend (nenhum dado comercial
-// real foi homologado; ver docs/catalog-homologation.md).
-//
-// produtos.js nunca confia cegamente nessa fonte: se ausente ou malformada,
-// cai com segurança para arrays vazios (nenhum ReferenceError fatal) e a
-// interface mostra o estado "Nosso cardápio está sendo atualizado" — o
-// mesmo comportamento já testado quando não havia fonte alguma. Essa
-// indireção também é o que permitirá, futuramente, trocar a fonte local por
-// uma função equivalente a loadCatalogData() consumindo API/banco sem
-// reescrever nada do restante deste arquivo (render, filtros, busca,
-// ordenação, dialog).
-function loadCatalogSource() {
-  const source = (typeof window !== 'undefined' && window.CATALOG_DATA) || null;
-  if (!source || typeof source !== 'object') {
-    return { mode: null, categories: [], products: [] };
-  }
-  return {
-    mode: typeof source.mode === 'string' ? source.mode : null,
-    categories: Array.isArray(source.categories) ? source.categories : [],
-    products: Array.isArray(source.products) ? source.products : [],
-  };
-}
+// Fase 4A.1, os dados e as regras puras do catálogo (preço, quantidade,
+// resolução de produto) vivem em catalog-core.js (window.AmanteigadosCatalog),
+// carregado antes deste arquivo junto com catalog-demo-data.js (ver
+// produtos.html). produtos.js consome essa API em vez de duplicar essas
+// regras — ver docs/cart-spec.md para o contrato completo compartilhado
+// com o futuro carrinho (cart.js). catalog-core.js já cai com segurança
+// para categorias/produtos vazios quando a fonte estiver ausente ou
+// malformada (nenhum ReferenceError fatal) — o estado "Nosso cardápio
+// está sendo atualizado" continua sendo o comportamento testado nesse
+// caso.
+const {
+  getMode: getCatalogMode,
+  getCategories,
+  getProducts,
+  isValidPrice,
+  formatPrice,
+  getEffectivePrice,
+  getQuantityMin,
+  getQuantityStep,
+  getQuantityMax,
+  clampQuantity,
+} = window.AmanteigadosCatalog;
 
-const CATALOG_SOURCE = loadCatalogSource();
-const CATALOG_MODE = CATALOG_SOURCE.mode;
-const CATEGORIES = CATALOG_SOURCE.categories;
-const PRODUCTS = CATALOG_SOURCE.products;
+const CATALOG_MODE = getCatalogMode();
+const CATEGORIES = getCategories();
+const PRODUCTS = getProducts();
 
 // ===================== NORMALIZAÇÃO DE BUSCA =====================
 // Nativo, sem biblioteca externa — case-insensitive e accent-insensitive.
@@ -39,32 +35,6 @@ function normalizeSearch(value) {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .trim();
-}
-
-// ===================== FORMATAÇÃO DE PREÇO =====================
-const priceFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-
-function isValidPrice(value) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-function formatPrice(value) {
-  return isValidPrice(value) ? priceFormatter.format(value) : null;
-}
-
-// Preço efetivamente cobrado: o promocional só é válido quando existe um
-// preço-base válido E o promocional é estritamente menor que ele — nunca
-// interpreta promotionalPrice isolado (sem price) como promoção real.
-function getEffectivePrice(product) {
-  const regular = product.price;
-  const promo = product.promotionalPrice;
-  if (isValidPrice(regular) && isValidPrice(promo) && promo < regular) {
-    return promo;
-  }
-  if (isValidPrice(regular)) {
-    return regular;
-  }
-  return null;
 }
 
 // Combina peso e unidade sem duplicar nem inventar dado ausente.
@@ -103,24 +73,6 @@ function getAvailableCategories() {
     .filter((c) => active.some((p) => p.categoryId === c.id))
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-}
-
-function getQuantityMin(product) {
-  return Number.isInteger(product?.minQuantity) && product.minQuantity > 0 ? product.minQuantity : 1;
-}
-function getQuantityStep(product) {
-  return Number.isInteger(product?.quantityStep) && product.quantityStep > 0 ? product.quantityStep : 1;
-}
-function getQuantityMax(product) {
-  return Number.isInteger(product?.maxQuantity) && product.maxQuantity > 0 ? product.maxQuantity : null;
-}
-function clampQuantity(product, value) {
-  const min = getQuantityMin(product);
-  const max = getQuantityMax(product);
-  let v = value;
-  if (v < min) v = min;
-  if (max !== null && v > max) v = max;
-  return v;
 }
 
 // ===================== FILTROS / ORDENAÇÃO =====================
