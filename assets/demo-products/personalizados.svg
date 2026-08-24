@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="#FFF8F2"/>
+      <stop offset="100%" stop-color="#F6EBDD"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg)"/>
+  <g stroke="#B96C62" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5">
+    <path d="M320 40c10-4 18-12 28-8"/>
+    <path d="M342 28c-2 3-2 5 0 8"/>
+  </g>
+  <ellipse cx="190" cy="222" rx="96" ry="13" fill="#4A2E2A" opacity=".08"/>
+  <circle cx="180" cy="152" r="78" fill="#E7C08A"/>
+  <circle cx="180" cy="152" r="78" fill="none" stroke="#4A2E2A" stroke-opacity=".18" stroke-width="2"/>
+  <g fill="#4A2E2A" fill-opacity=".32">
+    <circle cx="212" cy="152" r="3.6"/>
+    <circle cx="194" cy="184" r="3.6"/>
+    <circle cx="162" cy="184" r="3.6"/>
+    <circle cx="148" cy="152" r="3.6"/>
+    <circle cx="162" cy="120" r="3.6"/>
+    <circle cx="194" cy="120" r="3.6"/>
+  </g>
+  <path d="M232 168c14 6 24 14 30 22" stroke="#4A2E2A" stroke-width="2" fill="none" opacity=".4"/>
+  <g transform="translate(258,182) rotate(18)">
+    <rect x="0" y="0" width="66" height="40" rx="8" fill="#7A3E48"/>
+    <rect x="0" y="0" width="66" height="40" rx="8" fill="none" stroke="#4A2E2A" stroke-opacity=".2" stroke-width="1.2"/>
+    <circle cx="13" cy="20" r="4.5" fill="#F6EBDD"/>
+  </g>
+</svg>

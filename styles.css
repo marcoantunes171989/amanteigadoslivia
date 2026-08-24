@@ -227,7 +227,7 @@ a{ color:inherit; text-decoration:none; }
   overflow:hidden; box-shadow:var(--sh-card); display:flex; flex-direction:column;
   transition:transform .3s cubic-bezier(.22,.61,.36,1), box-shadow .3s ease, border-color .3s ease;
 }
-.card-img{ aspect-ratio:1.85/1; overflow:hidden; }
+.card-img{ position:relative; aspect-ratio:1.85/1; overflow:hidden; }
 .card-img img{ width:100%; height:100%; object-fit:cover; transition:transform .55s cubic-bezier(.22,.61,.36,1); }
 
 /* effects when selecting/hovering a card */
@@ -608,6 +608,8 @@ a{ color:inherit; text-decoration:none; }
 }
 .product-meta{ display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
 .product-price{ font-family:var(--serif); font-weight:700; color:var(--primary); font-size:1.18rem; }
+.product-price-strike{ color:var(--muted); font-weight:500; font-size:.92rem; text-decoration:line-through; }
+.product-price-promo{ font-family:var(--serif); font-weight:700; color:var(--primary); font-size:1.18rem; }
 .product-weight{ color:var(--muted); font-size:.82rem; }
 .badge-customizable{
   align-self:flex-start; font-size:.74rem; font-weight:600; color:var(--primary);
@@ -623,6 +625,24 @@ a{ color:inherit; text-decoration:none; }
 }
 .placeholder-ornament{ width:56px; height:auto; }
 .product-image-placeholder span{ color:var(--muted); font-size:.8rem; font-family:var(--sans); }
+
+/* ---- Legenda discreta em ilustrações demonstrativas (Fase 3.3) ---- */
+.demo-image-tag{
+  position:absolute; right:10px; bottom:10px; z-index:1;
+  background:rgba(255,255,255,.88); color:var(--cacau); font-family:var(--sans);
+  font-size:.68rem; font-weight:600; letter-spacing:.02em;
+  padding:3px 9px; border-radius:999px; pointer-events:none;
+}
+
+/* ---- Aviso de catálogo demonstrativo (Fase 3.3) ---- */
+.demo-notice{
+  display:flex; align-items:flex-start; gap:10px;
+  background:var(--baunilha); border:1px solid rgba(122,62,72,.18);
+  border-radius:var(--r-bar); padding:14px 18px; margin:0 0 24px;
+  color:var(--cacau); font-family:var(--sans); font-size:.9rem; line-height:1.5;
+}
+.demo-notice .ico{ flex:0 0 auto; width:20px; height:20px; margin-top:1px; color:var(--bordo); }
+.demo-notice strong{ color:var(--bordo); font-weight:700; }
 
 /* ---- Estados vazios ---- */
 .catalog-state{ text-align:center; padding:60px 20px; max-width:480px; margin:0 auto; }
@@ -672,7 +692,7 @@ a{ color:inherit; text-decoration:none; }
 }
 .product-dialog::backdrop{ background:rgba(46,32,29,.55); }
 .dialog-panel{ display:grid; grid-template-columns:1fr 1fr; max-height:min(88vh, 780px); }
-.dialog-image{ background:var(--surface-muted); overflow:hidden; }
+.dialog-image{ position:relative; background:var(--surface-muted); overflow:hidden; }
 .dialog-image img{ width:100%; height:100%; object-fit:cover; }
 .dialog-image .product-image-placeholder{ min-height:280px; }
 .dialog-body{ padding:32px; overflow-y:auto; position:relative; }

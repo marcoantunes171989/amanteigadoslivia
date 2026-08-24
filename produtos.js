@@ -1,26 +1,35 @@
-// ===================== CATÁLOGO — DADOS =====================
-// Arquitetura definida em docs/catalog-spec.md (Fase 2.2/2.2.1), aprovada
-// para implementação na Fase 3.
+// ===================== CATÁLOGO — FONTE DE DADOS =====================
+// Arquitetura definida em docs/catalog-spec.md (Fase 2.2/2.2.1). Desde a
+// Fase 3.3, os dados vêm de uma camada externa carregada antes deste
+// arquivo (ver produtos.html) — hoje catalog-demo-data.js, com
+// window.CATALOG_DATA.mode='demo' e produtos/categorias fictícios
+// autorizados apenas para demonstração de frontend (nenhum dado comercial
+// real foi homologado; ver docs/catalog-homologation.md).
 //
-// Nenhum produto foi homologado comercialmente até o momento (ver auditoria
-// em docs/catalog-spec.md, seção 2): os 9 registros de demonstração usados
-// nas fases anteriores foram removidos da experiência pública. Os arrays
-// abaixo permanecem vazios em produção até que a Amanteigados Lívia forneça
-// um catálogo real (nomes, preços, pesos, categorias e fotos específicas).
-//
-// A interface funciona corretamente com os dois arrays vazios — isso é
-// testado e é o estado esperado em produção nesta fase.
+// produtos.js nunca confia cegamente nessa fonte: se ausente ou malformada,
+// cai com segurança para arrays vazios (nenhum ReferenceError fatal) e a
+// interface mostra o estado "Nosso cardápio está sendo atualizado" — o
+// mesmo comportamento já testado quando não havia fonte alguma. Essa
+// indireção também é o que permitirá, futuramente, trocar a fonte local por
+// uma função equivalente a loadCatalogData() consumindo API/banco sem
+// reescrever nada do restante deste arquivo (render, filtros, busca,
+// ordenação, dialog).
+function loadCatalogSource() {
+  const source = (typeof window !== 'undefined' && window.CATALOG_DATA) || null;
+  if (!source || typeof source !== 'object') {
+    return { mode: null, categories: [], products: [] };
+  }
+  return {
+    mode: typeof source.mode === 'string' ? source.mode : null,
+    categories: Array.isArray(source.categories) ? source.categories : [],
+    products: Array.isArray(source.products) ? source.products : [],
+  };
+}
 
-const CATEGORIES = [
-  // { id: 'slug', slug: 'slug', name: 'Nome', active: true, order: 10 }
-];
-
-const PRODUCTS = [
-  // { id, slug, name, shortDescription, description, categoryId, price,
-  //   promotionalPrice, unit, weight, image, images, customizable,
-  //   minQuantity, quantityStep, maxQuantity, productionTime, featured,
-  //   active, order }
-];
+const CATALOG_SOURCE = loadCatalogSource();
+const CATALOG_MODE = CATALOG_SOURCE.mode;
+const CATEGORIES = CATALOG_SOURCE.categories;
+const PRODUCTS = CATALOG_SOURCE.products;
 
 // ===================== NORMALIZAÇÃO DE BUSCA =====================
 // Nativo, sem biblioteca externa — case-insensitive e accent-insensitive.
@@ -281,10 +290,39 @@ if (els.grid) {
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.decoding = 'async';
-    img.alt = product.name;
+    // Ilustração demonstrativa (Fase 3.3) nunca é descrita como se fosse
+    // fotografia real do produto — alt e legenda deixam a natureza clara.
+    img.alt = product.demo === true ? `Ilustração demonstrativa de ${product.name}` : product.name;
     img.addEventListener('error', () => renderImagePlaceholder(container), { once: true });
     img.src = product.image;
     container.appendChild(img);
+    if (product.demo === true) {
+      const tag = document.createElement('span');
+      tag.className = 'demo-image-tag';
+      tag.textContent = 'Imagem ilustrativa';
+      container.appendChild(tag);
+    }
+  }
+
+  // Preço/promoção — regra única (getEffectivePrice) reaproveitada pelo
+  // card e pelo dialog para nunca duplicar a lógica de validade de
+  // promoção. Retorna false quando o produto não tem preço válido algum
+  // (nenhum elemento é adicionado, e o chamador deve ocultar a linha).
+  function appendPriceMarkup(container, product, classNames) {
+    const effective = getEffectivePrice(product);
+    if (!isValidPrice(effective)) return false;
+    const hasPromo = isValidPrice(product.price) && effective < product.price;
+    if (hasPromo) {
+      const baseEl = document.createElement('span');
+      baseEl.className = classNames.strike;
+      baseEl.textContent = formatPrice(product.price);
+      container.appendChild(baseEl);
+    }
+    const priceEl = document.createElement('span');
+    priceEl.className = hasPromo ? classNames.promo : classNames.price;
+    priceEl.textContent = formatPrice(effective);
+    container.appendChild(priceEl);
+    return true;
   }
 
   // ===================== CATEGORIAS =====================
@@ -386,13 +424,11 @@ if (els.grid) {
 
     const metaEl = document.createElement('div');
     metaEl.className = 'product-meta';
-    const priceText = formatPrice(product.price);
-    if (priceText) {
-      const priceEl = document.createElement('span');
-      priceEl.className = 'product-price';
-      priceEl.textContent = priceText;
-      metaEl.appendChild(priceEl);
-    }
+    appendPriceMarkup(metaEl, product, {
+      price: 'product-price',
+      strike: 'product-price-strike',
+      promo: 'product-price-promo',
+    });
     const weightUnitLabel = getWeightUnitLabel(product, ' · ');
     if (weightUnitLabel) {
       const weightEl = document.createElement('span');
@@ -563,25 +599,13 @@ if (els.grid) {
     els.dialogCustomizable.hidden = product.customizable !== true;
     setFieldText(els.dialogProductionTime, product.productionTime);
 
-    const priceText = formatPrice(product.price);
     clearChildren(els.dialogPriceRow);
-    if (priceText) {
-      els.dialogPriceRow.hidden = false;
-      const priceEl = document.createElement('span');
-      priceEl.className = 'dialog-price';
-      priceEl.textContent = priceText;
-      els.dialogPriceRow.appendChild(priceEl);
-      const promo = formatPrice(product.promotionalPrice);
-      if (promo && isValidPrice(product.promotionalPrice) && product.promotionalPrice < product.price) {
-        priceEl.classList.add('dialog-price-strike');
-        const promoEl = document.createElement('span');
-        promoEl.className = 'dialog-price-promo';
-        promoEl.textContent = promo;
-        els.dialogPriceRow.appendChild(promoEl);
-      }
-    } else {
-      els.dialogPriceRow.hidden = true;
-    }
+    const hasPrice = appendPriceMarkup(els.dialogPriceRow, product, {
+      price: 'dialog-price',
+      strike: 'dialog-price-strike',
+      promo: 'dialog-price-promo',
+    });
+    els.dialogPriceRow.hidden = !hasPrice;
 
     state.quantity = getQuantityMin(product);
     els.qtyRow.hidden = false;

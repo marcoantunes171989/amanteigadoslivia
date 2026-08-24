@@ -11,7 +11,14 @@ Motivo: até o momento desta fase, nenhum dado comercial real (categoria,
 produto, preço, contato, política de entrega/retirada) foi fornecido pelo
 responsável da Amanteigados Lívia através de uma origem válida (ver seção
 5 do prompt desta fase). Tudo abaixo está classificado como **PENDENTE**.
-`PRODUCTS` e `CATEGORIES` em produção permanecem `[]`.
+
+Desde a Fase 3.3, `PRODUCTS` e `CATEGORIES` em produção **não estão mais
+vazios** — `/produtos` roda em **modo demonstração** (`CATALOG_DATA.mode =
+'demo'`), com 4 categorias e 8 produtos fictícios, autorizados
+expressamente pelo responsável apenas para fins de demonstração de
+frontend (ver seção 17 abaixo). Isso é uma decisão de arquitetura, não uma
+homologação: nenhum desses dados conta para a matriz de homologação
+comercial deste documento.
 
 ---
 
@@ -296,6 +303,74 @@ adicionar campos sem necessidade demonstrada); por isso a pergunta
 abaixo — se o responsável confirmar que algum item é sob orçamento, a
 extensão `pricingMode: "fixed" | "quote"` deve ser formalmente recomendada
 e submetida à aprovação antes de qualquer implementação.
+
+---
+
+## 17. MODO DEMONSTRAÇÃO FRONTEND (Fase 3.3)
+
+**Este documento e o modo demonstrativo tratam de duas coisas diferentes —
+não confundir uma com a outra:**
+
+- Este documento (`catalog-homologation.md`) é a matriz de **homologação
+  comercial**: registra o que já foi confirmado pelo responsável como dado
+  real e pode ser publicado como oficial.
+- O **modo demonstração** é uma decisão de **arquitetura de frontend**,
+  autorizada expressamente pelo responsável da Amanteigados Lívia (contexto
+  do prompt da Fase 3.3), para popular `/produtos` com produtos, categorias,
+  preços, descrições e ilustrações **fictícios**, com a finalidade exclusiva
+  de desenvolver e demonstrar a experiência visual/funcional do Cardápio
+  Digital (navegação, busca, filtros, ordenação, dialog de detalhes,
+  quantidade) enquanto o catálogo real não é fornecido.
+
+**Isso NÃO altera o status de homologação em nenhum ponto acima.** Nenhuma
+categoria, produto, preço, foto, contato ou política listados nas seções
+1–16 passa a ser considerado HOMOLOGADO por existir em modo demo — o
+catálogo comercial continua **NÃO HOMOLOGADO PARA PUBLICAÇÃO** (linha 8
+deste documento).
+
+### Como funciona
+
+- `produtos.js` lê os dados através de `window.CATALOG_DATA`, uma fonte
+  externa carregada por `catalog-demo-data.js` (script incluído antes de
+  `produtos.js` em `produtos.html`).
+- `CATALOG_DATA.mode = 'demo'` identifica explicitamente a origem dos
+  dados como demonstrativa (distinta de um futuro modo `'live'`/`'api'`).
+- Cada produto demonstrativo carrega `demo: true`, e a interface usa essa
+  marca para: (a) descrever as imagens como "Ilustração demonstrativa de
+  [nome]" no `alt`, nunca como fotografia real; (b) exibir a legenda
+  discreta "Imagem ilustrativa" sobre a própria imagem.
+- Um aviso visual fixo — "Catálogo demonstrativo. Produtos, imagens e
+  valores apresentados nesta versão são ilustrativos." — aparece no topo de
+  `/produtos`, usando o Design System (fundo Baunilha, texto Cacau/Bordô).
+- `produtos.html` inclui `<meta name="robots" content="noindex,follow">`
+  **somente nesta página**, para que mecanismos de busca não indexem
+  produtos/preços fictícios como se fossem conteúdo oficial da marca. A
+  Home **não** recebe essa diretiva.
+
+### Dados demonstrativos atuais
+
+4 categorias (`Clássicos`, `Especiais`, `Presentes`, `Personalizados`) e 8
+produtos fictícios (nomes, preços, pesos, descrições e ilustrações SVG
+locais em `assets/demo-products/`) — todos com `demo: true`, todos
+inventados especificamente para esta demonstração, sem qualquer pretensão
+de refletir o catálogo real. Nenhum reaproveita os placeholders antigos da
+Fase 2.2 como base de valor (mesmo quando os nomes de sabor coincidem, os
+preços, pesos e descrições foram recriados do zero para este propósito
+demonstrativo).
+
+### Antes do catálogo real entrar em produção (checklist para uma fase futura)
+
+- [ ] Substituir `catalog-demo-data.js` (ou `window.CATALOG_DATA`) pela
+      fonte real — idealmente uma função equivalente a `loadCatalogData()`
+      consumindo API/banco, sem exigir mudanças em `produtos.js`.
+- [ ] Remover o aviso "Catálogo demonstrativo" de `produtos.html`.
+- [ ] Remover `assets/demo-products/*.svg` e todo produto com `demo: true`.
+- [ ] Revisar/remover `<meta name="robots" content="noindex,follow">` de
+      `produtos.html`.
+- [ ] Preencher WhatsApp, Instagram, entrega e retirada reais (seções 5–7
+      deste documento).
+- [ ] Validar o catálogo completo com a fonte de dados real antes de
+      publicar (repetir os testes funcionais desta e das fases anteriores).
 
 ---
 

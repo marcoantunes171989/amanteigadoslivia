@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="#FFF8F2"/>
+      <stop offset="100%" stop-color="#F6EBDD"/>
+    </radialGradient>
+    <clipPath id="mescladoClip">
+      <circle cx="200" cy="150" r="92"/>
+    </clipPath>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg)"/>
+  <g stroke="#B96C62" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5">
+    <path d="M320 40c10-4 18-12 28-8"/>
+    <path d="M342 28c-2 3-2 5 0 8"/>
+  </g>
+  <ellipse cx="200" cy="225" rx="108" ry="14" fill="#4A2E2A" opacity=".08"/>
+  <circle cx="200" cy="150" r="92" fill="#E7C08A"/>
+  <g clip-path="url(#mescladoClip)" fill="none" stroke="#4A2E2A" stroke-linecap="round">
+    <path d="M120 150c20-30 50-45 80-45s60 15 80 45-30 45-60 60-90 5-100-15" stroke-width="9" opacity=".55"/>
+    <path d="M140 175c15-18 35-26 60-26s45 10 55 26" stroke-width="6" opacity=".35"/>
+  </g>
+  <circle cx="200" cy="150" r="92" fill="none" stroke="#4A2E2A" stroke-opacity=".18" stroke-width="2"/>
+</svg>
