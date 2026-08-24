@@ -427,6 +427,17 @@ a{ color:inherit; text-decoration:none; }
   .card,.card-img img,.card-icon{ transition:none; }
 }
 
+/* ===================== DESKTOP AMPLO — HOME (min-width 1280px) =====================
+   Reduz o respiro lateral excessivo da Home em telas largas (1366–1920px+) e dá mais
+   protagonismo à foto do hero. Escopado por .home-page (classe exclusiva do <body> da
+   Home) para não afetar /produtos e /carrinho, que compartilham .page/.hero/.hero-copy
+   e já usam sua própria classe (.products-page) para diferenças de página. */
+@media (min-width:1280px){
+  .home-page{ --maxw:1800px; }
+  .home-page .hero-copy{ max-width:44%; }
+  .home-page .hero-sub{ max-width:52ch; }
+}
+
 /* ===================== TABLET (640–899) ===================== */
 @media (max-width:899px){
   body{ padding:0; }
