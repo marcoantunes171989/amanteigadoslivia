@@ -92,11 +92,11 @@ ilustra o formato). Instagram: `https://instagram.com/USUARIO` completo.
 
 **Existe entrega: PENDENTE**
 
-A Home ainda contém, em `/produtos` (removida na Fase 3) e potencialmente
-em textos institucionais, alegações como "Entrega rápida" — já
-classificadas como **NÃO HOMOLOGADAS** desde a Fase 2.2 e removidas de
-`/produtos`. Nenhuma política de entrega (região, taxa, prazo, forma de
-cálculo, transportador próprio/terceirizado) foi confirmada.
+A versão anterior de `/produtos` continha a alegação "Entrega rápida",
+removida na Fase 3 por não existir política comercial homologada — já
+classificada como **NÃO HOMOLOGADA** desde a Fase 2.2. Nenhuma política de
+entrega (região, taxa, prazo, forma de cálculo, transportador
+próprio/terceirizado) foi confirmada.
 
 | Campo | Status |
 |---|---|
@@ -280,15 +280,19 @@ Documentando a regra pedida nesta fase (sem alterar código):
 
 ## 16. Necessidade de `pricingMode` ("fixed" | "quote")
 
-**Decisão: NÃO implementar agora.**
+**IMPLEMENTAÇÃO: NÃO** (nesta fase, nem em nenhuma anterior).
+**NECESSIDADE COMERCIAL: PENDENTE DE CONFIRMAÇÃO.**
 
-Não há, em nenhum documento ou material do projeto, evidência de que
-algum produto seja vendido "sob orçamento" — todo o histórico (mockup
-original, `PROPOSTA.md`, catálogo de demonstração) sempre tratou os
-amanteigados como itens de preço fixo por unidade/peso. Adicionar
-`pricingMode` agora seria estender o modelo sem necessidade comprovada
-(contraria a regra geral do projeto de não adicionar campos sem
-necessidade demonstrada). A pergunta foi incluída no formulário de coleta
+Estes são dois status distintos e não devem ser confundidos: a ausência de
+evidência de produtos "sob orçamento" no material do projeto (mockup
+original, `PROPOSTA.md`, catálogo de demonstração — todos tratando os
+amanteigados como itens de preço fixo por unidade/peso) justifica **não
+implementar `pricingMode` agora**, mas **não prova** que todos os produtos
+reais terão preço fixo — essa é uma pergunta comercial ainda em aberto,
+não uma conclusão. Adicionar o campo hoje seria estender o modelo sem
+necessidade comprovada (contraria a regra geral do projeto de não
+adicionar campos sem necessidade demonstrada); por isso a pergunta
+"Vendido sob orçamento (sim/não)" permanece no formulário de coleta
 abaixo — se o responsável confirmar que algum item é sob orçamento, a
 extensão `pricingMode: "fixed" | "quote"` deve ser formalmente recomendada
 e submetida à aprovação antes de qualquer implementação.

@@ -158,12 +158,26 @@ function sortProducts(list, sort) {
     case 'name-desc':
       sorted.sort((a, b) => b.name.localeCompare(a.name, 'pt-BR'));
       break;
-    case 'price-asc':
-      sorted.sort((a, b) => (isValidPrice(a.price) ? a.price : Infinity) - (isValidPrice(b.price) ? b.price : Infinity));
+    case 'price-asc': {
+      // Compara pelo preço efetivamente oferecido (promocional válido,
+      // senão o preço-base) — disponibilidade continua controlada à parte
+      // por hasCompleteValidPrices(), baseada em price. Fallback defensivo
+      // para Infinity caso algum item chegue aqui sem preço efetivo válido.
+      sorted.sort((a, b) => {
+        const priceA = getEffectivePrice(a);
+        const priceB = getEffectivePrice(b);
+        return (isValidPrice(priceA) ? priceA : Infinity) - (isValidPrice(priceB) ? priceB : Infinity);
+      });
       break;
-    case 'price-desc':
-      sorted.sort((a, b) => (isValidPrice(b.price) ? b.price : -Infinity) - (isValidPrice(a.price) ? a.price : -Infinity));
+    }
+    case 'price-desc': {
+      sorted.sort((a, b) => {
+        const priceA = getEffectivePrice(a);
+        const priceB = getEffectivePrice(b);
+        return (isValidPrice(priceB) ? priceB : -Infinity) - (isValidPrice(priceA) ? priceA : -Infinity);
+      });
       break;
+    }
     default:
       sorted.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
