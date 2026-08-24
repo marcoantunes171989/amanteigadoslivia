@@ -179,15 +179,19 @@ integralmente `getQuantityMin(product)`, `getQuantityStep(product)`,
 em `produtos.js` desde a Fase 3 (ver seção 24 sobre onde essas funções
 devem morar para serem compartilhadas sem duplicação).
 
-**Validação de item armazenado (seção 19 do prompt da Fase 4A.0):** todo
-item lido do storage precisa ter `productId` (string não vazia) e
-`quantity` que seja `number`, finito, inteiro e `> 0` — qualquer violação
-descarta o item (não o carrinho inteiro; ver seção 13 para a lista
-explícita de valores rejeitados: `NaN`, `Infinity`, `-Infinity`, string,
-`null`, `undefined`, fracionário). Depois da validação estrutural, a
-quantidade só é aceita se o produto for **utilizável** (definição acima)
-e é normalizada para a grade min/step/max do produto real (algoritmo
-congelado na seção 13).
+**Validação de item armazenado (seção 19 do prompt da Fase 4A.0; regra
+reforçada na Fase 4A.0.2 — ver seção 13):** todo item lido do storage
+precisa ter `productId` (string não vazia) e `quantity` que seja
+`number`, finito, inteiro e `> 0` — qualquer violação descarta o item
+(não o carrinho inteiro; ver seção 13 para a lista explícita de valores
+rejeitados: `NaN`, `Infinity`, `-Infinity`, string, `null`, `undefined`,
+fracionário). Depois da validação estrutural, a quantidade só é aceita se
+o produto for **utilizável** (definição acima) **e** a quantidade
+pertencer **exatamente** à grade min/step/max do produto real —
+**o storage nunca é normalizado, apenas validado**: uma quantidade
+persistida fora da grade não é "corrigida" para o valor válido mais
+próximo, o item inteiro é removido (algoritmo/distinção congelados na
+seção 13).
 
 **Produto inexistente ou inativo:** se `productId` não existir na fonte de
 catálogo atual, ou existir mas `active !== true`, o item é **removido do
@@ -218,8 +222,8 @@ carrinho (ver definição na seção 9) e:
   é recusada (ver matriz de testes, seção 27, caso D).
 - **`sanitizeCart()`** — remove qualquer item previamente persistido cujo
   produto, resolvido na fonte atual, não possua mais preço efetivo válido
-  (ex.: um preço que existia foi removido/zerado em uma atualização do
-  catálogo).
+  (ex.: o campo `price` do produto passou a `null`/`undefined` em uma
+  atualização do catálogo).
 - **`getCartItems()`** — nunca retorna esse item.
 - **`getCartSubtotal()`** — nunca recebe esse item; ele não contribui para
   a soma.
@@ -234,6 +238,21 @@ venda sob orçamento, essa é uma extensão comercial formal separada, a ser
 especificada e aprovada antes de qualquer implementação — não uma decisão
 que o carrinho toma sozinho.
 
+**Precisão sobre preço zero (Fase 4A.0.2 — `isValidPrice()` não muda):**
+"preço válido"/"preço efetivo válido" nesta especificação segue
+estritamente a semântica já existente em `produtos.js`:
+`isValidPrice(value) = typeof value === 'number' && Number.isFinite(value)
+&& value >= 0`. Isso significa que **`price: 0` é, por essa definição,
+tecnicamente um preço válido** — um produto com `price: 0` (e sem
+promoção) tem `getEffectivePrice() === 0`, é **utilizável** pelo carrinho,
+e seu subtotal de item é `0 × quantity = 0`. "Preço ausente/inválido"
+significa exclusivamente `null`, `undefined`, `NaN`, `Infinity`,
+`-Infinity`, um tipo não numérico, ou qualquer outro valor que
+`isValidPrice()` rejeite — **nunca** o número `0`. Esta especificação não
+altera `isValidPrice()`; apenas documenta sua semântica já vigente para
+que nenhuma implementação futura do carrinho trate `0` como sinônimo de
+"sem preço".
+
 ## 11. Promoção
 
 Mesma regra já homologada e usada em `produtos.js` desde a Fase 3.1/3.3 —
@@ -241,27 +260,41 @@ não duplicada, apenas reaplicada: uma promoção só é considerada válida
 quando `price` é válido **E** `promotionalPrice` é válido **E**
 `promotionalPrice < price`. Essa regra de validade vive **exclusivamente**
 dentro de `getEffectivePrice()` (camada `catalog-core.js`, seção 24) —
-`cart.js` nunca reimplementa a comparação `promo < price`.
+nem `cart.js` nem a futura `carrinho.js` reimplementam a comparação
+`promo < price`.
 
-**Correção de arquitetura (Fase 4A.0.1):** a versão anterior deste
-documento sugeria que o carrinho reaproveitasse `appendPriceMarkup()` de
-`produtos.js` diretamente. Isso contradizia a própria seção 24
-(`catalog-core.js` sem DOM) — `appendPriceMarkup()` é uma função de
-renderização DOM específica de `/produtos` (usa `document.createElement`,
-depende dos elementos do card/dialog daquela página), não uma regra de
-negócio pura, e não deve ser importada por `cart.js`.
+**Correção de arquitetura (Fase 4A.0.1, refinada na Fase 4A.0.2):** a
+versão original deste documento sugeria que o carrinho reaproveitasse
+`appendPriceMarkup()` de `produtos.js` diretamente — corrigido na Fase
+4A.0.1 para "o carrinho cria sua própria marcação DOM". Essa segunda
+formulação ainda era imprecisa: ela não distinguia `cart.js` (serviço,
+sem DOM — seção 26) da futura `carrinho.js` (UI da página `/carrinho` —
+seção 25). Correção definitiva (Fase 4A.0.2): **quem cria marcação DOM é
+exclusivamente a futura `carrinho.js`, nunca `cart.js`.**
 
-**Regra definitiva:** a regra comercial (o que é preço, o que é promoção
-válida) mora em funções puras de `catalog-core.js`
-(`getEffectivePrice()`, `formatPrice()`). A **apresentação visual** é
-livre para variar por página — `produtos.js` mantém seu
-`appendPriceMarkup()` existente sem alteração; um futuro `cart.js` pode
-(e deve) criar sua própria marcação DOM para preço-base riscado / preço
-promocional / preço normal no layout do carrinho, desde que essa marcação
-consuma exclusivamente os *valores* retornados por `getEffectivePrice()`
-e `formatPrice()` — nunca reimplementando a lógica de validade da
-promoção. Resumindo: **markup DOM diferente é permitido; duplicar a regra
-`promo < price` é proibido.**
+**Regra definitiva das três camadas envolvidas no preço:**
+
+- `catalog-core.js` — funções puras `getEffectivePrice()`/`formatPrice()`,
+  únicas donas da regra comercial (o que é preço, o que é promoção
+  válida). Sem DOM.
+- `cart.js` — usa esses valores apenas para **cálculo e retorno de
+  dados** (ex.: `getCartItems()` devolvendo cada item já com seu
+  `effectivePrice` resolvido, `getCartSubtotal()` somando esses valores).
+  Sem DOM, sem markup, sem HTML.
+- **A futura `carrinho.js`** (Fase 4A.2, ainda não criada) — consome
+  `catalog-core.js` **e** `cart.js`, e é a única camada que cria a
+  marcação DOM do carrinho: preço-base riscado, preço promocional em
+  destaque, preço normal. Consome exclusivamente os *valores* já
+  calculados por `getEffectivePrice()`/`formatPrice()` — nunca
+  reimplementa `promo < price`.
+- `produtos.js` mantém seu `appendPriceMarkup()` existente sem alteração
+  — é a camada de apresentação de `/produtos`, equivalente ao papel que
+  `carrinho.js` terá para `/carrinho`.
+
+Resumindo: **markup DOM diferente por página é permitido; duplicar a
+regra `promo < price` em qualquer camada além de `catalog-core.js` é
+proibido — e a camada que efetivamente cria esse markup é sempre uma
+camada de UI (`produtos.js` ou a futura `carrinho.js`), nunca `cart.js`.**
 
 ## 12. Subtotal
 
@@ -315,11 +348,57 @@ não há grade a violar) — nenhuma alteração de dados é necessária. Esta
 regra é preventiva, para quando uma fonte real/API trouxer combinações
 de min/step/max mais complexas.
 
-### Algoritmo de normalização (min/step/max)
+### Duas fronteiras diferentes (Fase 4A.0.2 — distinção congelada)
 
-**Só se aplica a um produto já confirmado utilizável** (grade consistente,
-seção acima) — aplicado sempre que a quantidade de um item muda, seja por
-merge, seja por edição no carrinho:
+O tratamento de quantidade **não é uma regra única** — depende de onde o
+valor está entrando:
+
+| Fronteira | O que é | Comportamento diante de valor fora da grade |
+|---|---|---|
+| **Entrada do storage** (`sanitizeCart()`, toda leitura de `sessionStorage`) | Dado **não confiável** — pode ter sido adulterado manualmente, corrompido, ou ficado obsoleto após uma mudança no catálogo/produto | **Valida e remove.** Nunca normaliza, nunca "adivinha" a intenção do visitante. |
+| **Operação interna controlada** (`addItem()`, `updateItem()`, merge) | Dado gerado pela própria aplicação (ex.: soma de uma quantidade já válida no carrinho com uma quantidade nova válida escolhida no dialog) | Pode **normalizar** o resultado para a grade válida mais próxima, desde que o resultado final pertença exatamente a ela. |
+
+Essa distinção existe porque normalizar um valor vindo do storage
+equivaleria a inventar uma quantidade que o visitante nunca escolheu —
+aceitável para o resultado de uma soma que a própria aplicação acabou de
+calcular, mas não para um dado que pode ter sido editado fora do fluxo
+normal da página (ex.: via DevTools).
+
+### Storage fora da grade — `sanitizeCart()` valida, nunca normaliza
+
+**Congelado:** um item recuperado de `sessionStorage` só é aceito quando
+**todas** as condições abaixo são verdadeiras (além do produto ser
+utilizável — seção 9):
+
+```
+quantity >= minQuantity
+AND (quantity - minQuantity) % quantityStep === 0
+AND (maxQuantity === null OR quantity <= maxQuantity)
+```
+
+Se qualquer condição falhar, **o item é removido** — `sanitizeCart()`
+nunca converte o valor persistido para o ponto de grade mais próximo.
+
+Exemplo (`minQuantity: 10`, `quantityStep: 5`, `maxQuantity: 25` — grade
+`10, 15, 20, 25`):
+
+| `quantity` no storage | Resultado |
+|---|---|
+| `10`, `15`, `20`, `25` | mantém (pertence à grade) |
+| `9`, `11`, `12`, `14`, `17`, `22`, `26` | **remove** o item |
+
+`12` **não** vira `10`; `17` **não** vira `15` ou `20`. `sessionStorage` é
+entrada não confiável — a aplicação não deve adivinhar qual quantidade o
+visitante "quis dizer" diante de um estado adulterado ou corrompido; é
+preferível remover o item e deixar o visitante adicioná-lo novamente pela
+UI (que só produz valores já dentro da grade).
+
+### Algoritmo de normalização (min/step/max) — apenas para operações internas controladas
+
+**Aplica-se exclusivamente a `addItem()`, `updateItem()` e ao merge
+interno** (nunca a uma leitura de storage — ver distinção acima), e
+somente a um produto já confirmado utilizável (grade consistente, seção
+anterior):
 
 ```
 n = round((raw - min) / step)          // n é inteiro >= 0
@@ -327,34 +406,50 @@ normalized = min + n * step
 normalized = clamp(normalized, min, max ?? Infinity)
 ```
 
+**Convenção de arredondamento (empate exato em `.5`):** `round()` segue o
+comportamento nativo de `Math.round()` em JavaScript — `.5` arredonda para
+cima (`round(2.5) = 3`, não `2`). Essa convenção deve ser a mesma em toda
+a implementação futura (`addItem()`, `updateItem()`, merge) — nunca variar
+o critério de desempate entre operações.
+
 Uma quantidade válida sempre pertence a `min + n × step` (com `n` inteiro
 `>= 0`) e, quando `max` existe, satisfaz `quantity <= max`. Como `max`
 (quando existir) já foi validado como parte da grade na etapa anterior, o
 `clamp` final nunca pode produzir um valor fora dela — ele apenas
 restringe `n` ao maior múltiplo de `step` que ainda cabe entre `min` e
 `max`, nunca introduz um valor "solto" como `12` no exemplo `min 10, step
-5, max 12` (que, aliás, já teria sido recusado antes de chegar aqui).
+5, max 12` (que, aliás, já teria sido recusado antes de chegar aqui, por
+não ser uma configuração de produto válida).
 
-Exemplo do prompt (`minQuantity: 10`, `quantityStep: 5`, sem `max`):
-valores válidos são `10, 15, 20, 25, ...`; um valor bruto como `12`
-normaliza para `10` (`round((12-10)/5)=0`); `13` normaliza para `15`
-(`round((13-10)/5)=1`). Isso garante que o carrinho **nunca produz** uma
-quantidade fora da grade definida pelo produto, mesmo somando duas
-adições que individualmente eram válidas.
+Exemplo do prompt (`minQuantity: 10`, `quantityStep: 5`, sem `max`): valores
+válidos são `10, 15, 20, 25, ...`; um valor bruto **gerado internamente**
+(ex.: resultado de um merge) como `12` normaliza para `10`
+(`round((12-10)/5)=0`); `13` normaliza para `15` (`round((13-10)/5)=1`).
+Isso garante que uma operação interna **nunca produz** uma quantidade fora
+da grade, mesmo somando duas quantidades que individualmente eram válidas
+— mas essa normalização só se aplica ao *resultado de uma operação da
+aplicação*, nunca a um valor lido diretamente do storage.
 
-**Entrada de `addItem()`/`updateItem()` — apenas números finitos:** os
-valores `NaN`, `Infinity`, `-Infinity`, `string`, `null`, `undefined`, ou
-um valor fracionário quando a quantidade exige inteiro, **nunca** viram
-uma quantidade válida silenciosamente — são rejeitados na validação
-estrutural (seção 9), antes mesmo de chegar ao algoritmo de normalização
-acima. Um item já persistido no storage com um desses valores é
-sanitizado por `sanitizeCart()` na próxima leitura (ver matriz de testes,
-seção 27).
+**Entrada de `addItem()`/`updateItem()` — apenas números finitos:** antes
+de qualquer normalização, os valores `NaN`, `Infinity`, `-Infinity`,
+`string`, `null`, `undefined`, `0`, negativo, ou um valor fracionário
+quando a quantidade exige inteiro, **nunca** viram uma quantidade válida
+silenciosamente — a operação é **rejeitada** (não há normalização "de
+emergência" para um valor estruturalmente inválido). Isso é distinto de
+um item já persistido no storage com um desses valores, que é sanitizado
+(removido) por `sanitizeCart()` na próxima leitura, conforme a fronteira
+acima (ver matriz de testes, seção 27).
 
-**Se a soma (merge) ultrapassar `maxQuantity`:** aplicar `clamp` no valor
-máximo permitido pela grade (nunca criar quantidade inválida, nunca
-lançar erro — o visitante simplesmente não consegue ultrapassar o limite
-já comunicado no dialog de detalhes).
+**Merge (`addItem()` em produto já existente no carrinho):**
+`rawTotal = existingQuantity + addedQuantity`. Se `rawTotal` já pertence à
+grade, ele é usado diretamente; caso contrário, é normalizado pelo
+algoritmo acima. Em ambos os casos, o resultado final está **sempre**
+dentro da grade e **sempre** `<= maxQuantity` quando este existir (nunca
+criar quantidade inválida, nunca lançar erro — o visitante simplesmente
+não consegue ultrapassar o limite já comunicado no dialog de detalhes).
+`updateItem()` segue a mesma fronteira: entrada estruturalmente inválida
+é rejeitada; entrada numericamente válida é normalizada conforme a grade
+quando necessário — o resultado final pertence sempre a ela.
 
 ## 14. Remoção
 
@@ -530,16 +625,52 @@ algo equivalente a `isUsableProduct(product)`/`isConsistentQuantityRange(product
 consistência de grade min/step/max (seção 13), para que `sanitizeCart()`
 e `addItem()` não reimplementem esses critérios cada um a seu modo.
 
-**Regra definitiva de camadas (Fase 4A.0.1 — sem ambiguidade):**
-`catalog-core.js` é e permanece **sem DOM**. Nunca entram nessa camada:
-`createElement`, `textContent`, `replaceChildren`, `appendPriceMarkup()`,
+**Regra definitiva de camadas (Fase 4A.0.1, com a fronteira de `cart.js`
+precisada na Fase 4A.0.2 — sem ambiguidade):** `catalog-core.js` é e
+permanece **sem DOM**. Nunca entram nessa camada: `createElement`,
+`textContent`, `replaceChildren`, `appendPriceMarkup()`,
 `renderProductImage()`, ou qualquer outra função de renderização visual.
 Isso vale tanto hoje quanto em qualquer refactor futuro: se uma função
-toca o DOM, ela pertence a `produtos.js` (já existente) ou a um futuro
-módulo de renderização do carrinho — nunca a `catalog-core.js`.
+toca o DOM, ela pertence a uma camada de apresentação — `produtos.js`
+(já existente) para `/produtos`, ou a futura `carrinho.js` (Fase 4A.2)
+para `/carrinho` — **nunca a `catalog-core.js`, e nunca a `cart.js`**
+(que também é sem DOM — ver seção 26, regra reforçada na Fase 4A.0.2).
 `produtos.js` continua livre para manter `appendPriceMarkup()` como está;
-o carrinho constrói sua própria marcação DOM consumindo apenas os valores
-de `getEffectivePrice()`/`formatPrice()` (ver seção 11).
+quem constrói a marcação DOM do carrinho é exclusivamente a futura
+`carrinho.js`, consumindo apenas os valores de
+`getEffectivePrice()`/`formatPrice()` (ver seção 11) — nunca `cart.js`,
+que devolve dados, não elementos de página.
+
+### Cadeia de camadas — arquitetura final documentada (Fase 4A.0.2)
+
+```
+catalog-demo-data.js   (dados temporários — window.CATALOG_DATA)
+        ↓
+catalog-core.js        (regras puras do catálogo — sem DOM)
+        ↓
+   ┌────┴────┐
+produtos.js   cart.js  (UI de /produtos)   (serviço do carrinho — sem DOM)
+                            ↓
+                       carrinho.js         (UI de /carrinho, Fase 4A.2)
+```
+
+- `catalog-demo-data.js` — fonte de dados demonstrativa temporária.
+- `catalog-core.js` — regras puras do catálogo (preço, quantidade,
+  resolução de produto por id). Sem DOM.
+- `produtos.js` — UI exclusiva de `/produtos`. Continua responsável só
+  por renderizar o catálogo; na Fase 4A.2 poderá também chamar
+  `window.AmanteigadosCart.addItem(...)` (ou interface equivalente
+  exposta por `cart.js`) a partir do botão "Adicionar ao carrinho" do
+  dialog, **sem que sua própria renderização seja transferida para
+  `cart.js`** — `produtos.js` continua desenhando os cards e o dialog do
+  catálogo, apenas passa a notificar o serviço de carrinho quando o
+  visitante adiciona um item.
+- `cart.js` — serviço/estado do carrinho (Fase 4A.1). Consome
+  `catalog-core.js`. Sem DOM.
+- `carrinho.js` — **futura** UI exclusiva de `/carrinho` (Fase 4A.2, não
+  criada nesta fase nem na 4A.1). Consome `catalog-core.js` e `cart.js`;
+  é a única camada que cria markup, responde a cliques, renderiza o
+  aviso demo, o subtotal visual e o `aria-live` do carrinho.
 
 ## 25. Estratégia de implementação
 
@@ -557,8 +688,13 @@ de `getEffectivePrice()`/`formatPrice()` (ver seção 11).
   serviço, testável isoladamente.
 - **Fase 4A.2 — UI de `/carrinho` + botão "Adicionar ao carrinho".**
   Só começa depois que a Fase 4A.1 estiver auditada e confirmada sem
-  regressão em `/produtos`. Cria `carrinho.html`, o botão no dialog, o
-  badge no header, e liga tudo ao `cart.js` já testado.
+  regressão em `/produtos`. Cria `carrinho.html` e **`carrinho.js`** (a UI
+  exclusiva de `/carrinho` — renderização de itens, markup de preço,
+  botões +/−/Remover/Limpar, aviso demo, subtotal visual, `aria-live`,
+  badge do carrinho), adiciona o botão "Adicionar ao carrinho" e o badge
+  no header de `produtos.html`, e liga tudo ao `cart.js` já testado na
+  Fase 4A.1 (`cart.js` em si **não muda** nesta fase — apenas passa a ter
+  consumidores de UI).
 
 **Justificativa:** mover código de um catálogo que já está em produção
 (mesmo que em modo demo) é uma operação de risco não-trivial — um erro na
@@ -571,25 +707,42 @@ carrinho novo, dificultando isolar a causa de qualquer regressão.
 
 ## 26. Serviço de carrinho (`cart.js` — não implementado nesta fase)
 
+**`cart.js` é um serviço — não uma camada de UI (Fase 4A.0.2, sem
+ambiguidade).** Ele **nunca** conterá, nem na Fase 4A.1 nem depois:
+
+- `document.createElement`, `innerHTML`
+- `textContent`, `replaceChildren` (ou qualquer manipulação de nós DOM)
+- `querySelector`/`getElementById` (ou qualquer busca por elemento de
+  página)
+- event listeners de UI (clique de botão, input, etc.)
+- renderização de qualquer tipo (cards, listas, itens)
+- toast visual, badge visual
+- markup de preço (preço-base riscado, preço promocional em destaque)
+- qualquer manipulação de elementos HTML
+
+`cart.js` **não conhece elementos de página** — apenas estado e dados. A
+camada que faz tudo isso é a futura `carrinho.js` (Fase 4A.2, seção 24),
+que **consome** `cart.js`, nunca o contrário.
+
 Interface conceitual recomendada, consumindo `catalog-core.js`:
 
 ```
 loadCart()          // lê sessionStorage com fallback defensivo (seção 8)
 saveCart(cart)       // escreve sessionStorage, tolera falha (memória permanece fonte de verdade da página atual)
-sanitizeCart(cart)    // remove productId inexistente/inativo, normaliza quantidades (seções 9, 13)
-getCartItems()        // itens sanitizados, já resolvidos contra o catálogo atual (productId + Product + effectivePrice)
-addItem(productId, quantity)     // merge se já existir (seção 13)
-updateItem(productId, quantity)  // normaliza via min/step/max (seção 13)
+sanitizeCart(cart)    // VALIDA e REMOVE item inválido/fora da grade — nunca normaliza estado do storage (seção 13)
+getCartItems()        // itens já sanitizados, resolvidos contra o catálogo atual (productId + Product + effectivePrice) — nenhuma quantity fora da grade chega aqui
+addItem(productId, quantity)     // rejeita entrada estruturalmente inválida; merge se já existir, normalizando o RESULTADO da operação (seção 13)
+updateItem(productId, quantity)  // mesma fronteira de addItem — rejeita entrada inválida, normaliza o resultado da operação (seção 13)
 removeItem(productId)
 clearCart()
-getCartCount()         // soma de quantidades (seção 17)
-getCartSubtotal()      // soma dos subtotais válidos (seção 12)
+getCartCount()         // soma de quantidades dos itens já sanitizados (seção 17)
+getCartSubtotal()      // soma dos subtotais válidos, apenas itens que sobreviveram à sanitização (seção 12)
 ```
 
 **Evitar globals descontrolados:** se `cart.js` precisar expor algo em
-`window` para ser consumido por `carrinho.html`/`produtos.html`, deve
-expor um único namespace explícito — por exemplo `window.AmanteigadosCart`
-— e não funções soltas no escopo global. Isso segue o mesmo padrão que
+`window` para ser consumido por `carrinho.js`/`produtos.js`, deve expor
+um único namespace explícito — por exemplo `window.AmanteigadosCart` — e
+não funções soltas no escopo global. Isso segue o mesmo padrão que
 `catalog-demo-data.js` já usa hoje com `window.CATALOG_DATA` (um único
 ponto de entrada nomeado, não dados espalhados).
 
@@ -615,9 +768,32 @@ exista**, **esteja inativo**, **não possua preço efetivo válido**, ou
 ou no subtotal (seção 12) — nunca parcialmente, nunca com valor
 substituto.
 
-**Teste de grade (min/step/max consistentes):** produto `min 10, step 5,
-max 25` — aceitos apenas `10, 15, 20, 25`; o algoritmo (seção 13) nunca
-deve produzir `11, 12, 14, 17, 22` ou `26`.
+**Testes obrigatórios — storage fora da grade (Fase 4A.0.2, `sanitizeCart`
+VALIDA e REMOVE, nunca normaliza — ver seção 13):** produto `min 10, step
+5, max 25` (grade `10, 15, 20, 25`):
+
+| `quantity` no `sessionStorage` | Resultado |
+|---|---|
+| `10` | mantém |
+| `15` | mantém |
+| `20` | mantém |
+| `25` | mantém |
+| `9` | **remove** |
+| `11` | **remove** |
+| `12` | **remove** (nunca vira `10`) |
+| `14` | **remove** |
+| `17` | **remove** (nunca vira `15` ou `20`) |
+| `22` | **remove** |
+| `26` | **remove** |
+
+**Teste de grade — operação interna controlada (`addItem`/merge), distinto
+da tabela acima:** produto `min 10, step 5, max 25` — um valor bruto
+gerado internamente (ex.: resultado de merge) como `12` é **normalizado**
+para `10` pelo algoritmo da seção 13; o resultado final de qualquer
+operação interna nunca produz `11, 12, 14, 17, 22` ou `26` como quantidade
+armazenada. Note a diferença: `sanitizeCart()` nunca normaliza (tabela
+acima), mas `addItem()`/`updateItem()` normalizam o *resultado da
+operação* antes de persistir.
 
 **Teste de max inconsistente:** produto `min 10, step 5, max 12` — `(12 -
 10) % 5 = 2 !== 0`, portanto configuração **inválida** para o carrinho
@@ -632,6 +808,25 @@ por algum motivo, `sanitizeCart()` remove o item.
 `promotionalPrice: 20` → `getEffectivePrice()` retorna `null` (a mesma
 regra da Fase 3.1: promocional isolado, sem preço-base válido, nunca é
 tratado como preço real) → **não adicionável**.
+
+**Testes obrigatórios — merge:**
+
+- Amanteigado Mesclado demo (`minQuantity: 1`, `quantityStep: 1`,
+  `maxQuantity: null`): adicionar 2, depois adicionar 3 → resultado
+  **quantity 5**, uma única linha (preservado das fases anteriores).
+- Teste conceitual com grade não trivial — produto `min 3, step 2`
+  (quantidades válidas: `3, 5, 7, 9, ...`): carrinho com `quantity: 3`;
+  merge de mais `quantity: 2` → `rawTotal = 5`, já pertence à grade → usa
+  `5` diretamente. Merge de mais `quantity: 3` a partir daí →
+  `rawTotal = 8`, **não** pertence à grade (`(8-3) % 2 = 1`) → normaliza
+  usando `round((8-3)/2) = round(2.5)`. Convenção adotada (mesma de
+  `Math.round` em JS): `.5` arredonda para cima, logo `round(2.5) = 3` →
+  `normalized = 3 + 3×2 = 9`. O objetivo do teste não é fixar esse valor
+  exato para toda implementação, e sim confirmar duas coisas: (1)
+  **qualquer resultado interno final de merge pertence à grade** — nunca
+  `8`; (2) a convenção de arredondamento em caso de empate exato (`.5`)
+  deve estar documentada e ser consistente em toda a implementação futura
+  — não pode variar entre `addItem()`/`updateItem()`.
 
 **Serviço de carrinho — demais casos:**
 
@@ -705,7 +900,7 @@ carrinhos de teste como se fossem intenções de compra reais.
 | Preço "adulterado" no navegador sendo tratado como confiável | Subtotal sempre recalculado client-side a partir do catálogo para exibição; nenhuma confiança nesse valor no momento de um pedido real — revalidação server-side obrigatória (seção 28). |
 | Produto removido/desativado na fonte enquanto está no carrinho | Sanitização automática na leitura (seção 9) — nunca exibir produto fantasma. |
 | Promoção alterada/expirada entre adição e visualização do carrinho | Preço sempre recalculado da fonte atual (seção 10) — nunca há "preço congelado" a ficar desatualizado. |
-| Quantidade inválida (negativa, zero, não numérica, fracionária) persistida | Validação estrutural + normalização por min/step/max na leitura (seções 9, 13, 27). |
+| Quantidade inválida (negativa, zero, não numérica, fracionária, ou fora da grade) persistida no storage | Validação estrutural + remoção do item na leitura (`sanitizeCart()` **nunca** normaliza estado do storage — seções 9, 13, 27). Normalização só ocorre no resultado de operações internas controladas (`addItem()`/`updateItem()`). |
 | Produto com `minQuantity`/`quantityStep`/`maxQuantity` comercialmente inconsistentes (`maxQuantity` fora da grade) | Produto tratado como não utilizável (seção 9); nunca normalizado/mascarado silenciosamente (seção 13). |
 | Produto sem preço efetivo válido sendo aceito no carrinho | Regra congelada: rejeitado em `addItem()`, removido por `sanitizeCart()`, nunca aparece em `getCartItems()`/subtotal (seção 10). |
 | Duplicar a lógica de validade de promoção (`promo < price`) em `cart.js` | Regra vive só em `getEffectivePrice()` (`catalog-core.js`); carrinho consome apenas o valor resultante, nunca reimplementa a comparação (seção 11). |
