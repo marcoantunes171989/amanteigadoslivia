@@ -148,18 +148,46 @@ de `1`.
 
 ## 9. Regras de quantidade
 
+### Definição — produto utilizável pelo carrinho (Fase 4A.0.1)
+
+Um produto só é **utilizável pelo carrinho** (adicionável via `addItem()`,
+mantido por `sanitizeCart()`, retornado por `getCartItems()`, contado em
+`getCartSubtotal()`) quando **todas** as condições abaixo são verdadeiras
+ao mesmo tempo:
+
+1. existe na fonte de catálogo atual (`getProductById(productId)` resolve
+   para um objeto);
+2. `product.active === true`;
+3. possui `id`/`productId` válido (`string`/`number` não vazio — mesmo
+   critério de `isValidProduct()` em `produtos.js`);
+4. `getEffectivePrice(product)` é válido (`isValidPrice(...)`, ver seção
+   10 para a regra congelada);
+5. possui **regras de quantidade coerentes** (`minQuantity`,
+   `quantityStep`, `maxQuantity` formam uma grade consistente — regra
+   congelada na seção 13).
+
+Falhar em **qualquer um** desses critérios torna o produto **não
+utilizável pelo carrinho nesta fase** — o item correspondente é rejeitado
+(se for uma tentativa de adição) ou sanitizado/removido (se já estiver
+persistido). Não há estado intermediário ("parcialmente utilizável").
+
+### Regras de quantidade — mecânica
+
 O carrinho **não define uma regra própria** de quantidade — reaproveita
 integralmente `getQuantityMin(product)`, `getQuantityStep(product)`,
 `getQuantityMax(product)` e `clampQuantity(product, value)`, já existentes
 em `produtos.js` desde a Fase 3 (ver seção 24 sobre onde essas funções
 devem morar para serem compartilhadas sem duplicação).
 
-**Validação de item armazenado (seção 19 do prompt):** todo item lido do
-storage precisa ter `productId` (string não vazia) e `quantity` que seja
-`number`, inteiro e `> 0` — qualquer violação descarta o item (não o
-carrinho inteiro). Depois da validação estrutural, a quantidade é
-normalizada para o produto real via `clampQuantity()` (min/max) e
-arredondada para o `quantityStep` mais próximo (algoritmo na seção 13).
+**Validação de item armazenado (seção 19 do prompt da Fase 4A.0):** todo
+item lido do storage precisa ter `productId` (string não vazia) e
+`quantity` que seja `number`, finito, inteiro e `> 0` — qualquer violação
+descarta o item (não o carrinho inteiro; ver seção 13 para a lista
+explícita de valores rejeitados: `NaN`, `Infinity`, `-Infinity`, string,
+`null`, `undefined`, fracionário). Depois da validação estrutural, a
+quantidade só é aceita se o produto for **utilizável** (definição acima)
+e é normalizada para a grade min/step/max do produto real (algoritmo
+congelado na seção 13).
 
 **Produto inexistente ou inativo:** se `productId` não existir na fonte de
 catálogo atual, ou existir mas `active !== true`, o item é **removido do
@@ -179,16 +207,61 @@ atual, não o preço no momento em que o item foi adicionado**. Isso é
 aceitável e correto para um carrinho demonstrativo, que não é um pedido
 confirmado (ver seção 21 sobre o motivo disso mudar em um pedido real).
 
+### Regra congelada — produto sem preço efetivo válido (Fase 4A.0.1)
+
+**Na Fase 4A, todo item do carrinho deve possuir `getEffectivePrice(product)`
+válido.** Se `getEffectivePrice(product)` retornar `null` (ou qualquer
+valor que `isValidPrice()` rejeite), o produto **não é utilizável** pelo
+carrinho (ver definição na seção 9) e:
+
+- **`addItem(productId, quantity)`** — não adiciona o produto. A operação
+  é recusada (ver matriz de testes, seção 27, caso D).
+- **`sanitizeCart()`** — remove qualquer item previamente persistido cujo
+  produto, resolvido na fonte atual, não possua mais preço efetivo válido
+  (ex.: um preço que existia foi removido/zerado em uma atualização do
+  catálogo).
+- **`getCartItems()`** — nunca retorna esse item.
+- **`getCartSubtotal()`** — nunca recebe esse item; ele não contribui para
+  a soma.
+
+Nenhuma linha do carrinho com preço vazio é mantida na Fase 4A. Em
+particular, a UI **não** apresenta rótulos como "Consultar preço", "Sob
+orçamento" ou "Preço indisponível" nesta fase — esses rótulos pressupõem
+um modelo de precificação (`pricingMode`) que continua **não implementado**
+(ver `docs/catalog-homologation.md`, seção 16: "IMPLEMENTAÇÃO: NÃO;
+NECESSIDADE COMERCIAL: PENDENTE DE CONFIRMAÇÃO"). Se no futuro existir
+venda sob orçamento, essa é uma extensão comercial formal separada, a ser
+especificada e aprovada antes de qualquer implementação — não uma decisão
+que o carrinho toma sozinho.
+
 ## 11. Promoção
 
 Mesma regra já homologada e usada em `produtos.js` desde a Fase 3.1/3.3 —
 não duplicada, apenas reaplicada: uma promoção só é considerada válida
 quando `price` é válido **E** `promotionalPrice` é válido **E**
-`promotionalPrice < price`. Quando válida, o item do carrinho apresenta o
-preço-base riscado e o preço promocional em destaque (mesmo padrão visual
-de `.product-price-strike`/`.product-price-promo` já usado no card e no
-dialog — reaproveitar as classes/o helper `appendPriceMarkup()`
-introduzido na Fase 3.3 em vez de recriar a lógica).
+`promotionalPrice < price`. Essa regra de validade vive **exclusivamente**
+dentro de `getEffectivePrice()` (camada `catalog-core.js`, seção 24) —
+`cart.js` nunca reimplementa a comparação `promo < price`.
+
+**Correção de arquitetura (Fase 4A.0.1):** a versão anterior deste
+documento sugeria que o carrinho reaproveitasse `appendPriceMarkup()` de
+`produtos.js` diretamente. Isso contradizia a própria seção 24
+(`catalog-core.js` sem DOM) — `appendPriceMarkup()` é uma função de
+renderização DOM específica de `/produtos` (usa `document.createElement`,
+depende dos elementos do card/dialog daquela página), não uma regra de
+negócio pura, e não deve ser importada por `cart.js`.
+
+**Regra definitiva:** a regra comercial (o que é preço, o que é promoção
+válida) mora em funções puras de `catalog-core.js`
+(`getEffectivePrice()`, `formatPrice()`). A **apresentação visual** é
+livre para variar por página — `produtos.js` mantém seu
+`appendPriceMarkup()` existente sem alteração; um futuro `cart.js` pode
+(e deve) criar sua própria marcação DOM para preço-base riscado / preço
+promocional / preço normal no layout do carrinho, desde que essa marcação
+consuma exclusivamente os *valores* retornados por `getEffectivePrice()`
+e `formatPrice()` — nunca reimplementando a lógica de validade da
+promoção. Resumindo: **markup DOM diferente é permitido; duplicar a regra
+`promo < price` é proibido.**
 
 ## 12. Subtotal
 
@@ -210,25 +283,78 @@ duplicar linha):** Mesclado já com `quantity: 2`; adicionar novamente com
 `quantity: 3` → resultado `quantity: 5` na mesma linha (nunca duas linhas
 do mesmo `productId`).
 
-**Algoritmo de normalização (min/step/max) — aplicado sempre que a
-quantidade de um item muda, seja por merge, seja por edição no carrinho:**
+### Consistência de grade — pré-condição antes de normalizar (Fase 4A.0.1)
+
+**Congelado:** quando `maxQuantity !== null`, ele só é um limite comercial
+válido se, além de inteiro e `>= minQuantity`, **pertencer à mesma grade**
+definida por `minQuantity`/`quantityStep`:
 
 ```
-normalized = min + round((raw - min) / step) * step
+(maxQuantity - minQuantity) % quantityStep === 0
+```
+
+Exemplos válidos: `min 10, step 5, max 25` (grade `10, 15, 20, 25`); `min
+1, step 1, max 10` (grade `1..10`). Exemplo **inválido**: `min 10, step 5,
+max 12` — `12` nunca pertence à grade `10, 15, 20, ...`, então esse trio
+de valores é uma configuração comercialmente inconsistente, não um
+produto com regras de quantidade normais.
+
+**Um produto cuja configuração de quantidade viole essa condição (ou
+qualquer outra que impeça garantir min/step/max de forma coerente) não é
+utilizável pelo carrinho** (ver definição na seção 9): não é adicionável
+via `addItem()`, e se já estiver persistido, `sanitizeCart()` remove o
+item. **O clamp nunca é aplicado para "consertar" silenciosamente um
+`maxQuantity` fora da grade** — isso mascararia uma inconsistência
+comercial (ex.: um cadastro futuro de produto com dados errados) fazendo
+o sistema aceitar uma quantidade que a própria regra de negócio do produto
+não permite. É preferível recusar o produto a inventar uma normalização.
+
+Os 8 produtos demonstrativos atuais (`minQuantity: 1`, `quantityStep: 1`,
+`maxQuantity: null`) já satisfazem trivialmente essa condição (sem `max`,
+não há grade a violar) — nenhuma alteração de dados é necessária. Esta
+regra é preventiva, para quando uma fonte real/API trouxer combinações
+de min/step/max mais complexas.
+
+### Algoritmo de normalização (min/step/max)
+
+**Só se aplica a um produto já confirmado utilizável** (grade consistente,
+seção acima) — aplicado sempre que a quantidade de um item muda, seja por
+merge, seja por edição no carrinho:
+
+```
+n = round((raw - min) / step)          // n é inteiro >= 0
+normalized = min + n * step
 normalized = clamp(normalized, min, max ?? Infinity)
 ```
 
-Exemplo do prompt (`minQuantity: 10`, `quantityStep: 5`): valores válidos
-são `10, 15, 20, 25, ...`; um valor bruto como `12` normaliza para `10`
-(`round((12-10)/5)=0`); `13` normaliza para `15` (`round((13-10)/5)=1`).
-Isso garante que o carrinho **nunca produz** uma quantidade fora da grade
-definida pelo produto, mesmo somando duas adições que individualmente
-eram válidas.
+Uma quantidade válida sempre pertence a `min + n × step` (com `n` inteiro
+`>= 0`) e, quando `max` existe, satisfaz `quantity <= max`. Como `max`
+(quando existir) já foi validado como parte da grade na etapa anterior, o
+`clamp` final nunca pode produzir um valor fora dela — ele apenas
+restringe `n` ao maior múltiplo de `step` que ainda cabe entre `min` e
+`max`, nunca introduz um valor "solto" como `12` no exemplo `min 10, step
+5, max 12` (que, aliás, já teria sido recusado antes de chegar aqui).
 
-**Se a soma ultrapassar `maxQuantity`:** aplicar `clamp` no valor máximo
-permitido (nunca criar quantidade inválida, nunca lançar erro — o
-visitante simplesmente não consegue ultrapassar o limite já comunicado no
-dialog de detalhes).
+Exemplo do prompt (`minQuantity: 10`, `quantityStep: 5`, sem `max`):
+valores válidos são `10, 15, 20, 25, ...`; um valor bruto como `12`
+normaliza para `10` (`round((12-10)/5)=0`); `13` normaliza para `15`
+(`round((13-10)/5)=1`). Isso garante que o carrinho **nunca produz** uma
+quantidade fora da grade definida pelo produto, mesmo somando duas
+adições que individualmente eram válidas.
+
+**Entrada de `addItem()`/`updateItem()` — apenas números finitos:** os
+valores `NaN`, `Infinity`, `-Infinity`, `string`, `null`, `undefined`, ou
+um valor fracionário quando a quantidade exige inteiro, **nunca** viram
+uma quantidade válida silenciosamente — são rejeitados na validação
+estrutural (seção 9), antes mesmo de chegar ao algoritmo de normalização
+acima. Um item já persistido no storage com um desses valores é
+sanitizado por `sanitizeCart()` na próxima leitura (ver matriz de testes,
+seção 27).
+
+**Se a soma (merge) ultrapassar `maxQuantity`:** aplicar `clamp` no valor
+máximo permitido pela grade (nunca criar quantidade inválida, nunca
+lançar erro — o visitante simplesmente não consegue ultrapassar o limite
+já comunicado no dialog de detalhes).
 
 ## 14. Remoção
 
@@ -395,11 +521,25 @@ duplicação que a Fase 3.2.1 já teve que corrigir uma vez).
 seção 25) — não implementada nesta fase.** Essa camada teria somente
 `loadCatalogSource()`, `priceFormatter`, `isValidPrice()`, `formatPrice()`,
 `getEffectivePrice()`, `getQuantityMin()`, `getQuantityStep()`,
-`getQuantityMax()`, `clampQuantity()`, e uma função nova,
-`getProductById(id)` (hoje não existe em `produtos.js` — `/produtos` nunca
-precisou buscar um produto único por id, apenas filtrar listas; o carrinho
-precisa disso para resolver cada `productId` salvo). Nenhuma função de
-renderização DOM entra nessa camada.
+`getQuantityMax()`, `clampQuantity()`, `getProductById(id)` (hoje não
+existe em `produtos.js` — `/produtos` nunca precisou buscar um produto
+único por id, apenas filtrar listas; o carrinho precisa disso para
+resolver cada `productId` salvo), e um novo helper puro de validação —
+algo equivalente a `isUsableProduct(product)`/`isConsistentQuantityRange(product)`
+— que encapsula a definição de "produto utilizável" (seção 9) e a
+consistência de grade min/step/max (seção 13), para que `sanitizeCart()`
+e `addItem()` não reimplementem esses critérios cada um a seu modo.
+
+**Regra definitiva de camadas (Fase 4A.0.1 — sem ambiguidade):**
+`catalog-core.js` é e permanece **sem DOM**. Nunca entram nessa camada:
+`createElement`, `textContent`, `replaceChildren`, `appendPriceMarkup()`,
+`renderProductImage()`, ou qualquer outra função de renderização visual.
+Isso vale tanto hoje quanto em qualquer refactor futuro: se uma função
+toca o DOM, ela pertence a `produtos.js` (já existente) ou a um futuro
+módulo de renderização do carrinho — nunca a `catalog-core.js`.
+`produtos.js` continua livre para manter `appendPriceMarkup()` como está;
+o carrinho constrói sua própria marcação DOM consumindo apenas os valores
+de `getEffectivePrice()`/`formatPrice()` (ver seção 11).
 
 ## 25. Estratégia de implementação
 
@@ -455,13 +595,50 @@ ponto de entrada nomeado, não dados espalhados).
 
 ## 27. Testes (a executar quando a Fase 4A for implementada)
 
-**Serviço de carrinho:**
+**Matriz de teste — adicionar (`addItem`), casos A–E (Fase 4A.0.1):**
+
+| Caso | Cenário | Resultado esperado |
+|---|---|---|
+| A | Produto ativo + `effectivePrice` válido + quantidade válida | Adiciona |
+| B | `productId` inexistente na fonte atual | Rejeita |
+| C | Produto existente com `active !== true` | Rejeita |
+| D | Produto ativo, `getEffectivePrice(product) === null` | Rejeita (seção 10) |
+| E | Produto com configuração de quantidade inconsistente (grade violada — seção 13) | Rejeita |
+
+**Matriz de teste — sanitização (`sanitizeCart`), mesmos critérios
+aplicados a itens já persistidos:**
+
+Um item no storage cujo produto, resolvido pela fonte atual, **não
+exista**, **esteja inativo**, **não possua preço efetivo válido**, ou
+**tenha quantidade estruturalmente inválida/fora da grade** deve ser
+**removido** na leitura. Nenhum desses itens entra no contador (seção 17)
+ou no subtotal (seção 12) — nunca parcialmente, nunca com valor
+substituto.
+
+**Teste de grade (min/step/max consistentes):** produto `min 10, step 5,
+max 25` — aceitos apenas `10, 15, 20, 25`; o algoritmo (seção 13) nunca
+deve produzir `11, 12, 14, 17, 22` ou `26`.
+
+**Teste de max inconsistente:** produto `min 10, step 5, max 12` — `(12 -
+10) % 5 = 2 !== 0`, portanto configuração **inválida** para o carrinho
+(seção 13). Resultado: não adicionável via `addItem()`; se já persistido
+por algum motivo, `sanitizeCart()` remove o item.
+
+**Teste de preço ausente:** produto com `price: null` e
+`promotionalPrice: null` → `getEffectivePrice()` retorna `null` →
+**não adicionável** (regra congelada, seção 10).
+
+**Teste de promoção sem base:** produto com `price: null` e
+`promotionalPrice: 20` → `getEffectivePrice()` retorna `null` (a mesma
+regra da Fase 3.1: promocional isolado, sem preço-base válido, nunca é
+tratado como preço real) → **não adicionável**.
+
+**Serviço de carrinho — demais casos:**
 
 - Adicionar produto (carrinho vazio → 1 item).
 - Adicionar produto repetido (merge, sem duplicar linha — seção 13).
-- Quantidade: valor mínimo, no step, no máximo, acima do máximo (clamp).
-- Produto com `productId` inválido/inexistente na fonte atual → sanitizado.
-- Produto com `active !== true` → sanitizado.
+- Quantidade: valor mínimo, no step, no máximo, acima do máximo (clamp
+  dentro da grade).
 - `sessionStorage[key] = '{abc'` (JSON corrompido) → carrinho vazio, 0
   exceções fatais.
 - `sessionStorage` indisponível (bloqueado pelo navegador) → carrinho
@@ -476,8 +653,10 @@ ponto de entrada nomeado, não dados espalhados).
 - Produto com `price` normal, sem promoção.
 - Produto com promoção válida (`promo < price`).
 - Produto com promoção inválida (`promo >= price`) → usa `price`.
-- Produto sem `price` válido → não entra no subtotal (sanitizado ou
-  subtotal do item omitido, a decidir na implementação, nunca `NaN`).
+- Produto sem `price` válido → **rejeitado em `addItem()` e removido por
+  `sanitizeCart()`** (regra congelada, seção 10 — não há mais ambiguidade
+  entre "sanitizar" ou "omitir do subtotal": o item nunca chega a existir
+  no estado do carrinho).
 - Preço alterado no catálogo entre duas visitas/reloads → carrinho reflete
   o preço **atual**, não o preço no momento da adição (seção 10).
 
@@ -527,6 +706,9 @@ carrinhos de teste como se fossem intenções de compra reais.
 | Produto removido/desativado na fonte enquanto está no carrinho | Sanitização automática na leitura (seção 9) — nunca exibir produto fantasma. |
 | Promoção alterada/expirada entre adição e visualização do carrinho | Preço sempre recalculado da fonte atual (seção 10) — nunca há "preço congelado" a ficar desatualizado. |
 | Quantidade inválida (negativa, zero, não numérica, fracionária) persistida | Validação estrutural + normalização por min/step/max na leitura (seções 9, 13, 27). |
+| Produto com `minQuantity`/`quantityStep`/`maxQuantity` comercialmente inconsistentes (`maxQuantity` fora da grade) | Produto tratado como não utilizável (seção 9); nunca normalizado/mascarado silenciosamente (seção 13). |
+| Produto sem preço efetivo válido sendo aceito no carrinho | Regra congelada: rejeitado em `addItem()`, removido por `sanitizeCart()`, nunca aparece em `getCartItems()`/subtotal (seção 10). |
+| Duplicar a lógica de validade de promoção (`promo < price`) em `cart.js` | Regra vive só em `getEffectivePrice()` (`catalog-core.js`); carrinho consome apenas o valor resultante, nunca reimplementa a comparação (seção 11). |
 | Regressão em `/produtos` ao extrair helpers para `catalog-core.js` | Extração isolada em fase própria (4A.1) com regressão completa antes de qualquer UI nova (seção 25). |
 | Overflow/quebra de layout no carrinho em mobile | Mesma metodologia de teste em 9 breakpoints já usada nas fases anteriores (seção 30). |
 | Confusão entre carrinho demonstrativo e pedido real | Aviso obrigatório e visualmente consistente em `/carrinho` enquanto `mode === 'demo'` (seção 20); nenhuma ação de finalização/pagamento existe nesta fase (seção 3). |
