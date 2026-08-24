@@ -192,7 +192,64 @@ const els = {
   qtyPlus: document.getElementById('qtyPlus'),
   qtyValue: document.getElementById('qtyValue'),
   qtyTotalRow: document.getElementById('qtyTotalRow'),
+  dialogCartActions: document.getElementById('dialogCartActions'),
+  addToCartBtn: document.getElementById('addToCartBtn'),
+  cartToast: document.getElementById('cartToast'),
+  cartToastText: document.getElementById('cartToastText'),
+  cartLiveRegion: document.getElementById('cartLiveRegion'),
 };
+
+// ===================== CARRINHO — BADGE (Fase 4A.2) =====================
+// Consome exclusivamente window.AmanteigadosCart (nunca sessionStorage
+// diretamente aqui — ver docs/cart-spec.md). Atualiza todo indicador de
+// carrinho presente na página (hoje só o do header; querySelectorAll
+// cobre também um cenário futuro com mais de um indicador, sem duplicar
+// lógica). Contador = soma das quantidades, nunca número de linhas.
+function updateCartBadges() {
+  const count = window.AmanteigadosCart.getCartCount();
+  document.querySelectorAll('.js-cart-count').forEach((badge) => {
+    if (count > 0) {
+      badge.hidden = false;
+      badge.textContent = String(count);
+    } else {
+      badge.hidden = true;
+      badge.textContent = '0';
+    }
+  });
+  document.querySelectorAll('.cart-shortcut').forEach((el) => {
+    el.setAttribute('aria-label', count === 1 ? 'Carrinho, 1 item' : `Carrinho, ${count} itens`);
+  });
+}
+
+// Anuncia para leitores de tela mesmo quando a mensagem repete a anterior
+// (limpa antes de definir, para o AT perceber a mudança de conteúdo).
+function announceCartMessage(message) {
+  if (!els.cartLiveRegion) return;
+  els.cartLiveRegion.textContent = '';
+  window.setTimeout(() => {
+    els.cartLiveRegion.textContent = message;
+  }, 30);
+}
+
+let cartToastTimer = null;
+function showCartToast(message) {
+  if (!els.cartToast || !els.cartToastText) return;
+  els.cartToastText.textContent = message;
+  els.cartToast.hidden = false;
+  els.cartToast.classList.add('visible');
+  if (cartToastTimer) window.clearTimeout(cartToastTimer);
+  cartToastTimer = window.setTimeout(() => {
+    els.cartToast.classList.remove('visible');
+    window.setTimeout(() => {
+      els.cartToast.hidden = true;
+    }, 250);
+  }, 2600);
+}
+
+// Carrega o carrinho persistido (se houver) e atualiza o badge do header
+// já na inicialização — independente de a página ter o catálogo completo.
+window.AmanteigadosCart.loadCart();
+updateCartBadges();
 
 // Página pode não ter todos os elementos (defensivo) — sai cedo se o
 // contêiner principal do catálogo não existir.
@@ -562,6 +619,19 @@ if (els.grid) {
     state.quantity = getQuantityMin(product);
     els.qtyRow.hidden = false;
     renderQuantityUI(product);
+
+    // "Adicionar ao carrinho" só aparece quando o produto é utilizável
+    // pelo carrinho (window.AmanteigadosCatalog.isUsableProduct) — nunca
+    // inventa "Consultar preço"/"Sob orçamento" para o caso contrário
+    // (docs/cart-spec.md, seção 10/24). "Ver carrinho" é só navegação e
+    // permanece sempre disponível.
+    if (els.addToCartBtn) {
+      els.addToCartBtn.hidden = !window.AmanteigadosCatalog.isUsableProduct(product);
+    }
+    if (els.cartToast) {
+      els.cartToast.hidden = true;
+      els.cartToast.classList.remove('visible');
+    }
   }
 
   function openProductDetails(product, triggerEl) {
@@ -631,6 +701,32 @@ if (els.grid) {
     if (!product) return;
     state.quantity = clampQuantity(product, state.quantity + getQuantityStep(product));
     renderQuantityUI(product);
+  });
+
+  // ===================== ADICIONAR AO CARRINHO =====================
+  // Usa product.id + state.quantity atuais; nunca toca sessionStorage
+  // diretamente — toda interação passa por window.AmanteigadosCart.
+  // Dialog permanece aberto após adicionar (seção 25 do prompt) — o
+  // visitante decide entre continuar escolhendo ou "Ver carrinho".
+  els.addToCartBtn?.addEventListener('click', () => {
+    const product = getActiveProducts().find((p) => p.id === state.selectedProductId);
+    if (!product) return;
+    if (!window.AmanteigadosCatalog.isUsableProduct(product)) return;
+
+    const result = window.AmanteigadosCart.addItem(product.id, state.quantity);
+    updateCartBadges();
+
+    if (result.ok) {
+      const message = 'Produto adicionado ao carrinho.';
+      announceCartMessage(message);
+      showCartToast(message);
+    } else {
+      // Nunca expõe o "reason" técnico (invalid-product/invalid-quantity)
+      // na interface — apenas uma mensagem humana genérica.
+      const message = 'Não foi possível adicionar este item ao carrinho.';
+      announceCartMessage(message);
+      showCartToast(message);
+    }
   });
 
   // ===================== URL (?q= e ?categoria=) =====================

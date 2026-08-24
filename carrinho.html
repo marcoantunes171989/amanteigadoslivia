@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carrinho | Amanteigados Lívia</title>
+  <meta name="description" content="Veja os itens do seu carrinho na Amanteigados Lívia, ajuste quantidades e confira o subtotal." />
+
+  <meta property="og:title" content="Carrinho | Amanteigados Lívia" />
+  <meta property="og:description" content="Veja os itens do seu carrinho na Amanteigados Lívia, ajuste quantidades e confira o subtotal." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://amanteigadoslivia.vercel.app/carrinho" />
+
+  <!-- Fase 4A.2: carrinho em modo demonstrativo (dados fictícios, nenhum
+       pedido real gerado). Evita que mecanismos de busca indexem esta
+       página como se fosse um carrinho comercial real. Revisar/remover
+       quando o catálogo/carrinho real forem publicados (ver
+       docs/catalog-homologation.md, seção "MODO DEMONSTRAÇÃO FRONTEND",
+       e docs/cart-spec.md, seção 21). NÃO aplicar na Home. -->
+  <meta name="robots" content="noindex,follow" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%237A3E48'/%3E%3Ctext x='50' y='66' font-size='48' text-anchor='middle' fill='white' font-family='Georgia'%3EA%3C/text%3E%3C/svg%3E" />
+</head>
+<body class="products-page">
+
+  <!-- Icon symbols (mesmo sprite de /produtos, subset necessário aqui) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-leaf" viewBox="0 0 40 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2 12c10 0 18-4 28-8M30 4c-2 3-2 5 0 8M22 6c-1 2-1 4 1 6"/><path d="M30 4c3 1 6 1 8 0-1 3-4 4-8 3Z" fill="currentColor" stroke="none" opacity=".85"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="page">
+
+    <!-- ===================== HEADER (idêntico a /produtos, sem "Cardápio" ativo) ===================== -->
+    <header class="site-header">
+      <a href="/" class="brand" aria-label="Amanteigados Lívia — Início">
+        <img src="assets/logo.jpg" alt="" width="104" height="104" />
+      </a>
+
+      <div class="header-actions">
+        <a href="/carrinho" class="cart-shortcut" aria-current="page" aria-label="Carrinho, 0 itens">
+          <svg class="ico" aria-hidden="true"><use href="#i-cart"/></svg>
+          <span class="cart-badge js-cart-count" hidden>0</span>
+        </a>
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="mainNav"><svg class="ico"><use href="#i-menu"/></svg></button>
+      </div>
+
+      <nav class="nav" id="mainNav" aria-label="Navegação principal">
+        <a href="/">Início</a>
+        <a href="/produtos">Cardápio</a>
+        <a href="/#encomendas">Encomendas</a>
+        <a href="/#festas-momentos">Festas</a>
+        <a href="/#personalizados-historia">Personalizados</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- ===================== HERO COMPACTO DO CARRINHO ===================== -->
+      <section class="hero hero-compact">
+        <div class="hero-copy">
+          <p class="eyebrow">Carrinho</p>
+          <h1>Seu carrinho</h1>
+          <p class="hero-sub">Revise os itens escolhidos, ajuste as quantidades e veja o subtotal antes de continuar.</p>
+        </div>
+      </section>
+
+      <!-- ===================== CARRINHO ===================== -->
+      <section class="cart-page" aria-labelledby="cartHeading">
+        <h2 id="cartHeading" class="sr-only">Carrinho</h2>
+
+        <div class="demo-notice" id="cartDemoNotice">
+          <svg class="ico" aria-hidden="true"><use href="#i-info"/></svg>
+          <p><strong>Carrinho demonstrativo.</strong> Esta experiência utiliza produtos e valores ilustrativos e não gera um pedido real.</p>
+        </div>
+
+        <div class="catalog-state cart-empty" id="cartEmptyState">
+          <h3 id="cartEmptyTitle" tabindex="-1">Seu carrinho está vazio</h3>
+          <p>Escolha seus amanteigados no cardápio para montar uma demonstração do seu pedido.</p>
+          <a href="/produtos" class="btn btn-primary">Ver cardápio</a>
+        </div>
+
+        <div class="cart-layout" id="cartLayout" hidden>
+          <div class="cart-items" id="cartItemsList"></div>
+
+          <aside class="cart-summary" id="cartSummary" aria-labelledby="cartSummaryHeading">
+            <h3 id="cartSummaryHeading">Resumo</h3>
+            <div class="cart-summary-row">
+              <span>Subtotal</span>
+              <strong id="cartSubtotalValue"></strong>
+            </div>
+            <p class="cart-summary-note">Valores demonstrativos.</p>
+            <div class="cart-summary-actions">
+              <a href="/produtos" class="btn btn-ghost">Continuar escolhendo</a>
+              <button type="button" class="btn btn-tertiary cart-clear-btn" id="clearCartBtn">Limpar carrinho</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===================== FOOTER ===================== -->
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="assets/footer-brand.png" alt="Amanteigados Lívia — Feitos com amor" width="190" height="52" />
+      </div>
+      <p class="footer-tag">Amanteigados feitos com amor para adoçar<br>seus melhores momentos.</p>
+      <nav class="footer-nav-simple" aria-label="Navegação do rodapé">
+        <a href="/">Início</a>
+        <a href="/produtos">Cardápio</a>
+        <a href="/#encomendas">Encomendas</a>
+        <a href="/#festas-momentos">Festas</a>
+        <a href="/#personalizados-historia">Personalizados</a>
+      </nav>
+    </footer>
+
+  </div>
+
+  <p id="cartLiveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+
+  <script src="app.js"></script>
+  <script src="catalog-demo-data.js"></script>
+  <script src="catalog-core.js"></script>
+  <script src="cart.js"></script>
+  <script src="carrinho.js"></script>
+</body>
+</html>

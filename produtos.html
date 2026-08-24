@@ -40,6 +40,7 @@
       <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
       <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
       <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
     </defs>
   </svg>
 
@@ -52,6 +53,10 @@
       </a>
 
       <div class="header-actions">
+        <a href="/carrinho" class="cart-shortcut" aria-label="Carrinho, 0 itens">
+          <svg class="ico" aria-hidden="true"><use href="#i-cart"/></svg>
+          <span class="cart-badge js-cart-count" hidden>0</span>
+        </a>
         <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="mainNav"><svg class="ico"><use href="#i-menu"/></svg></button>
       </div>
 
@@ -187,9 +192,22 @@
           </div>
         </div>
         <div class="qty-total-row" id="qtyTotalRow" hidden></div>
+
+        <div class="dialog-cart-actions" id="dialogCartActions">
+          <button type="button" class="btn btn-primary" id="addToCartBtn">
+            <svg class="ico" aria-hidden="true"><use href="#i-cart"/></svg>
+            Adicionar ao carrinho
+          </button>
+          <a href="/carrinho" class="cart-view-link">Ver carrinho</a>
+        </div>
+        <div class="cart-toast" id="cartToast" aria-hidden="true" hidden>
+          <span id="cartToastText"></span>
+        </div>
       </div>
     </div>
   </dialog>
+
+  <p id="cartLiveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
   <script src="app.js"></script>
   <script src="catalog-demo-data.js"></script>

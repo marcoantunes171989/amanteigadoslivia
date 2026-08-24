@@ -161,6 +161,25 @@ a{ color:inherit; text-decoration:none; }
 }
 .icon-btn.bag-btn{ background:var(--primary); color:#fff; }
 
+/* ---- Acesso ao carrinho (Fase 4A.2) — visível em todos os breakpoints,
+   diferente de .icon-btn (só mobile) ---- */
+.cart-shortcut{
+  position:relative; display:inline-flex; align-items:center; justify-content:center;
+  width:44px; height:44px; border-radius:var(--r-btn); color:var(--heading);
+  transition:background .18s ease, color .18s ease;
+}
+.cart-shortcut:hover{ background:rgba(122,62,72,.08); color:var(--primary); }
+.cart-shortcut:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
+.cart-shortcut .ico{ font-size:1.35rem; }
+.cart-badge{
+  position:absolute; top:2px; right:2px; min-width:17px; height:17px; padding:0 4px;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--primary); color:#fff; font-family:var(--sans); font-weight:700;
+  font-size:.66rem; line-height:1; border-radius:999px; border:1.5px solid var(--surface);
+  pointer-events:none;
+}
+.cart-badge[hidden]{ display:none; }
+
 /* ===================== EDITORIAL TYPE HELPERS ===================== */
 /* Eyebrow + subtítulo curto, reaproveitados em Hero e em todas as novas
    seções editoriais da Fase 2. */
@@ -207,6 +226,10 @@ a{ color:inherit; text-decoration:none; }
 }
 .hero-proof li{ display:flex; align-items:center; gap:8px; color:var(--muted); font-size:.86rem; }
 .hero-proof .ico{ color:var(--primary); font-size:1.05em; flex:0 0 auto; }
+
+/* ---- Hero compacto (sem foto) — usado em /carrinho (Fase 4A.2) ---- */
+.hero-compact{ min-height:0; padding:48px var(--pad) 40px; }
+.hero-compact .hero-copy{ max-width:640px; }
 
 /* ===================== MOMENTS ===================== */
 .moments{ padding:6px var(--pad) 30px; }
@@ -524,7 +547,8 @@ a{ color:inherit; text-decoration:none; }
    reforçado explicitamente aqui para o atributo `hidden` (alternado via
    JS) sempre funcionar. */
 .sort-field[hidden], .clear-search-btn[hidden], .categories-bar[hidden],
-.products-grid[hidden], .dialog-price-row[hidden], .qty-row[hidden]{
+.products-grid[hidden], .dialog-price-row[hidden], .qty-row[hidden],
+.demo-notice[hidden], .cart-layout[hidden], #addToCartBtn[hidden]{
   display:none;
 }
 
@@ -731,13 +755,122 @@ a{ color:inherit; text-decoration:none; }
 .qty-line{ color:var(--muted); font-size:.86rem; }
 .qty-total{ display:flex; align-items:center; justify-content:space-between; font-family:var(--serif); color:var(--heading); font-size:1.05rem; font-weight:600; margin-top:2px; }
 
+/* ---- Ações de carrinho no dialog (Fase 4A.2) ---- */
+.dialog-cart-actions{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:20px; }
+.dialog-cart-actions .btn{ flex:0 0 auto; }
+.cart-view-link{
+  font-family:var(--sans); font-weight:600; font-size:.9rem; color:var(--primary);
+  text-decoration:underline; text-underline-offset:3px;
+}
+.cart-view-link:hover{ color:var(--primary-hover); }
+.cart-view-link:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; border-radius:4px; }
+
+/* Toast discreto de feedback ao adicionar — só visual; a região
+   #cartLiveRegion cuida do anúncio para leitor de tela (não depende do
+   toast). position:sticky evita cobrir o botão fechar/stepper e evita o
+   risco de "absolute" ficar fora da área visível em conteúdo longo. */
+.cart-toast{
+  position:sticky; bottom:12px; z-index:5; margin-top:16px;
+  display:flex; align-items:center; justify-content:center; text-align:center;
+  background:var(--cacau); color:#fff; font-family:var(--sans); font-weight:600; font-size:.86rem;
+  padding:12px 18px; border-radius:var(--r-bar); box-shadow:0 10px 24px rgba(46,32,29,.25);
+  opacity:0; transform:translateY(8px); transition:opacity .25s ease, transform .25s ease;
+}
+.cart-toast[hidden]{ display:none; }
+.cart-toast.visible{ opacity:1; transform:translateY(0); }
+
 @media (max-width:767px){
   .dialog-panel{ grid-template-columns:1fr; }
   .dialog-image{ aspect-ratio:4/3; }
   .dialog-body{ padding:24px; }
   .dialog-title{ font-size:1.35rem; }
+  .dialog-cart-actions{ flex-direction:column; align-items:stretch; }
+  .dialog-cart-actions .btn{ width:100%; }
+  .cart-view-link{ text-align:center; }
 }
 
 @media (prefers-reduced-motion: reduce){
   .category-chip, .clear-search-btn, .qty-btn{ transition:none; }
+  .cart-toast{ transition:none; }
+}
+
+/* ============================================================
+   CARRINHO (/carrinho) — FASE 4A.2
+   ============================================================ */
+.cart-page{ padding:6px var(--pad) 48px; }
+
+/* Estado vazio reaproveita .catalog-state (mesmo padrão visual dos
+   estados vazios de /produtos) — apenas o foco programático após
+   "Limpar carrinho" precisa de reset de outline, já que o título nunca
+   participa da navegação normal por Tab (tabindex="-1"). */
+#cartEmptyTitle:focus{ outline:none; }
+
+.cart-layout{ display:grid; grid-template-columns:1fr; gap:28px; align-items:start; }
+
+.cart-items{ display:flex; flex-direction:column; gap:16px; min-width:0; }
+
+.cart-item{
+  display:grid; grid-template-columns:96px 1fr auto; gap:18px; align-items:center;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:16px; box-shadow:var(--sh-card);
+}
+.cart-item-image{
+  position:relative; width:96px; height:96px; flex:0 0 auto;
+  border-radius:var(--r-bar); overflow:hidden; background:var(--surface-muted);
+}
+.cart-item-image img{ width:100%; height:100%; object-fit:cover; }
+.cart-item-image .product-image-placeholder{ min-height:96px; gap:4px; }
+.cart-item-image .placeholder-ornament{ width:28px; }
+.cart-item-image .product-image-placeholder span{ font-size:.6rem; text-align:center; padding:0 4px; }
+.cart-item-image .demo-image-tag{ font-size:.56rem; padding:2px 6px; right:4px; bottom:4px; }
+
+.cart-item-body{ min-width:0; }
+.cart-item-category{
+  color:var(--rose); font-family:var(--sans); font-weight:600; font-size:.7rem;
+  letter-spacing:.05em; text-transform:uppercase; margin-bottom:2px;
+}
+.cart-item-name{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.05rem; line-height:1.25; }
+.cart-item-weight{ color:var(--muted); font-size:.82rem; margin-top:2px; }
+.cart-item-pricing{ display:flex; align-items:baseline; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.cart-item-price, .cart-item-price-promo{ font-family:var(--serif); font-weight:700; color:var(--primary); font-size:1rem; }
+.cart-item-price-strike{ color:var(--muted); font-weight:500; font-size:.86rem; text-decoration:line-through; }
+
+.cart-item-controls{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex:0 0 auto; }
+.cart-item-subtotal{ font-family:var(--serif); font-weight:700; color:var(--heading); font-size:.98rem; white-space:nowrap; }
+.cart-item-remove{
+  background:none; border:none; color:var(--muted); font-family:var(--sans); font-size:.8rem;
+  text-decoration:underline; text-underline-offset:2px; cursor:pointer; padding:4px;
+}
+.cart-item-remove:hover{ color:var(--primary); }
+.cart-item-remove:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; border-radius:4px; }
+
+.cart-summary{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-card);
+  padding:22px; box-shadow:var(--sh-card);
+}
+.cart-summary h3{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:1.1rem; margin-bottom:14px; }
+.cart-summary-row{
+  display:flex; align-items:center; justify-content:space-between;
+  font-family:var(--sans); font-size:.98rem; color:var(--text);
+  padding-top:12px; border-top:1px solid var(--border);
+}
+.cart-summary-row strong{ font-family:var(--serif); color:var(--heading); font-size:1.2rem; }
+.cart-summary-note{ color:var(--muted); font-size:.78rem; margin-top:8px; }
+.cart-summary-actions{ display:flex; flex-direction:column; gap:10px; margin-top:20px; }
+.cart-summary-actions .btn{ width:100%; }
+.cart-clear-btn{ color:var(--muted); }
+.cart-clear-btn:hover{ color:var(--primary); background:rgba(122,62,72,.06); }
+
+@media (min-width:900px){
+  .cart-layout{ grid-template-columns:minmax(0,1fr) minmax(300px,360px); gap:32px; }
+}
+
+@media (max-width:639px){
+  .cart-item{ grid-template-columns:72px 1fr; grid-template-areas:"image body" "controls controls"; }
+  .cart-item-image{ width:72px; height:72px; grid-area:image; }
+  .cart-item-body{ grid-area:body; }
+  .cart-item-controls{
+    grid-area:controls; flex-direction:row; align-items:center; justify-content:space-between;
+    margin-top:6px; padding-top:10px; border-top:1px solid var(--border);
+  }
 }
