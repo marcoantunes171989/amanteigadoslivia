@@ -24,14 +24,27 @@
   // sessionStorage está indisponível ou falha em qualquer operação.
   let memoryCart = { version: CART_VERSION, items: [] };
 
+  // Modo degradado (Fase 4A.1.1): uma vez que QUALQUER operação de
+  // storage (getItem/setItem/removeItem) lança, o serviço para de
+  // confiar em sessionStorage pelo resto da página — nunca volta a
+  // consultá-lo. Sem isso, uma leitura futura bem-sucedida (mas de um
+  // valor antigo/vazio, já que a escrita anterior falhou) sobrescreveria
+  // memoryCart e apagaria o estado correto que só existia em memória.
+  // Nunca acessa sessionStorage no carregamento do script — só reage a
+  // uma falha real de operação.
+  let storageDisabled = false;
+
   function emptyCart() {
     return { version: CART_VERSION, items: [] };
   }
 
-  function isValidProductIdShape(productId) {
-    if (typeof productId === 'string') return productId.trim() !== '';
-    if (typeof productId === 'number') return Number.isFinite(productId);
-    return false;
+  // Nunca expõe a referência interna de memoryCart/seus itens — sempre
+  // devolve uma estrutura nova, com itens novos (Fase 4A.1.1, correção 3).
+  function cloneStoredCart(cart) {
+    return {
+      version: CART_VERSION,
+      items: cart.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+    };
   }
 
   function isStructurallyValidQuantity(quantity) {
@@ -45,15 +58,21 @@
 
   // ---- Storage — acesso sempre defensivo (seção 37 do prompt: getItem,
   // setItem e removeItem podem todos lançar) ----
+  // Uma vez degradado, nenhuma das três funções abaixo volta a tocar
+  // sessionStorage — evita reler um valor antigo/vazio depois de uma
+  // escrita que falhou silenciosamente (ver storageDisabled acima).
   function readStorage() {
+    if (storageDisabled) return undefined;
     try {
       return sessionStorage.getItem(STORAGE_KEY);
     } catch (e) {
+      storageDisabled = true;
       return undefined; // indisponível — undefined distingue de "ausente" (null)
     }
   }
 
   function writeStorage(cart) {
+    if (storageDisabled) return;
     const persisted = {
       version: CART_VERSION,
       items: cart.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
@@ -62,15 +81,19 @@
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch (e) {
       // Falha ao persistir (storage indisponível/cota excedida): a
-      // memória continua sendo a fonte de verdade desta página.
+      // memória continua sendo a fonte de verdade desta página — nunca
+      // mais tentamos sessionStorage pelo resto da execução.
+      storageDisabled = true;
     }
   }
 
   function clearStorageKey() {
+    if (storageDisabled) return;
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch (e) {
       // Sem storage disponível — nada a limpar; memória segue válida.
+      storageDisabled = true;
     }
   }
 
@@ -97,7 +120,7 @@
       const productId = raw.productId;
       const quantity = raw.quantity;
 
-      if (!isValidProductIdShape(productId)) continue;
+      if (!Catalog.isValidProductId(productId)) continue;
       if (!isStructurallyValidQuantity(quantity)) continue;
 
       const product = Catalog.getProductById(productId);
@@ -113,17 +136,20 @@
   }
 
   // ---- Load / Save ----
+  // Ambas retornam sempre uma cópia (cloneStoredCart) — nunca a referência
+  // interna de memoryCart. Mutar o objeto retornado nunca afeta o serviço.
   function loadCart() {
     const raw = readStorage();
 
     if (raw === undefined) {
-      // Storage indisponível — opera inteiramente em memória.
+      // Storage indisponível/degradado — opera inteiramente em memória,
+      // sem tentar sessionStorage de novo.
       memoryCart = sanitizeCart(memoryCart);
-      return memoryCart;
+      return cloneStoredCart(memoryCart);
     }
     if (raw === null) {
       memoryCart = emptyCart();
-      return memoryCart;
+      return cloneStoredCart(memoryCart);
     }
 
     let parsed;
@@ -134,7 +160,7 @@
       // chave corrompida best-effort.
       clearStorageKey();
       memoryCart = emptyCart();
-      return memoryCart;
+      return cloneStoredCart(memoryCart);
     }
 
     const sanitized = sanitizeCart(parsed);
@@ -147,14 +173,14 @@
     }
 
     memoryCart = sanitized;
-    return memoryCart;
+    return cloneStoredCart(memoryCart);
   }
 
   function saveCart(cart) {
     const sanitized = sanitizeCart(cart);
     memoryCart = sanitized;
     writeStorage(sanitized);
-    return memoryCart;
+    return cloneStoredCart(memoryCart);
   }
 
   // ---- Leitura enriquecida (nunca persistida) ----

@@ -41,8 +41,19 @@
   function getProducts() {
     return CATALOG_SOURCE.products;
   }
+  // Regra única de id válido (Fase 4A.1.1) — string não vazia (após trim)
+  // ou number finito. Nunca converte tipo (1 !== '1'); string em branco
+  // ('   ') é inválida. Reaproveitada por getProductById() e
+  // isUsableProduct() para nunca haver dois critérios divergentes de id
+  // entre catalog-core.js e cart.js.
+  function isValidProductId(productId) {
+    if (typeof productId === 'string') return productId.trim() !== '';
+    if (typeof productId === 'number') return Number.isFinite(productId);
+    return false;
+  }
+
   function getProductById(productId) {
-    if (productId === null || productId === undefined) return null;
+    if (!isValidProductId(productId)) return null;
     return CATALOG_SOURCE.products.find((p) => p && p.id === productId) || null;
   }
 
@@ -167,11 +178,10 @@
   }
 
   // ---- Produto utilizável pelo carrinho (docs/cart-spec.md, seção 9) ----
-  // Não exige pricingMode (não implementado). Mesmo princípio de id válido
-  // já usado por isValidProduct() em produtos.js: string ou number.
+  // Não exige pricingMode (não implementado).
   function isUsableProduct(product) {
     if (!product || typeof product !== 'object') return false;
-    if (typeof product.id !== 'string' && typeof product.id !== 'number') return false;
+    if (!isValidProductId(product.id)) return false;
     if (product.active !== true) return false;
     if (!isValidPrice(getEffectivePrice(product))) return false;
     if (!isConsistentQuantityRange(product)) return false;
@@ -183,6 +193,7 @@
     getCategories,
     getProducts,
     getProductById,
+    isValidProductId,
 
     isValidPrice,
     formatPrice,
