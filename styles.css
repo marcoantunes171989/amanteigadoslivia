@@ -63,7 +63,6 @@
   --fs-caption:       clamp(.8125rem, .15vw, .875rem);   /* 13px -> 14px */
 
   /* ---- Raio (Pequeno/Médio/Grande, conforme guia) ---- */
-  --r-page: 14px;
   --r-btn: 8px;   /* Pequeno */
   --r-bar: 12px;  /* Médio */
   --r-card: 16px; /* Grande — cards de produto/imagem */
@@ -72,7 +71,6 @@
   --sh-card: 0 1px 4px rgba(74,46,42,.05);
 
   --pad: clamp(20px, 3.3vw, 40px);
-  --maxw: 1160px;
 }
 
 *{ box-sizing:border-box; margin:0; padding:0; }
@@ -80,10 +78,9 @@ html{ scroll-behavior:smooth; }
 body{
   font-family:var(--sans);
   color:var(--text);
-  background:var(--outer);
+  background:var(--page);
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
-  padding:24px 20px;
 }
 img{ display:block; max-width:100%; }
 a{ color:inherit; text-decoration:none; }
@@ -93,12 +90,13 @@ a{ color:inherit; text-decoration:none; }
   overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
 }
 
-/* floating rounded page (reference container) */
+/* site full width — sem moldura externa (o próprio .page é a viewport).
+   overflow:hidden preservado: sem ele, .hero-photo (que já ultrapassava
+   levemente a viewport em ~320px antes desta mudança) passa a gerar scroll
+   horizontal real — antes ficava mascarado pelo recorte do card externo. */
 .page{
-  max-width:var(--maxw); margin:0 auto;
+  width:100%;
   background:var(--page);
-  border-radius:var(--r-page);
-  box-shadow:var(--sh-page);
   overflow:hidden;
   position:relative;
 }
@@ -428,21 +426,18 @@ a{ color:inherit; text-decoration:none; }
 }
 
 /* ===================== DESKTOP AMPLO — HOME (min-width 1280px) =====================
-   Reduz o respiro lateral excessivo da Home em telas largas (1366–1920px+) e dá mais
-   protagonismo à foto do hero. Escopado por .home-page (classe exclusiva do <body> da
-   Home) para não afetar /produtos e /carrinho, que compartilham .page/.hero/.hero-copy
-   e já usam sua própria classe (.products-page) para diferenças de página. */
+   Dá mais protagonismo à foto do hero e melhora a composição editorial da coluna
+   de texto em telas largas (1366–1920px+). Escopado por .home-page (classe exclusiva
+   do <body> da Home) para não afetar /produtos e /carrinho, que compartilham
+   .hero/.hero-copy e já usam sua própria classe (.products-page) para diferenças
+   de página. */
 @media (min-width:1280px){
-  .home-page{ --maxw:1800px; }
   .home-page .hero-copy{ max-width:44%; }
   .home-page .hero-sub{ max-width:52ch; }
 }
 
 /* ===================== TABLET (640–899) ===================== */
 @media (max-width:899px){
-  body{ padding:0; }
-  .page{ border-radius:0; box-shadow:none; max-width:none; }
-
   .site-header{ display:flex; align-items:center; height:auto; padding:10px var(--pad); }
   .brand{ width:72px; height:72px; }
   .header-actions{ margin-left:auto; }
