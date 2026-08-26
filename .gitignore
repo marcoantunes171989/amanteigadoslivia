@@ -1,3 +1,36 @@
+# ============================================================
+# Amanteigados Livia - arquivos locais / sensiveis
+# ============================================================
+
+# Dependencies
 node_modules/
-.vercel
+
+# Vercel local state
+.vercel/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local package configuration (may contain tokens)
+.npmrc
+
+# Private keys / certificates
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Operating system files
 .DS_Store
+Thumbs.db
+Desktop.ini
