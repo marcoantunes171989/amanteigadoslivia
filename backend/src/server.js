@@ -1,5 +1,6 @@
 import app from './app.js';
 import config from './config.js';
+import { closeDatabasePool } from './database.js';
 
 const { host, port } = config.app;
 
@@ -12,17 +13,33 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 
+let shuttingDown = false;
+
 const shutdown = (signal) => {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+
   console.log(`[amanteigados-livia-api] received ${signal}; shutting down`);
 
-  server.close((error) => {
+  server.close(async (error) => {
     if (error) {
       console.error('[amanteigados-livia-api] shutdown error', error);
       process.exitCode = 1;
       return;
     }
 
-    process.exitCode = 0;
+    try {
+      await closeDatabasePool();
+      process.exitCode = 0;
+    } catch (dbError) {
+      console.error('[amanteigados-livia-api] database pool shutdown error', {
+        code: dbError.code ?? 'unknown_error',
+      });
+      process.exitCode = 1;
+    }
   });
 };
 
