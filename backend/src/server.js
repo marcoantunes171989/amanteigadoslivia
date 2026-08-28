@@ -1,10 +1,10 @@
 import app from './app.js';
+import config from './config.js';
 
-const HOST = '127.0.0.1';
-const PORT = 3101;
+const { host, port } = config.app;
 
-const server = app.listen(PORT, HOST, () => {
-  console.log(`[amanteigados-livia-api] listening on http://${HOST}:${PORT}`);
+const server = app.listen(port, host, () => {
+  console.log(`[amanteigados-livia-api] listening on http://${host}:${port}`);
 });
 
 server.on('error', (error) => {
