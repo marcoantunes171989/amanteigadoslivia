@@ -1,0 +1,22 @@
+{
+  "name": "amanteigados-livia-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend API for Amanteigados Livia development and homologation environments.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "dependencies": {
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "nodemon": "3.1.14"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  }
+}
