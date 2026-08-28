@@ -1,4 +1,5 @@
 import express from 'express';
+import { checkReadiness } from './readiness.js';
 
 const app = express();
 
@@ -9,9 +10,35 @@ app.use(express.json({
 }));
 
 app.get('/health', (_request, response) => {
+  response.set('Cache-Control', 'no-store');
   response.status(200).json({
     status: 'ok',
     service: 'amanteigados-livia-api',
+  });
+});
+
+app.get('/ready', async (_request, response) => {
+  const readiness = await checkReadiness();
+
+  response.set('Cache-Control', 'no-store');
+
+  if (readiness.ready) {
+    response.status(200).json({
+      status: 'ready',
+      service: 'amanteigados-livia-api',
+      dependencies: {
+        database: 'ready',
+      },
+    });
+    return;
+  }
+
+  response.status(503).json({
+    status: 'not_ready',
+    service: 'amanteigados-livia-api',
+    dependencies: {
+      database: 'not_ready',
+    },
   });
 });
 
