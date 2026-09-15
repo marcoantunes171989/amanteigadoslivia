@@ -1,9 +1,11 @@
 # Bootstrap administrativo do schema `app`
 
-> Fase 5.0D.6C — DRAFT. Estes artefatos **não foram executados** contra
-> nenhum ambiente (DEV, HOMOLOG ou PROD). Complementa
-> `docs/database/SCHEMA_SECURITY_SPEC.md` (especificação de privilégios) e
-> `docs/PROJECT_MAP.md` (estado geral do projeto).
+> Fase 5.0D.6C — **executada e auditada em DEV**. Os três scripts foram
+> executados nesta ordem no database `amanteigados_dev` (checkpoint Git
+> `ecbb05d4b717b74c5d509911210724f96c5c9b64`), todos com exit code 0;
+> POSTCHECK read-only aprovado. HOMOLOG e PROD permanecem não executados.
+> Complementa `docs/database/SCHEMA_SECURITY_SPEC.md` (especificação de
+> privilégios) e `docs/PROJECT_MAP.md` (estado geral do projeto).
 
 ## Finalidade
 
@@ -30,9 +32,12 @@ migrations".
 2. `002_migrator_create_app_schema.sql`
 3. `003_admin_finalize_app_schema.sql`
 
-Os scripts **não** devem ser executados fora desta ordem, e **não** devem
-ser executados nesta fase (fase atual é apenas de criação de artefatos —
-ver `docs/PROJECT_MAP.md`, gates G1–G3).
+Os scripts **não** devem ser executados fora desta ordem. Em **DEV**, os
+três já foram executados nesta ordem (ver checkpoint acima). Uma nova
+execução completa da sequência só é necessária em cenário de
+recuperação (ver seção "Cleanup do privilégio temporário" abaixo) ou
+para provisionar um novo ambiente — HOMOLOG e PROD permanecem
+bloqueados até os gates descritos em `docs/PROJECT_MAP.md`.
 
 ## Identidades esperadas por script
 
@@ -202,6 +207,8 @@ rodou ou foi interrompido no meio:
 ## Ambientes
 
 Estes scripts são **logicamente reutilizáveis** em DEV, HOMOLOG e PROD
-através das variáveis psql descritas acima. Nesta fase, **nenhum deles é
-executado em nenhum ambiente** — DEV, HOMOLOG e PROD permanecem
-bloqueados até os gates G1–G5 descritos em `docs/PROJECT_MAP.md`.
+através das variáveis psql descritas acima. Em **DEV**, os três já
+foram executados nesta ordem (ver checkpoint acima) e o schema `app`
+existe, vazio, com owner `amanteigados_dev_owner`. **HOMOLOG** e
+**PROD** permanecem bloqueados até os gates G1–G5 descritos em
+`docs/PROJECT_MAP.md`.
