@@ -189,8 +189,7 @@ Regras explícitas:
 
 **Nenhum `ALTER DEFAULT PRIVILEGES` é executado nesta fase.** Os
 `DEFAULT PRIVILEGES` futuros são definidos sob a identidade **Owner**
-(`ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA app ...`, execução
-futura).
+(`ALTER DEFAULT PRIVILEGES FOR ROLE <owner> ...`, execução futura).
 
 ### Tabelas
 
@@ -214,15 +213,32 @@ futura).
 ### Functions / Procedures / Routines
 
 Novas functions PostgreSQL historicamente podem receber `EXECUTE` para
-`PUBLIC` por default. Nossa política **remove esse acesso quando
-aplicável**. Intenção futura documentada (SQL **não** executado nesta
-fase):
+`PUBLIC` por default. Nossa política **remove esse acesso**. Intenção
+futura documentada (SQL **não** executado nesta fase):
 
 ```sql
 ALTER DEFAULT PRIVILEGES FOR ROLE <OWNER>
-IN SCHEMA app
 REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 ```
+
+Deliberadamente **sem** `IN SCHEMA`. No PostgreSQL, default privileges
+configurados por schema (`IN SCHEMA app ...`) são **somados** aos
+defaults hard-wired do servidor — nunca os substituem ou removem. Um
+`IN SCHEMA app REVOKE EXECUTE ... FROM PUBLIC` portanto **não** remove o
+`EXECUTE` automático que `PUBLIC` já recebe por hard-wired default;
+somente a forma sem `IN SCHEMA` (escopo Owner dentro do database atual)
+remove esse hard-wired default. O efeito é portanto um hardening
+**global ao Owner dentro do database atual**, aplicável a
+functions/routines futuras criadas pelo Owner em qualquer schema —
+não limitado ao schema `app`. `TABLES`/`SEQUENCES` não recebem ACL
+artificial equivalente: os defaults normais do PostgreSQL já não
+concedem privilégios a `PUBLIC` nesses tipos de objeto, então revogar
+algo que `PUBLIC` nunca teria seria um ACL sem efeito prático, além de
+mascarar o estado real em `pg_default_acl`. Grants de runtime para
+Runtime APP pertencem a fase posterior. `owner_role` permanece, pela
+arquitetura corrente, dedicado ao schema `app` como único schema de
+negócio onde cria objetos — este hardening reflete o escopo real do
+comando do PostgreSQL, sem ampliar essa responsabilidade.
 
 Functions/procedures recebem `EXECUTE` apenas para roles explicitamente
 autorizadas — nunca por default amplo.
