@@ -7,15 +7,16 @@
 > `docs/cart-spec.md` e `docs/catalog-spec.md` (especificações de
 > produto/frontend) sem duplicá-los.
 
-**Fase ativa: MIGRATION FRAMEWORK / BUSINESS MIGRATIONS - DRAFT** —
-Framework de migrations / business migrations em DRAFT (ver seção 2);
-ainda não iniciado. A fase 5.0D.6F (`RUNTIME APP GRANTS` para
-`app_role` em DEV) foi **CONCLUÍDA/AUDITADA EM DEV**. Estado auditado:
-APP schema USAGE=true, CREATE=false; DB CREATE=false; TABLES futuras
-SELECT, INSERT, UPDATE, DELETE; SEQUENCES futuras USAGE; sem grant
-option; sem EXECUTE automático em FUNCTIONS; APP sem membership
+**Fase ativa: 5.0D.6G MIGRATION FRAMEWORK DRAFT** — Draft seguro do
+framework de migrations PostgreSQL (ver seção 2); ainda **não
+executado**. A fase 5.0D.6F (`RUNTIME APP GRANTS` para `app_role` em
+DEV) foi **CONCLUÍDA/AUDITADA EM DEV**. Estado auditado: APP schema
+USAGE=true, CREATE=false; DB CREATE=false; TABLES futuras SELECT,
+INSERT, UPDATE, DELETE; SEQUENCES futuras USAGE; sem grant option;
+sem EXECUTE automático em FUNCTIONS; APP sem membership
 Owner/Migrator; APP sem SET ROLE Owner/Migrator; `search_path = app,
-pg_catalog`; schema `app` continua vazio. HOMOLOG e PROD permanecem
+pg_catalog`; schema `app` continua vazio (ledger ainda não criado).
+Business migrations, modelo de catálogo, HOMOLOG e PROD permanecem
 bloqueados.
 
 ---
@@ -38,12 +39,13 @@ bloqueados.
 | 5.0D.6D | `search_path` por database do schema `app` em DEV (`backend/database/config/001_admin_set_search_path.sql`) para Owner/Migrator/Runtime APP | Concluída — **executado e auditado em DEV**; `search_path = app, pg_catalog` confirmado POR DATABASE para as três roles |
 | 5.0D.6E | `DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` em DEV (`backend/database/config/002_owner_default_privileges.sql`), escopo global ao database | Concluída — **executado e auditado em DEV**; `owner_role` com exatamente 1 entrada `pg_default_acl` (global, FUNCTIONS, `PUBLIC` sem `EXECUTE`); zero default ACL de TABLES/SEQUENCES; `migrator_role`/`app_role` com zero `pg_default_acl` |
 | 5.0D.6F | Grants de runtime para `app_role` em DEV (`backend/database/config/003_runtime_app_grants.sql`) | Concluída — **CONCLUÍDO/AUDITADO EM DEV**; APP schema USAGE=true, CREATE=false; DB CREATE=false; TABLES futuras SELECT/INSERT/UPDATE/DELETE; SEQUENCES futuras USAGE; sem grant option; sem EXECUTE automático em FUNCTIONS; APP sem membership/SET ROLE Owner/Migrator; `search_path = app, pg_catalog`; schema `app` vazio; 003 **não** deve ser reexecutado em DEV |
+| 5.0D.6G | Draft seguro do framework de migrations PostgreSQL (`backend/database/migrations/`, ledger `app.schema_migrations`, spec `docs/database/MIGRATION_FRAMEWORK_SPEC.md`) | Draft criado — **ainda NÃO executado**; business migrations, modelo de catálogo, HOMOLOG e PROD bloqueados |
 
 ## 2. Fase ativa
 
-**MIGRATION FRAMEWORK / BUSINESS MIGRATIONS - DRAFT** — Checkpoint Git
-atual (fase 5.0D.6F fechada):
-`d28fd38543a092fce3587525588f1c438e93027e`, branch
+**5.0D.6G MIGRATION FRAMEWORK DRAFT** — Checkpoint Git de partida
+desta fase (HEAD obrigatório, 5.0D.6F já fechada):
+`45859d162600f8a4fcb1edbf74dd8f4347033b73`, branch
 `dev/backend-admin-local`. Bootstrap administrativo do schema `app` em
 DEV (5.0D.6C) **executado e auditado**: scripts
 `001_admin_prepare_app_schema.sql` → `002_migrator_create_app_schema.sql`
@@ -74,10 +76,16 @@ porque APP já possuía USAGE; essa tentativa não chegou a `SET ROLE`,
 posterior confirmou que o estado final completo já estava presente.
 Por segurança, `003` **não** deve ser reexecutado em DEV. A origem
 exata da aplicação anterior dos grants não foi determinada, mas o
-estado atual foi auditado integralmente. Fase atual: framework de
-migrations / business migrations em **DRAFT** — ainda não iniciado.
-HOMOLOG e PROD permanecem bloqueados (ver
-`docs/database/SCHEMA_SECURITY_SPEC.md`, seções 7 e 8).
+estado atual foi auditado integralmente. Fase atual: **5.0D.6G
+MIGRATION FRAMEWORK DRAFT** — artefatos criados no Git
+(`backend/database/migrations/0001_create_migration_ledger.sql`,
+`backend/database/migrations/README.md`,
+`docs/database/MIGRATION_FRAMEWORK_SPEC.md`); ledger
+`app.schema_migrations` **ainda não criado** no banco. A 0001 **não**
+foi executada. Business migrations, modelo de catálogo, HOMOLOG e
+PROD permanecem bloqueados (ver
+`docs/database/SCHEMA_SECURITY_SPEC.md`, seções 7 e 8, e
+`docs/database/MIGRATION_FRAMEWORK_SPEC.md`).
 
 ## 3. Próximos gates
 
@@ -99,8 +107,10 @@ HOMOLOG e PROD permanecem bloqueados (ver
 
 ### Fase atual
 
-- MIGRATION FRAMEWORK / BUSINESS MIGRATIONS - DRAFT
-- Ainda **não iniciado**
+- 5.0D.6G MIGRATION FRAMEWORK DRAFT
+- Draft criado no Git; **ainda NÃO executado**
+- Business migrations permanecem **bloqueadas**
+- Modelo de catálogo permanece **bloqueado**
 - HOMOLOG permanece **bloqueado**
 - PROD permanece **bloqueado**
 - `003_runtime_app_grants.sql` **não** deve ser reexecutado em DEV
@@ -109,15 +119,15 @@ HOMOLOG e PROD permanecem bloqueados (ver
 
 | Gate | Descrição | Pré-requisito |
 |---|---|---|
-| 1 | Framework de migrations / business migrations (DRAFT; ainda não iniciado) | Fase 5.0D.6F concluída/auditada em DEV |
-| 2 | Promoção do schema homologado em DEV para HOMOLOG (somente após DEV completo) | Gate 1 aprovado + homologação comercial de catálogo (bloqueio independente, ver `docs/catalog-homologation.md`) |
+| 1 | 5.0D.6G MIGRATION FRAMEWORK DRAFT (artefatos no Git; ainda **não executado**) | Fase 5.0D.6F concluída/auditada em DEV |
+| 2 | Promoção do schema homologado em DEV para HOMOLOG (somente após DEV completo; business migrations e modelo de catálogo ainda bloqueados) | Gate 1 aprovado + execução auditada da 0001 em DEV + homologação comercial de catálogo (bloqueio independente, ver `docs/catalog-homologation.md`) |
 | 3 | Promoção HOMOLOG → PROD via fluxo de release (`DRAFT → READY_FOR_HOMOLOG → HOMOLOGATED → PUBLISHED`), somente após aprovação humana explícita | Gate 2 aprovado, gate explícito de produção |
 
 ## 4. Ambientes
 
 | Ambiente | Banco | Estado atual |
 |---|---|---|
-| DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`; vazio, zero relations/routines); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; framework de migrations em DRAFT (não iniciado) |
+| DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`; vazio, zero relations/routines); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK DRAFT no Git, **ainda NÃO executado** (ledger `app.schema_migrations` ainda não criado) |
 | HOMOLOG | Supabase (Session Pooler 5432, TLS) | `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); `public` sem tabelas de negócio; nenhum objeto de negócio criado |
 | PROD | Não provisionado | Nomes de role equivalentes previstos, **não criados nesta fase** |
 
@@ -162,7 +172,7 @@ equivalente). Ver `docs/database/SCHEMA_SECURITY_SPEC.md`, seção
 |---|---|---|
 | Frontend | Estável | Landing page + `/produtos` + `/carrinho` fiéis à referência; catálogo em modo demo |
 | Backend | Em desenvolvimento | Fundação Express + config + pool + readiness prontos; sem rotas de negócio ainda |
-| Database | Bootstrap DEV + `search_path` + `DEFAULT PRIVILEGES` + runtime APP grants executados e auditados | Schema `app` existe em DEV (owner `amanteigados_dev_owner`), vazio; `search_path` por database executado e auditado (5.0D.6D); `DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` executado e auditado (5.0D.6E); grants de runtime para `app_role` CONCLUÍDOS/AUDITADOS (5.0D.6F); framework de migrations em DRAFT (não iniciado); HOMOLOG e PROD permanecem bloqueados |
+| Database | Bootstrap DEV + `search_path` + `DEFAULT PRIVILEGES` + runtime APP grants executados e auditados | Schema `app` existe em DEV (owner `amanteigados_dev_owner`), vazio; `search_path` por database executado e auditado (5.0D.6D); `DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` executado e auditado (5.0D.6E); grants de runtime para `app_role` CONCLUÍDOS/AUDITADOS (5.0D.6F); 5.0D.6G MIGRATION FRAMEWORK DRAFT no Git, ainda **não executado**; business migrations, modelo de catálogo, HOMOLOG e PROD permanecem bloqueados |
 | Admin (painel administrativo) | Não iniciado | Depende do schema `app` e do modelo de releases |
 | Releases (painel "Ambientes & Releases") | Não iniciado | Requisitos documentados nesta fase em `SCHEMA_SECURITY_SPEC.md`, seção "Painel Ambientes & Releases" |
 
