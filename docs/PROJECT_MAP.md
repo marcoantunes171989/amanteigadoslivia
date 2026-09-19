@@ -9,9 +9,11 @@
 
 **Fase ativa: FAST-TRACK HOMOLOG CATÁLOGO** — primeiro ambiente
 funcional em HOMOLOG (Vercel `homologacao` + Supabase
-`amanteigados-livia-homolog`). A 0002 (`0002_criar_nucleo_catalogo`)
-permanece versionada e **imutável** após esta revisão R2. Artefato de
-carga: `backend/database/releases/0001_catalogo_inicial.sql`. API:
+`amanteigados-livia-homolog`). Primeira tentativa HML da 0002 falhou
+(`operator does not exist: name[] = text[]`) e teve rollback integral;
+o ledger HML permaneceu somente com 0001. A 0002 foi corrigida no Git
+antes da primeira aplicação bem-sucedida. Artefato de carga:
+`backend/database/releases/0001_catalogo_inicial.sql`. API:
 `GET /api/catalogo` (server-side `DATABASE_URL`, role Runtime APP).
 PROD (`amanteigados-livia-prod`) permanece bloqueado.
 
@@ -53,7 +55,9 @@ Fluxo: `DEV → GitHub → Vercel HOMOLOG → Supabase HOMOLOG → teste/aprova�
 Artefatos:
 
 - `backend/database/migrations/0002_criar_nucleo_catalogo.sql` (SHA256
-  `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`)
+  `37e7111e394696af181ee2e71a962dc8a35b1a9342f5a38f1a138a6bbdac2297`;
+  o SHA antigo `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`
+  não deve ser usado)
 - `backend/database/releases/0001_catalogo_inicial.sql`
 - `GET /api/catalogo` (`api/catalogo.js` na Vercel; Express em `backend/src/app.js`)
 - Frontend `/produtos` e `/carrinho` consomem a API; sem fallback fake
@@ -85,7 +89,9 @@ A 0002 **não** é reexecutável. PROD permanece bloqueado.
 ### Fase atual
 
 - FAST-TRACK HOMOLOG CATÁLOGO
-- 0002 pronta para primeira aplicação oficial em HOMOLOG
+- 0002 corrigida após falha HML `name[]` × `text[]` (rollback integral;
+  ledger HML ficou só com 0001); pronta para primeira aplicação
+  bem-sucedida em HOMOLOG
 - Release versionado: `backend/database/releases/0001_catalogo_inicial.sql`
 - API: `GET /api/catalogo` com `DATABASE_URL` server-side
 - Frontend consome a API; sem fallback fake
@@ -106,7 +112,7 @@ A 0002 **não** é reexecutável. PROD permanece bloqueado.
 | Ambiente | Banco | Estado atual |
 |---|---|---|
 | DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**: `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro (`applied_by_login` = `amanteigados_dev_migrator`, `applied_as_role` = `amanteigados_dev_owner`, `database_name` = `amanteigados_dev`); APP com zero privilege efetivo no ledger; Migrator/PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 `0002_criar_nucleo_catalogo` **DRAFT / NÃO executada**); HOMOLOG (`amanteigados-livia-homolog`) destino oficial de validação; PROD (`amanteigados-livia-prod`) bloqueado até aprovação humana |
-| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); `public` sem tabelas de negócio; nenhum objeto de negócio criado; 0002 **não executada** |
+| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); 0001 aplicada; primeira 0002 falhou (`name[]` × `text[]`) com rollback integral; ledger permanece somente 0001; tabelas `app.tab_*` ainda ausentes; 0002 corrigida no Git antes da primeira aplicação bem-sucedida |
 | PROD | Supabase `amanteigados-livia-prod` | Bloqueado até aprovação humana. Nomes de role equivalentes previstos, **não criados nesta fase**; 0002 **não executada** |
 
 ### Política DEV-first

@@ -1212,11 +1212,17 @@ CREATE INDEX tab_produto_preco_id_produto_idx
 -- ---------------------------------------------------------------------------
 
 SELECT
-  ((SELECT array_agg(c.relname ORDER BY c.relname)
+  ((SELECT array_agg(c.relname::text ORDER BY c.relname::text)
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relkind = 'r')
-    = ARRAY['schema_migrations','tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS tables_exact,
+    = ARRAY[
+      'schema_migrations',
+      'tab_categoria',
+      'tab_produto',
+      'tab_produto_imagem',
+      'tab_produto_preco'
+    ]::text[]) AS tables_exact,
   ((SELECT count(*)
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -1406,62 +1412,62 @@ SELECT
 \endif
 
 SELECT
-  ((SELECT array_agg(a.attname ORDER BY a.attnum)
+  ((SELECT array_agg(a.attname::text ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['id_categoria','nome_categoria','slug_categoria','descricao_categoria','ordem_exibicao','ativo','data_criacao','data_atualizacao']) AS tab_categoria_cols,
+    = ARRAY['id_categoria','nome_categoria','slug_categoria','descricao_categoria','ordem_exibicao','ativo','data_criacao','data_atualizacao']::text[]) AS tab_categoria_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','text','text','text','integer','boolean','timestamp with time zone','timestamp with time zone']) AS tab_categoria_types,
-  ((SELECT array_agg(a.attname ORDER BY a.attnum)
+    = ARRAY['uuid','text','text','text','integer','boolean','timestamp with time zone','timestamp with time zone']::text[]) AS tab_categoria_types,
+  ((SELECT array_agg(a.attname::text ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['id_produto','id_categoria','nome_produto','slug_produto','descricao_produto','ativo','destaque','ordem_exibicao','data_criacao','data_atualizacao']) AS tab_produto_cols,
+    = ARRAY['id_produto','id_categoria','nome_produto','slug_produto','descricao_produto','ativo','destaque','ordem_exibicao','data_criacao','data_atualizacao']::text[]) AS tab_produto_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','text','text','text','boolean','boolean','integer','timestamp with time zone','timestamp with time zone']) AS tab_produto_types,
-  ((SELECT array_agg(a.attname ORDER BY a.attnum)
+    = ARRAY['uuid','uuid','text','text','text','boolean','boolean','integer','timestamp with time zone','timestamp with time zone']::text[]) AS tab_produto_types,
+  ((SELECT array_agg(a.attname::text ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['id_imagem','id_produto','url_imagem','texto_alternativo','ordem_exibicao','principal','data_criacao']) AS tab_produto_imagem_cols,
+    = ARRAY['id_imagem','id_produto','url_imagem','texto_alternativo','ordem_exibicao','principal','data_criacao']::text[]) AS tab_produto_imagem_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','text','text','integer','boolean','timestamp with time zone']) AS tab_produto_imagem_types,
-  ((SELECT array_agg(a.attname ORDER BY a.attnum)
+    = ARRAY['uuid','uuid','text','text','integer','boolean','timestamp with time zone']::text[]) AS tab_produto_imagem_types,
+  ((SELECT array_agg(a.attname::text ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['id_preco','id_produto','valor_centavos','codigo_moeda','promocional','inicio_vigencia','fim_vigencia','ativo','data_criacao']) AS tab_produto_preco_cols,
+    = ARRAY['id_preco','id_produto','valor_centavos','codigo_moeda','promocional','inicio_vigencia','fim_vigencia','ativo','data_criacao']::text[]) AS tab_produto_preco_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','bigint','text','boolean','timestamp with time zone','timestamp with time zone','boolean','timestamp with time zone']) AS tab_produto_preco_types
+    = ARRAY['uuid','uuid','bigint','text','boolean','timestamp with time zone','timestamp with time zone','boolean','timestamp with time zone']::text[]) AS tab_produto_preco_types
 \gset post2_
 
 \if :post2_tab_categoria_cols
@@ -1794,7 +1800,7 @@ SELECT
 \endif
 
 SELECT
-  ((SELECT array_agg(idx.relname ORDER BY idx.relname)
+  ((SELECT array_agg(idx.relname::text ORDER BY idx.relname::text)
       FROM pg_class idx
       JOIN pg_index i ON i.indexrelid = idx.oid
       JOIN pg_class tbl ON tbl.oid = i.indrelid
@@ -1812,7 +1818,7 @@ SELECT
       'tab_produto_preco_id_produto_idx',
       'unq_tab_categoria_slug',
       'unq_tab_produto_slug'
-    ]) AS indexes_exact,
+    ]::text[]) AS indexes_exact,
   EXISTS (
     SELECT 1
     FROM pg_index i
