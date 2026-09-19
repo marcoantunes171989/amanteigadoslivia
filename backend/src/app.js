@@ -1,4 +1,5 @@
 import express from 'express';
+import { handleAdminCatalog, handleAdminLogin, handleAdminLogout } from './admin-http.js';
 import { getCatalogPayload } from './catalog.js';
 import pool from './database.js';
 import { checkReadiness } from './readiness.js';
@@ -28,6 +29,27 @@ app.get('/api/catalogo', async (_request, response) => {
   } catch {
     response.status(503).json({ error: 'catalog_unavailable' });
   }
+});
+
+app.post('/api/admin/login', async (request, response) => {
+  await handleAdminLogin(request, response);
+});
+
+app.post('/api/admin/logout', async (request, response) => {
+  await handleAdminLogout(request, response);
+});
+
+app.all('/api/admin/catalogo', async (request, response) => {
+  await handleAdminCatalog(request, response, {
+    getPool: () => pool,
+    logDatabaseError(scope, error) {
+      console.error(scope, {
+        code: error?.code || 'unknown',
+        name: error?.name || 'Error',
+        message: error?.message || 'unknown error',
+      });
+    },
+  });
 });
 
 app.get('/ready', async (_request, response) => {

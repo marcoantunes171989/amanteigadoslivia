@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel Administrativo | Amanteigados Lívia</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="Painel administrativo do catálogo Amanteigados Lívia." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="admin.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%237A3E48'/%3E%3Ctext x='50' y='66' font-size='48' text-anchor='middle' fill='white' font-family='Georgia'%3EA%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <div id="loginView" class="login-shell hidden">
+    <form id="loginForm" class="login-card" autocomplete="off">
+      <img src="assets/logo.jpg" alt="" width="88" height="88" />
+      <p class="eyebrow">Amanteigados Lívia</p>
+      <h1>Painel Administrativo</h1>
+      <label for="adminPassword">Senha</label>
+      <input id="adminPassword" name="senha" type="password" autocomplete="current-password" required />
+      <button type="submit" class="btn btn-primary" id="loginButton">Entrar</button>
+      <p id="loginError" class="form-error" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <div id="appView" class="admin-shell hidden">
+    <aside class="admin-sidebar">
+      <div class="sidebar-brand">
+        <img src="assets/logo.jpg" alt="" width="56" height="56" />
+        <div>
+          <strong>Amanteigados Lívia</strong>
+          <span>Painel administrativo</span>
+        </div>
+      </div>
+      <nav class="admin-nav" aria-label="Menu do painel">
+        <button type="button" class="nav-btn is-active" data-view="overview">Visão Geral</button>
+        <button type="button" class="nav-btn" data-view="categories">Categorias</button>
+        <button type="button" class="nav-btn" data-view="products">Produtos</button>
+      </nav>
+      <button type="button" class="btn btn-ghost" id="logoutButton">Sair</button>
+    </aside>
+
+    <main class="admin-main">
+      <header class="admin-header">
+        <div>
+          <p class="eyebrow" id="viewEyebrow">Painel</p>
+          <h1 id="viewTitle">Visão Geral</h1>
+        </div>
+        <p id="statusMessage" class="status-message" hidden></p>
+      </header>
+
+      <section id="overviewView" class="view-panel"></section>
+      <section id="categoriesView" class="view-panel hidden"></section>
+      <section id="productsView" class="view-panel hidden"></section>
+    </main>
+  </div>
+
+  <dialog id="formDialog" class="admin-dialog">
+    <form id="resourceForm" method="dialog"></form>
+  </dialog>
+
+  <script src="admin.js"></script>
+</body>
+</html>

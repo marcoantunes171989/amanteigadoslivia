@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import {
+  COOKIE_NAME,
+  buildSessionCookie,
+  passwordsMatch,
+  signSession,
+  verifySession,
+} from './admin-auth.js';
+
+const SECRET = 'test-admin-session-secret-value-32b';
+
+test('accepts the exact password with a timing-safe comparison', () => {
+  assert.equal(passwordsMatch('senha-correta', 'senha-correta'), true);
+  assert.equal(passwordsMatch('senha-errada', 'senha-correta'), false);
+  assert.equal(passwordsMatch('', 'senha-correta'), false);
+  assert.equal(passwordsMatch('senha-correta', ''), false);
+});
+
+test('signs and verifies an HMAC SHA-256 admin session', () => {
+  const token = signSession(SECRET, 1_000_000);
+  assert.equal(verifySession(token, SECRET, 1_000_000), true);
+  assert.equal(verifySession(token, 'other-secret-value-32-bytes-long', 1_000_000), false);
+  assert.equal(verifySession('tampered.' + token.split('.')[1], SECRET, 1_000_000), false);
+});
+
+test('rejects expired sessions', () => {
+  const now = 1_000_000;
+  const token = signSession(SECRET, now);
+  assert.equal(verifySession(token, SECRET, now + (12 * 60 * 60 * 1000) + 1), false);
+});
+
+test('builds an HttpOnly SameSite=Lax cookie with Secure on HTTPS', () => {
+  const cookie = buildSessionCookie('payload.sig', { secure: true, maxAgeSeconds: 60 });
+  assert.match(cookie, new RegExp(`^${COOKIE_NAME}=payload\\.sig;`));
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Path=\//);
+  assert.match(cookie, /SameSite=Lax/);
+  assert.match(cookie, /Secure/);
+  assert.match(cookie, /Max-Age=60/);
+});

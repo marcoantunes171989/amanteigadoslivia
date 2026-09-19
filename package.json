@@ -11,7 +11,7 @@
     "pg": "8.23.0"
   },
   "scripts": {
-    "test": "node --test backend/src/catalog.test.js",
-    "build": "node --check api/catalogo.js api/health-db.js backend/src/catalog.js"
+    "test": "node --test backend/src/catalog.test.js backend/src/money.test.js backend/src/admin-auth.test.js backend/src/admin-catalog.test.js backend/src/admin-http.test.js",
+    "build": "node --check api/catalogo.js api/health-db.js api/admin/login.js api/admin/logout.js api/admin/catalogo.js backend/src/catalog.js backend/src/admin-auth.js backend/src/admin-catalog.js backend/src/admin-http.js backend/src/money.js backend/src/admin-errors.js backend/src/app.js"
   }
 }

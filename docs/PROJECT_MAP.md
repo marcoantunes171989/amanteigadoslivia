@@ -7,16 +7,12 @@
 > `docs/cart-spec.md` e `docs/catalog-spec.md` (especificações de
 > produto/frontend) sem duplicá-los.
 
-**Fase ativa: FAST-TRACK HOMOLOG CATÁLOGO** — primeiro ambiente
-funcional em HOMOLOG (Vercel `homologacao` + Supabase
-`amanteigados-livia-homolog`). Segunda tentativa HML da 0002 falhou no
-postcheck `indkey`/`attnum` de `tab_produto_imagem_principal_unq` e
-teve rollback integral; o ledger HML permaneceu somente com 0001;
-nenhuma tabela de negócio persistiu. Correção do postcheck aplicada no
-Git antes da primeira aplicação bem-sucedida. Artefato de carga:
-`backend/database/releases/0001_catalogo_inicial.sql`. API:
-`GET /api/catalogo` (server-side `DATABASE_URL`, role Runtime APP).
-PROD (`amanteigados-livia-prod`) permanece bloqueado.
+**Fase ativa: FAST-TRACK ADMIN HML** — painel administrativo em
+`/admin` no HOMOLOG, conectado ao mesmo Supabase do catálogo público.
+HML catálogo público funcional (`GET /api/catalogo` HTTP 200). O painel
+altera `app.tab_categoria`, `app.tab_produto`, `app.tab_produto_imagem`
+e `app.tab_produto_preco`; `/api/catalogo` e `/produtos` refletem a
+mudança sem novo deploy. PROD permanece bloqueado.
 
 ---
 
@@ -40,16 +36,22 @@ PROD (`amanteigados-livia-prod`) permanece bloqueado.
 | 5.0D.6F | Grants de runtime para `app_role` em DEV (`backend/database/config/003_runtime_app_grants.sql`) | Concluída — **CONCLUÍDO/AUDITADO EM DEV**; APP schema USAGE=true, CREATE=false; DB CREATE=false; TABLES futuras SELECT/INSERT/UPDATE/DELETE; SEQUENCES futuras USAGE; sem grant option; sem EXECUTE automático em FUNCTIONS; APP sem membership/SET ROLE Owner/Migrator; `search_path = app, pg_catalog`; schema `app` vazio; 003 **não** deve ser reexecutado em DEV |
 | 5.0D.6G | Framework de migrations PostgreSQL (`backend/database/migrations/`, ledger `app.schema_migrations`, spec `docs/database/MIGRATION_FRAMEWORK_SPEC.md`) | Concluída — **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**; `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro; `applied_by_login` = `amanteigados_dev_migrator`; `applied_as_role` = `amanteigados_dev_owner`; `database_name` = `amanteigados_dev`; APP com zero privilege efetivo no ledger; Migrator com zero ACL direta; PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV (histórica/imutável; ajuste futuro só por forward-fix) |
 | 5.0D.6H | Business migrations / catalog model | 0002 versionada (`0002_criar_nucleo_catalogo`); nomenclatura PT (`app.tab_*`); release `0001_catalogo_inicial`; API `GET /api/catalogo`; HOMOLOG é o destino oficial; PROD bloqueado |
-| FAST-TRACK HML | Primeiro ambiente funcional HOMOLOG | Em execução — Vercel `homologacao` + Supabase `amanteigados-livia-homolog`; PROD não publicado |
+| FAST-TRACK HML | Primeiro ambiente funcional HOMOLOG | Concluída — Vercel `homologacao` + Supabase `amanteigados-livia-homolog`; catálogo público ao vivo; PROD não publicado |
+| FAST-TRACK ADMIN HML | Painel administrativo `/admin` no HOMOLOG | Em execução — mesmo banco do catálogo público; login por senha server-side; PROD bloqueado |
 
 ## 2. Fase ativa
 
-**FAST-TRACK HOMOLOG CATÁLOGO** — colocar o cardápio funcionando na
-Vercel HOMOLOG com banco Supabase HOMOLOG.
+**FAST-TRACK ADMIN HML** — administrar categorias, produtos, preços e
+imagens no HOMOLOG sem editar JS e sem novo deploy a cada alteração.
 
 - DEV = laboratório
-- HOMOLOG = validação oficial
+- HOMOLOG = validação oficial (catálogo público + painel admin)
 - PROD = cliente/público (não publicar nesta fase)
+
+O painel `/admin` e `GET /api/catalogo` compartilham o mesmo Supabase
+`amanteigados-livia-homolog`. Autenticação administrativa usa
+`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` (Vercel, server-side).
+PROD permanece bloqueado.
 
 Fluxo: `DEV → GitHub → Vercel HOMOLOG → Supabase HOMOLOG → teste/aprovação → Vercel PROD + Supabase PROD`.
 
@@ -61,6 +63,7 @@ Artefatos:
   nem `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`)
 - `backend/database/releases/0001_catalogo_inicial.sql`
 - `GET /api/catalogo` (`api/catalogo.js` na Vercel; Express em `backend/src/app.js`)
+- Painel `/admin` (`admin.html`, `admin.js`, `admin.css`) + `/api/admin/login`, `/api/admin/logout`, `/api/admin/catalogo`
 - Frontend `/produtos` e `/carrinho` consomem a API; sem fallback fake
 
 A 0001 permanece imutável (`bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`).
@@ -89,13 +92,12 @@ A 0002 **não** é reexecutável. PROD permanece bloqueado.
 
 ### Fase atual
 
-- FAST-TRACK HOMOLOG CATÁLOGO
-- Segunda tentativa 0002 falhou no postcheck `indkey` (rollback
-  integral; ledger só 0001; nenhuma `app.tab_*` persistiu); postcheck
-  corrigido no Git antes da primeira aplicação bem-sucedida em HOMOLOG
-- Release versionado: `backend/database/releases/0001_catalogo_inicial.sql`
-- API: `GET /api/catalogo` com `DATABASE_URL` server-side
-- Frontend consome a API; sem fallback fake
+- FAST-TRACK ADMIN HML: painel `/admin` no HOMOLOG
+- HML catálogo público funcional (`GET /api/catalogo`)
+- Painel e catálogo compartilham o mesmo Supabase HOMOLOG
+- Administração altera dados sem novo deploy
+- API: `GET /api/catalogo` e `/api/admin/*` com variáveis server-side
+- Frontend `/produtos` consome a API; sem fallback fake
 - HOMOLOG = validação oficial; PROD permanece **bloqueado**
 - `003_runtime_app_grants.sql` **não** deve ser reexecutado em DEV
 - `0001_create_migration_ledger` **não** deve ser reexecutada em DEV
@@ -113,7 +115,7 @@ A 0002 **não** é reexecutável. PROD permanece bloqueado.
 | Ambiente | Banco | Estado atual |
 |---|---|---|
 | DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**: `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro (`applied_by_login` = `amanteigados_dev_migrator`, `applied_as_role` = `amanteigados_dev_owner`, `database_name` = `amanteigados_dev`); APP com zero privilege efetivo no ledger; Migrator/PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 `0002_criar_nucleo_catalogo` **DRAFT / NÃO executada**); HOMOLOG (`amanteigados-livia-homolog`) destino oficial de validação; PROD (`amanteigados-livia-prod`) bloqueado até aprovação humana |
-| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); 0001 aplicada; segunda 0002 falhou no postcheck `indkey` com rollback integral; ledger permanece somente 0001; nenhuma tabela de negócio persistiu; postcheck corrigido no Git antes da primeira aplicação bem-sucedida |
+| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. Catálogo público funcional (`app.tab_*` + `GET /api/catalogo`). Painel admin `/admin` lê e escreve as mesmas tabelas. PROD bloqueado |
 | PROD | Supabase `amanteigados-livia-prod` | Bloqueado até aprovação humana. Nomes de role equivalentes previstos, **não criados nesta fase**; 0002 **não executada** |
 
 ### Política DEV-first
@@ -155,10 +157,10 @@ equivalente). Ver `docs/database/SCHEMA_SECURITY_SPEC.md`, seção
 
 | Área | Status | Observação |
 |---|---|---|
-| Frontend | Estável | Landing + `/produtos` + `/carrinho`; catálogo via `GET /api/catalogo` |
-| Backend | HOMOLOG catalog API | Express `/api/catalogo` + função Vercel `api/catalogo.js`; `DATABASE_URL` server-side |
-| Database | 0002 + release inicial prontos para HOMOLOG | Núcleo `app.tab_*`; carga `releases/0001_catalogo_inicial.sql`; PROD bloqueado |
-| Admin (painel administrativo) | Não iniciado | Depende do schema `app` e do modelo de releases |
+| Frontend | Estável | Landing + `/produtos` + `/carrinho`; catálogo via `GET /api/catalogo`; painel `/admin` separado |
+| Backend | HOMOLOG catalog + admin API | Express e funções Vercel; `GET /api/catalogo`; `/api/admin/login`, `/api/admin/logout`, `/api/admin/catalogo`; sessão HMAC; `DATABASE_URL` server-side |
+| Database | Núcleo de catálogo em HOMOLOG | `app.tab_categoria`, `app.tab_produto`, `app.tab_produto_imagem`, `app.tab_produto_preco`; PROD bloqueado |
+| Admin (painel administrativo) | HML criado | `/admin` autentica e administra o mesmo banco do catálogo público; alteração aparece em `/produtos` sem deploy |
 | Releases (painel "Ambientes & Releases") | Não iniciado | Requisitos documentados nesta fase em `SCHEMA_SECURITY_SPEC.md`, seção "Painel Ambientes & Releases" |
 
 ## 6. Percentuais atuais
@@ -166,7 +168,7 @@ equivalente). Ver `docs/database/SCHEMA_SECURITY_SPEC.md`, seção
 | Ambiente | Percentual |
 |---|---|
 | DEV | 64% |
-| HOMOLOG | 52% |
+| HOMOLOG | 68% |
 | PROD | 30% |
 
 **Sobre o percentual de PROD (30%):** este valor representa o
