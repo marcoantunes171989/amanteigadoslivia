@@ -1,0 +1,17 @@
+{
+  "name": "amanteigados-livia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Amanteigados Livia storefront and homolog catalog API.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
+  },
+  "scripts": {
+    "test": "node --test backend/src/catalog.test.js",
+    "build": "node --check api/catalogo.js backend/src/catalog.js"
+  }
+}

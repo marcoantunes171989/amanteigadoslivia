@@ -2,14 +2,12 @@
 // Arquitetura definida em docs/catalog-spec.md (Fase 2.2/2.2.1). Desde a
 // Fase 4A.1, os dados e as regras puras do catálogo (preço, quantidade,
 // resolução de produto) vivem em catalog-core.js (window.AmanteigadosCatalog),
-// carregado antes deste arquivo junto com catalog-demo-data.js (ver
-// produtos.html). produtos.js consome essa API em vez de duplicar essas
+// carregado antes deste arquivo (ver produtos.html). A tela chama
+// GET /api/catalogo via AmanteigadosCatalog.loadFromApi() e só então
+// renderiza. produtos.js consome essa API em vez de duplicar essas
 // regras — ver docs/cart-spec.md para o contrato completo compartilhado
-// com o futuro carrinho (cart.js). catalog-core.js já cai com segurança
-// para categorias/produtos vazios quando a fonte estiver ausente ou
-// malformada (nenhum ReferenceError fatal) — o estado "Nosso cardápio
-// está sendo atualizado" continua sendo o comportamento testado nesse
-// caso.
+// com o carrinho (cart.js). Se a API estiver indisponível, a página
+// mostra estado amigável e não cai para dados fake.
 const {
   getMode: getCatalogMode,
   getCategories,
@@ -23,9 +21,9 @@ const {
   clampQuantity,
 } = window.AmanteigadosCatalog;
 
-const CATALOG_MODE = getCatalogMode();
-const CATEGORIES = getCategories();
-const PRODUCTS = getProducts();
+function getCatalogModeValue() {
+  return getCatalogMode();
+}
 
 // ===================== NORMALIZAÇÃO DE BUSCA =====================
 // Nativo, sem biblioteca externa — case-insensitive e accent-insensitive.
@@ -56,19 +54,19 @@ function isValidProduct(p) {
 }
 
 function getActiveProducts() {
-  return PRODUCTS.filter(isValidProduct);
+  return getProducts().filter(isValidProduct);
 }
 
 function getCategoryById(categoryId) {
   if (!categoryId) return null;
-  return CATEGORIES.find((c) => c && c.id === categoryId && c.active === true) || null;
+  return getCategories().find((c) => c && c.id === categoryId && c.active === true) || null;
 }
 
 // Só categorias ativas e com pelo menos um produto ativo associado —
 // nunca expõe uma categoria "vazia" ou não homologada.
 function getAvailableCategories() {
   const active = getActiveProducts();
-  return CATEGORIES
+  return getCategories()
     .filter((c) => c && c.active === true)
     .filter((c) => active.some((p) => p.categoryId === c.id))
     .slice()
@@ -172,6 +170,8 @@ const els = {
   resultsStatus: document.getElementById('resultsStatus'),
   grid: document.getElementById('productsGrid'),
   stateNoData: document.getElementById('stateNoData'),
+  stateUnavailable: document.getElementById('stateUnavailable'),
+  demoNotice: document.querySelector('.demo-notice'),
   stateCategoryEmpty: document.getElementById('stateCategoryEmpty'),
   stateSearchEmpty: document.getElementById('stateSearchEmpty'),
   searchEmptyTitle: document.getElementById('searchEmptyTitle'),
@@ -477,8 +477,22 @@ if (els.grid) {
   // ===================== ESTADOS VAZIOS =====================
   function hideAllStates() {
     els.stateNoData.hidden = true;
+    if (els.stateUnavailable) els.stateUnavailable.hidden = true;
     els.stateCategoryEmpty.hidden = true;
     els.stateSearchEmpty.hidden = true;
+  }
+
+  function showUnavailableState() {
+    hideAllStates();
+    els.grid.hidden = true;
+    if (els.categoriesBar) els.categoriesBar.hidden = true;
+    if (els.sortWrap) els.sortWrap.hidden = true;
+    if (els.resultsStatus) els.resultsStatus.textContent = '';
+    if (els.stateUnavailable) {
+      els.stateUnavailable.hidden = false;
+    } else {
+      els.stateNoData.hidden = false;
+    }
   }
 
   function renderEmptyState(activeList, categoryFiltered, visibleList) {
@@ -746,7 +760,20 @@ if (els.grid) {
   }
 
   // ===================== INICIALIZAÇÃO =====================
-  syncFromUrl();
-  renderCategories();
-  renderCatalog();
+  async function bootCatalog() {
+    try {
+      await window.AmanteigadosCatalog.loadFromApi();
+    } catch {
+      showUnavailableState();
+      return;
+    }
+    if (els.demoNotice) {
+      els.demoNotice.hidden = getCatalogModeValue() !== 'demo';
+    }
+    syncFromUrl();
+    renderCategories();
+    renderCatalog();
+  }
+
+  bootCatalog();
 }

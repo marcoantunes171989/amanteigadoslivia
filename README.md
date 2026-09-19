@@ -1,8 +1,41 @@
 # Amanteigados Lívia 🌷
 
-Landing page da confeitaria artesanal **Amanteigados Lívia** — biscoitos amanteigados feitos com amor.
+Landing page e cardápio da confeitaria artesanal **Amanteigados Lívia**.
 
-Site 100% responsivo (desktop e celular), fiel ao layout de referência.
+## Ambientes
+
+| Ambiente | Papel |
+|---|---|
+| **DEV** | Laboratório local (Git, schema, API, frontend) |
+| **HOMOLOG** | Validação oficial (Vercel `homologacao` + Supabase `amanteigados-livia-homolog`) |
+| **PROD** | Cliente/público (Vercel + Supabase prod). Bloqueado até aprovação |
+
+Fluxo:
+
+```
+DEV → GitHub → Vercel HOMOLOG → Supabase HOMOLOG → teste/aprovação → Vercel PROD + Supabase PROD
+```
+
+Produção não é publicada automaticamente.
+
+## Cardápio
+
+A tela `/produtos` carrega categorias, produtos, imagens e preços via
+`GET /api/catalogo` (backend Node, variável server-side `DATABASE_URL`).
+O navegador nunca recebe a connection string.
+
+## 🚀 Como rodar o frontend localmente
+
+Basta abrir o `index.html` no navegador, ou servir a pasta:
+
+```bash
+python3 -m http.server 8000
+# acesse http://localhost:8000
+```
+
+A API de catálogo (`/api/catalogo`) no HOMOLOG é a função Vercel em
+`api/catalogo.js`. Localmente, o backend Express em `backend/` expõe a
+mesma rota quando configurado.
 
 ## ✨ Recursos
 
@@ -28,15 +61,6 @@ Site 100% responsivo (desktop e celular), fiel ao layout de referência.
 | Coral (primária) | `#e1574f` |
 | Creme (fundo) | `#fbf4e8` |
 | Tinta (texto) | `#2f2a27` |
-
-## 🚀 Como rodar localmente
-
-Basta abrir o `index.html` no navegador, ou servir a pasta:
-
-```bash
-python3 -m http.server 8000
-# acesse http://localhost:8000
-```
 
 ## 📁 Estrutura
 

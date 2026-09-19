@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0002_create_catalog_core.sql
+-- 0002_criar_nucleo_catalogo.sql
 --
 -- Fase: 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT.
 -- Este arquivo e DRAFT. Nao executar nesta fase.
@@ -26,16 +26,16 @@
 -- Runtime APP nunca executa migration.
 --
 -- Efeito: cria o nucleo estrutural do catalogo:
---   app.categories
---   app.products
---   app.product_images
---   app.product_prices
+--   app.tab_categoria
+--   app.tab_produto
+--   app.tab_produto_imagem
+--   app.tab_produto_preco
 -- Sem seed/demo data. O unico INSERT e o registro 0002 em
 -- app.schema_migrations.
 --
 -- IDs: uuid fornecido pela aplicacao. Sem default gerador no banco.
 -- Sem SERIAL, BIGSERIAL, IDENTITY, CREATE SEQUENCE, trigger de
--- updated_at, GRANT manual de negocio, ou REVOKE das tabelas novas.
+-- data_atualizacao, GRANT manual de negocio, ou REVOKE das tabelas novas.
 -- O default privilege 5.0D.6F deve conceder automaticamente a
 -- app_role: SELECT, INSERT, UPDATE, DELETE. Esta migration apenas
 -- valida esse resultado. ACL de runtime e FAIL CLOSED: somente
@@ -128,7 +128,7 @@ SELECT (:'migration_sha256' ~ '^[0-9a-fA-F]{64}$') AS sha256_format_ok
   $fail$;
 \endif
 
-\echo '=== 0002: CREATE CATALOG CORE - inicio ==='
+\echo '=== 0002: CRIAR NUCLEO CATALOGO - inicio ==='
 \echo 'Este script deve ser executado autenticado como migrator_role.'
 \echo 'DRAFT: nao executar nesta fase.'
 
@@ -910,7 +910,7 @@ SELECT
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'app'
-      AND c.relname IN ('categories', 'products', 'product_images', 'product_prices')
+      AND c.relname IN ('tab_categoria', 'tab_produto', 'tab_produto_imagem', 'tab_produto_preco')
       AND c.relkind = 'r'
   ) AS catalog_tables_absent,
   NOT EXISTS (
@@ -1003,7 +1003,7 @@ SELECT
 \endif
 \if :pre8_catalog_tables_absent
 \else
-  \echo 'ERRO [0002]: uma ou mais tabelas do catalogo (categories/products/product_images/product_prices) ja existem; esta migration nao e reexecutavel.'
+  \echo 'ERRO [0002]: uma ou mais tabelas do catalogo (tab_categoria/tab_produto/tab_produto_imagem/tab_produto_preco) ja existem; esta migration nao e reexecutavel.'
   DO $fail$
   BEGIN
     RAISE EXCEPTION 'Precondicao falhou: tabelas do catalogo ja existem';
@@ -1081,7 +1081,7 @@ SELECT
   NOT EXISTS (
     SELECT 1
     FROM app.schema_migrations
-    WHERE migration_id = '0002_create_catalog_core'
+    WHERE migration_id = '0002_criar_nucleo_catalogo'
   ) AS ledger_0002_absent
 \gset preLed_
 
@@ -1105,7 +1105,7 @@ SELECT
 \endif
 \if :preLed_ledger_0002_absent
 \else
-  \echo 'ERRO [0002]: 0002_create_catalog_core ja existe no ledger; esta migration nao e reexecutavel.'
+  \echo 'ERRO [0002]: 0002_criar_nucleo_catalogo ja existe no ledger; esta migration nao e reexecutavel.'
   DO $fail$
   BEGIN
     RAISE EXCEPTION 'Precondicao falhou: 0002 ja existe no ledger';
@@ -1115,94 +1115,94 @@ SELECT
 
 \echo 'Ledger 0001 validado; 0002 ausente. Iniciando CREATE do nucleo do catalogo.'
 
-CREATE TABLE app.categories (
-  category_id uuid        NOT NULL,
-  name        text        NOT NULL,
-  slug        text        NOT NULL,
-  description text        NULL,
-  sort_order  integer     NOT NULL DEFAULT 0,
-  is_active   boolean     NOT NULL DEFAULT true,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT categories_pkey PRIMARY KEY (category_id),
-  CONSTRAINT categories_slug_key UNIQUE (slug),
-  CONSTRAINT categories_name_not_empty_chk CHECK (btrim(name) <> ''),
-  CONSTRAINT categories_slug_format_chk CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
-  CONSTRAINT categories_sort_order_nonneg_chk CHECK (sort_order >= 0)
+CREATE TABLE app.tab_categoria (
+  id_categoria         uuid        NOT NULL,
+  nome_categoria       text        NOT NULL,
+  slug_categoria       text        NOT NULL,
+  descricao_categoria  text        NULL,
+  ordem_exibicao       integer     NOT NULL DEFAULT 0,
+  ativo                boolean     NOT NULL DEFAULT true,
+  data_criacao         timestamptz NOT NULL DEFAULT now(),
+  data_atualizacao     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT pk_tab_categoria PRIMARY KEY (id_categoria),
+  CONSTRAINT unq_tab_categoria_slug UNIQUE (slug_categoria),
+  CONSTRAINT ck_tab_categoria_nome CHECK (btrim(nome_categoria) <> ''),
+  CONSTRAINT ck_tab_categoria_slug CHECK (slug_categoria ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  CONSTRAINT ck_tab_categoria_ordem CHECK (ordem_exibicao >= 0)
 );
 
-CREATE TABLE app.products (
-  product_id  uuid        NOT NULL,
-  category_id uuid        NOT NULL,
-  name        text        NOT NULL,
-  slug        text        NOT NULL,
-  description text        NULL,
-  is_active   boolean     NOT NULL DEFAULT true,
-  is_featured boolean     NOT NULL DEFAULT false,
-  sort_order  integer     NOT NULL DEFAULT 0,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT products_pkey PRIMARY KEY (product_id),
-  CONSTRAINT products_slug_key UNIQUE (slug),
-  CONSTRAINT products_category_id_fkey
-    FOREIGN KEY (category_id)
-    REFERENCES app.categories (category_id)
+CREATE TABLE app.tab_produto (
+  id_produto         uuid        NOT NULL,
+  id_categoria       uuid        NOT NULL,
+  nome_produto       text        NOT NULL,
+  slug_produto       text        NOT NULL,
+  descricao_produto  text        NULL,
+  ativo              boolean     NOT NULL DEFAULT true,
+  destaque           boolean     NOT NULL DEFAULT false,
+  ordem_exibicao     integer     NOT NULL DEFAULT 0,
+  data_criacao       timestamptz NOT NULL DEFAULT now(),
+  data_atualizacao   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT pk_tab_produto PRIMARY KEY (id_produto),
+  CONSTRAINT unq_tab_produto_slug UNIQUE (slug_produto),
+  CONSTRAINT fk_tab_produto_categoria
+    FOREIGN KEY (id_categoria)
+    REFERENCES app.tab_categoria (id_categoria)
     ON DELETE RESTRICT,
-  CONSTRAINT products_name_not_empty_chk CHECK (btrim(name) <> ''),
-  CONSTRAINT products_slug_format_chk CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
-  CONSTRAINT products_sort_order_nonneg_chk CHECK (sort_order >= 0)
+  CONSTRAINT ck_tab_produto_nome CHECK (btrim(nome_produto) <> ''),
+  CONSTRAINT ck_tab_produto_slug CHECK (slug_produto ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  CONSTRAINT ck_tab_produto_ordem CHECK (ordem_exibicao >= 0)
 );
 
-CREATE TABLE app.product_images (
-  image_id   uuid        NOT NULL,
-  product_id uuid        NOT NULL,
-  image_url  text        NOT NULL,
-  alt_text   text        NULL,
-  sort_order integer     NOT NULL DEFAULT 0,
-  is_primary boolean     NOT NULL DEFAULT false,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT product_images_pkey PRIMARY KEY (image_id),
-  CONSTRAINT product_images_product_id_fkey
-    FOREIGN KEY (product_id)
-    REFERENCES app.products (product_id)
+CREATE TABLE app.tab_produto_imagem (
+  id_imagem          uuid        NOT NULL,
+  id_produto         uuid        NOT NULL,
+  url_imagem         text        NOT NULL,
+  texto_alternativo  text        NULL,
+  ordem_exibicao     integer     NOT NULL DEFAULT 0,
+  principal          boolean     NOT NULL DEFAULT false,
+  data_criacao       timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT pk_tab_produto_imagem PRIMARY KEY (id_imagem),
+  CONSTRAINT fk_tab_produto_imagem_produto
+    FOREIGN KEY (id_produto)
+    REFERENCES app.tab_produto (id_produto)
     ON DELETE CASCADE,
-  CONSTRAINT product_images_image_url_not_empty_chk CHECK (btrim(image_url) <> ''),
-  CONSTRAINT product_images_sort_order_nonneg_chk CHECK (sort_order >= 0)
+  CONSTRAINT ck_tab_produto_imagem_url CHECK (btrim(url_imagem) <> ''),
+  CONSTRAINT ck_tab_produto_imagem_ordem CHECK (ordem_exibicao >= 0)
 );
 
-CREATE TABLE app.product_prices (
-  price_id       uuid        NOT NULL,
-  product_id     uuid        NOT NULL,
-  amount_cents   bigint      NOT NULL,
-  currency_code  text        NOT NULL DEFAULT 'BRL',
-  is_promotional boolean     NOT NULL DEFAULT false,
-  starts_at      timestamptz NULL,
-  ends_at        timestamptz NULL,
-  is_active      boolean     NOT NULL DEFAULT true,
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT product_prices_pkey PRIMARY KEY (price_id),
-  CONSTRAINT product_prices_product_id_fkey
-    FOREIGN KEY (product_id)
-    REFERENCES app.products (product_id)
+CREATE TABLE app.tab_produto_preco (
+  id_preco         uuid        NOT NULL,
+  id_produto       uuid        NOT NULL,
+  valor_centavos   bigint      NOT NULL,
+  codigo_moeda     text        NOT NULL DEFAULT 'BRL',
+  promocional      boolean     NOT NULL DEFAULT false,
+  inicio_vigencia  timestamptz NULL,
+  fim_vigencia     timestamptz NULL,
+  ativo            boolean     NOT NULL DEFAULT true,
+  data_criacao     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT pk_tab_produto_preco PRIMARY KEY (id_preco),
+  CONSTRAINT fk_tab_produto_preco_produto
+    FOREIGN KEY (id_produto)
+    REFERENCES app.tab_produto (id_produto)
     ON DELETE CASCADE,
-  CONSTRAINT product_prices_amount_cents_positive_chk CHECK (amount_cents > 0),
-  CONSTRAINT product_prices_currency_code_format_chk CHECK (currency_code ~ '^[A-Z]{3}$'),
-  CONSTRAINT product_prices_validity_window_chk
-    CHECK (starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at)
+  CONSTRAINT ck_tab_produto_preco_valor CHECK (valor_centavos > 0),
+  CONSTRAINT ck_tab_produto_preco_moeda CHECK (codigo_moeda ~ '^[A-Z]{3}$'),
+  CONSTRAINT ck_tab_produto_preco_vigencia
+    CHECK (inicio_vigencia IS NULL OR fim_vigencia IS NULL OR fim_vigencia > inicio_vigencia)
 );
 
-CREATE INDEX products_category_id_idx
-  ON app.products (category_id);
+CREATE INDEX tab_produto_id_categoria_idx
+  ON app.tab_produto (id_categoria);
 
-CREATE INDEX product_images_product_id_idx
-  ON app.product_images (product_id);
+CREATE INDEX tab_produto_imagem_id_produto_idx
+  ON app.tab_produto_imagem (id_produto);
 
-CREATE UNIQUE INDEX product_images_one_primary_per_product_idx
-  ON app.product_images (product_id)
-  WHERE is_primary = true;
+CREATE UNIQUE INDEX tab_produto_imagem_principal_unq
+  ON app.tab_produto_imagem (id_produto)
+  WHERE principal = true;
 
-CREATE INDEX product_prices_product_id_idx
-  ON app.product_prices (product_id);
+CREATE INDEX tab_produto_preco_id_produto_idx
+  ON app.tab_produto_preco (id_produto);
 
 \echo 'Tabelas e indexes do nucleo do catalogo criados. Sem GRANT/REVOKE manual de negocio. Sem seed.'
 
@@ -1216,7 +1216,7 @@ SELECT
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app' AND c.relkind = 'r')
-    = ARRAY['categories','product_images','product_prices','products','schema_migrations']) AS tables_exact,
+    = ARRAY['schema_migrations','tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS tables_exact,
   ((SELECT count(*)
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -1244,7 +1244,7 @@ SELECT
     JOIN pg_class c ON c.oid = a.attrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'app'
-      AND c.relname IN ('categories','products','product_images','product_prices')
+      AND c.relname IN ('tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco')
       AND c.relkind = 'r'
       AND a.attnum > 0
       AND NOT a.attisdropped
@@ -1256,7 +1256,7 @@ SELECT
     JOIN pg_class c ON c.oid = d.adrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'app'
-      AND c.relname IN ('categories','products','product_images','product_prices')
+      AND c.relname IN ('tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco')
       AND c.relkind = 'r'
       AND pg_get_expr(d.adbin, d.adrelid) LIKE 'nextval%'
   ) AS no_nextval_default,
@@ -1268,7 +1268,7 @@ SELECT
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_type t ON t.oid = a.atttypid
     WHERE n.nspname = 'app'
-      AND c.relname IN ('categories','products','product_images','product_prices')
+      AND c.relname IN ('tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco')
       AND c.relkind = 'r'
       AND t.typname = 'uuid'
   ) AS uuid_columns_no_default,
@@ -1278,13 +1278,13 @@ SELECT
     JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'app'
-      AND c.relname IN ('categories','products','product_images','product_prices')
+      AND c.relname IN ('tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco')
       AND NOT t.tgisinternal
   ) AS no_user_triggers,
-  ((SELECT count(*) FROM app.categories) = 0) AS categories_empty,
-  ((SELECT count(*) FROM app.products) = 0) AS products_empty,
-  ((SELECT count(*) FROM app.product_images) = 0) AS product_images_empty,
-  ((SELECT count(*) FROM app.product_prices) = 0) AS product_prices_empty
+  ((SELECT count(*) FROM app.tab_categoria) = 0) AS tab_categoria_empty,
+  ((SELECT count(*) FROM app.tab_produto) = 0) AS tab_produto_empty,
+  ((SELECT count(*) FROM app.tab_produto_imagem) = 0) AS tab_produto_imagem_empty,
+  ((SELECT count(*) FROM app.tab_produto_preco) = 0) AS tab_produto_preco_empty
 \gset post1_
 
 \if :post1_tables_exact
@@ -1361,46 +1361,46 @@ SELECT
 \endif
 \if :post1_no_user_triggers
 \else
-  \echo 'ERRO [0002]: trigger de usuario criada no catalogo; updated_at deve ser atualizado pela aplicacao.'
+  \echo 'ERRO [0002]: trigger de usuario criada no catalogo; data_atualizacao deve ser atualizado pela aplicacao.'
   DO $fail$
   BEGIN
     RAISE EXCEPTION 'Poscondicao falhou: trigger de usuario presente no catalogo';
   END;
   $fail$;
 \endif
-\if :post1_categories_empty
+\if :post1_tab_categoria_empty
 \else
-  \echo 'ERRO [0002]: app.categories nao esta vazia; seed e proibido nesta migration.'
+  \echo 'ERRO [0002]: app.tab_categoria nao esta vazia; seed e proibido nesta migration.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: app.categories contem dados';
+    RAISE EXCEPTION 'Poscondicao falhou: app.tab_categoria contem dados';
   END;
   $fail$;
 \endif
-\if :post1_products_empty
+\if :post1_tab_produto_empty
 \else
-  \echo 'ERRO [0002]: app.products nao esta vazia; seed e proibido nesta migration.'
+  \echo 'ERRO [0002]: app.tab_produto nao esta vazia; seed e proibido nesta migration.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: app.products contem dados';
+    RAISE EXCEPTION 'Poscondicao falhou: app.tab_produto contem dados';
   END;
   $fail$;
 \endif
-\if :post1_product_images_empty
+\if :post1_tab_produto_imagem_empty
 \else
-  \echo 'ERRO [0002]: app.product_images nao esta vazia; seed e proibido nesta migration.'
+  \echo 'ERRO [0002]: app.tab_produto_imagem nao esta vazia; seed e proibido nesta migration.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: app.product_images contem dados';
+    RAISE EXCEPTION 'Poscondicao falhou: app.tab_produto_imagem contem dados';
   END;
   $fail$;
 \endif
-\if :post1_product_prices_empty
+\if :post1_tab_produto_preco_empty
 \else
-  \echo 'ERRO [0002]: app.product_prices nao esta vazia; seed e proibido nesta migration.'
+  \echo 'ERRO [0002]: app.tab_produto_preco nao esta vazia; seed e proibido nesta migration.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: app.product_prices contem dados';
+    RAISE EXCEPTION 'Poscondicao falhou: app.tab_produto_preco contem dados';
   END;
   $fail$;
 \endif
@@ -1410,140 +1410,140 @@ SELECT
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'categories' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['category_id','name','slug','description','sort_order','is_active','created_at','updated_at']) AS categories_cols,
+    = ARRAY['id_categoria','nome_categoria','slug_categoria','descricao_categoria','ordem_exibicao','ativo','data_criacao','data_atualizacao']) AS tab_categoria_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'categories' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','text','text','text','integer','boolean','timestamp with time zone','timestamp with time zone']) AS categories_types,
+    = ARRAY['uuid','text','text','text','integer','boolean','timestamp with time zone','timestamp with time zone']) AS tab_categoria_types,
   ((SELECT array_agg(a.attname ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'products' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['product_id','category_id','name','slug','description','is_active','is_featured','sort_order','created_at','updated_at']) AS products_cols,
+    = ARRAY['id_produto','id_categoria','nome_produto','slug_produto','descricao_produto','ativo','destaque','ordem_exibicao','data_criacao','data_atualizacao']) AS tab_produto_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'products' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','text','text','text','boolean','boolean','integer','timestamp with time zone','timestamp with time zone']) AS products_types,
+    = ARRAY['uuid','uuid','text','text','text','boolean','boolean','integer','timestamp with time zone','timestamp with time zone']) AS tab_produto_types,
   ((SELECT array_agg(a.attname ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'product_images' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['image_id','product_id','image_url','alt_text','sort_order','is_primary','created_at']) AS product_images_cols,
+    = ARRAY['id_imagem','id_produto','url_imagem','texto_alternativo','ordem_exibicao','principal','data_criacao']) AS tab_produto_imagem_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'product_images' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','text','text','integer','boolean','timestamp with time zone']) AS product_images_types,
+    = ARRAY['uuid','uuid','text','text','integer','boolean','timestamp with time zone']) AS tab_produto_imagem_types,
   ((SELECT array_agg(a.attname ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['price_id','product_id','amount_cents','currency_code','is_promotional','starts_at','ends_at','is_active','created_at']) AS product_prices_cols,
+    = ARRAY['id_preco','id_produto','valor_centavos','codigo_moeda','promocional','inicio_vigencia','fim_vigencia','ativo','data_criacao']) AS tab_produto_preco_cols,
   ((SELECT array_agg(format_type(a.atttypid, a.atttypmod) ORDER BY a.attnum)
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND c.relkind = 'r'
+      WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND c.relkind = 'r'
         AND a.attnum > 0 AND NOT a.attisdropped)
-    = ARRAY['uuid','uuid','bigint','text','boolean','timestamp with time zone','timestamp with time zone','boolean','timestamp with time zone']) AS product_prices_types
+    = ARRAY['uuid','uuid','bigint','text','boolean','timestamp with time zone','timestamp with time zone','boolean','timestamp with time zone']) AS tab_produto_preco_types
 \gset post2_
 
-\if :post2_categories_cols
+\if :post2_tab_categoria_cols
 \else
-  \echo 'ERRO [0002]: colunas de app.categories divergem do esperado.'
+  \echo 'ERRO [0002]: colunas de app.tab_categoria divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.categories divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.tab_categoria divergem';
   END;
   $fail$;
 \endif
-\if :post2_categories_types
+\if :post2_tab_categoria_types
 \else
-  \echo 'ERRO [0002]: tipos de app.categories divergem do esperado.'
+  \echo 'ERRO [0002]: tipos de app.tab_categoria divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.categories divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.tab_categoria divergem';
   END;
   $fail$;
 \endif
-\if :post2_products_cols
+\if :post2_tab_produto_cols
 \else
-  \echo 'ERRO [0002]: colunas de app.products divergem do esperado.'
+  \echo 'ERRO [0002]: colunas de app.tab_produto divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.products divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.tab_produto divergem';
   END;
   $fail$;
 \endif
-\if :post2_products_types
+\if :post2_tab_produto_types
 \else
-  \echo 'ERRO [0002]: tipos de app.products divergem do esperado.'
+  \echo 'ERRO [0002]: tipos de app.tab_produto divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.products divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.tab_produto divergem';
   END;
   $fail$;
 \endif
-\if :post2_product_images_cols
+\if :post2_tab_produto_imagem_cols
 \else
-  \echo 'ERRO [0002]: colunas de app.product_images divergem do esperado.'
+  \echo 'ERRO [0002]: colunas de app.tab_produto_imagem divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.product_images divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.tab_produto_imagem divergem';
   END;
   $fail$;
 \endif
-\if :post2_product_images_types
+\if :post2_tab_produto_imagem_types
 \else
-  \echo 'ERRO [0002]: tipos de app.product_images divergem do esperado.'
+  \echo 'ERRO [0002]: tipos de app.tab_produto_imagem divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.product_images divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.tab_produto_imagem divergem';
   END;
   $fail$;
 \endif
-\if :post2_product_prices_cols
+\if :post2_tab_produto_preco_cols
 \else
-  \echo 'ERRO [0002]: colunas de app.product_prices divergem do esperado.'
+  \echo 'ERRO [0002]: colunas de app.tab_produto_preco divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.product_prices divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: colunas de app.tab_produto_preco divergem';
   END;
   $fail$;
 \endif
-\if :post2_product_prices_types
+\if :post2_tab_produto_preco_types
 \else
-  \echo 'ERRO [0002]: tipos de app.product_prices divergem do esperado.'
+  \echo 'ERRO [0002]: tipos de app.tab_produto_preco divergem do esperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.product_prices divergem';
+    RAISE EXCEPTION 'Poscondicao falhou: tipos de app.tab_produto_preco divergem';
   END;
   $fail$;
 \endif
 
 SELECT
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'categories' AND co.contype = 'p' AND co.conname = 'categories_pkey') AS categories_pk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'products' AND co.contype = 'p' AND co.conname = 'products_pkey') AS products_pk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_images' AND co.contype = 'p' AND co.conname = 'product_images_pkey') AS product_images_pk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND co.contype = 'p' AND co.conname = 'product_prices_pkey') AS product_prices_pk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'categories' AND co.contype = 'u' AND co.conname = 'categories_slug_key') AS categories_slug_unique,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'products' AND co.contype = 'u' AND co.conname = 'products_slug_key') AS products_slug_unique,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND co.contype = 'p' AND co.conname = 'pk_tab_categoria') AS tab_categoria_pk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND co.contype = 'p' AND co.conname = 'pk_tab_produto') AS tab_produto_pk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND co.contype = 'p' AND co.conname = 'pk_tab_produto_imagem') AS tab_produto_imagem_pk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND co.contype = 'p' AND co.conname = 'pk_tab_produto_preco') AS tab_produto_preco_pk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND co.contype = 'u' AND co.conname = 'unq_tab_categoria_slug') AS tab_categoria_slug_unique,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND co.contype = 'u' AND co.conname = 'unq_tab_produto_slug') AS tab_produto_slug_unique,
   EXISTS (
     SELECT 1
     FROM pg_constraint co
@@ -1551,12 +1551,12 @@ SELECT
     JOIN pg_namespace n ON n.oid = src.relnamespace
     JOIN pg_class dst ON dst.oid = co.confrelid
     WHERE n.nspname = 'app'
-      AND src.relname = 'products'
-      AND dst.relname = 'categories'
+      AND src.relname = 'tab_produto'
+      AND dst.relname = 'tab_categoria'
       AND co.contype = 'f'
       AND co.confdeltype = 'r'
-      AND co.conname = 'products_category_id_fkey'
-  ) AS products_fk_restrict,
+      AND co.conname = 'fk_tab_produto_categoria'
+  ) AS tab_produto_fk_restrict,
   EXISTS (
     SELECT 1
     FROM pg_constraint co
@@ -1564,12 +1564,12 @@ SELECT
     JOIN pg_namespace n ON n.oid = src.relnamespace
     JOIN pg_class dst ON dst.oid = co.confrelid
     WHERE n.nspname = 'app'
-      AND src.relname = 'product_images'
-      AND dst.relname = 'products'
+      AND src.relname = 'tab_produto_imagem'
+      AND dst.relname = 'tab_produto'
       AND co.contype = 'f'
       AND co.confdeltype = 'c'
-      AND co.conname = 'product_images_product_id_fkey'
-  ) AS product_images_fk_cascade,
+      AND co.conname = 'fk_tab_produto_imagem_produto'
+  ) AS tab_produto_imagem_fk_cascade,
   EXISTS (
     SELECT 1
     FROM pg_constraint co
@@ -1577,110 +1577,110 @@ SELECT
     JOIN pg_namespace n ON n.oid = src.relnamespace
     JOIN pg_class dst ON dst.oid = co.confrelid
     WHERE n.nspname = 'app'
-      AND src.relname = 'product_prices'
-      AND dst.relname = 'products'
+      AND src.relname = 'tab_produto_preco'
+      AND dst.relname = 'tab_produto'
       AND co.contype = 'f'
       AND co.confdeltype = 'c'
-      AND co.conname = 'product_prices_product_id_fkey'
-  ) AS product_prices_fk_cascade,
+      AND co.conname = 'fk_tab_produto_preco_produto'
+  ) AS tab_produto_preco_fk_cascade,
   ((SELECT count(*)
       FROM pg_constraint co
       JOIN pg_class c ON c.oid = co.conrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'app'
-        AND c.relname IN ('categories','products','product_images','product_prices')
+        AND c.relname IN ('tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco')
         AND co.contype = 'c') = 11) AS check_count_eleven,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'categories' AND co.conname = 'categories_name_not_empty_chk' AND co.contype = 'c') AS categories_name_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'categories' AND co.conname = 'categories_slug_format_chk' AND co.contype = 'c') AS categories_slug_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'categories' AND co.conname = 'categories_sort_order_nonneg_chk' AND co.contype = 'c') AS categories_sort_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'products' AND co.conname = 'products_name_not_empty_chk' AND co.contype = 'c') AS products_name_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'products' AND co.conname = 'products_slug_format_chk' AND co.contype = 'c') AS products_slug_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'products' AND co.conname = 'products_sort_order_nonneg_chk' AND co.contype = 'c') AS products_sort_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_images' AND co.conname = 'product_images_image_url_not_empty_chk' AND co.contype = 'c') AS product_images_url_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_images' AND co.conname = 'product_images_sort_order_nonneg_chk' AND co.contype = 'c') AS product_images_sort_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND co.conname = 'product_prices_amount_cents_positive_chk' AND co.contype = 'c') AS product_prices_amount_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND co.conname = 'product_prices_currency_code_format_chk' AND co.contype = 'c') AS product_prices_currency_chk,
-  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'product_prices' AND co.conname = 'product_prices_validity_window_chk' AND co.contype = 'c') AS product_prices_window_chk
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND co.conname = 'ck_tab_categoria_nome' AND co.contype = 'c') AS tab_categoria_name_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND co.conname = 'ck_tab_categoria_slug' AND co.contype = 'c') AS tab_categoria_slug_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_categoria' AND co.conname = 'ck_tab_categoria_ordem' AND co.contype = 'c') AS tab_categoria_sort_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND co.conname = 'ck_tab_produto_nome' AND co.contype = 'c') AS tab_produto_name_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND co.conname = 'ck_tab_produto_slug' AND co.contype = 'c') AS tab_produto_slug_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto' AND co.conname = 'ck_tab_produto_ordem' AND co.contype = 'c') AS tab_produto_sort_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND co.conname = 'ck_tab_produto_imagem_url' AND co.contype = 'c') AS tab_produto_imagem_url_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_imagem' AND co.conname = 'ck_tab_produto_imagem_ordem' AND co.contype = 'c') AS tab_produto_imagem_sort_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND co.conname = 'ck_tab_produto_preco_valor' AND co.contype = 'c') AS tab_produto_preco_amount_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND co.conname = 'ck_tab_produto_preco_moeda' AND co.contype = 'c') AS tab_produto_preco_currency_chk,
+  EXISTS (SELECT 1 FROM pg_constraint co JOIN pg_class c ON c.oid = co.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'tab_produto_preco' AND co.conname = 'ck_tab_produto_preco_vigencia' AND co.contype = 'c') AS tab_produto_preco_window_chk
 \gset post3_
 
-\if :post3_categories_pk
+\if :post3_tab_categoria_pk
 \else
-  \echo 'ERRO [0002]: PK de app.categories ausente ou com nome inesperado.'
+  \echo 'ERRO [0002]: PK de app.tab_categoria ausente ou com nome inesperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: PK de app.categories';
+    RAISE EXCEPTION 'Poscondicao falhou: PK de app.tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_products_pk
+\if :post3_tab_produto_pk
 \else
-  \echo 'ERRO [0002]: PK de app.products ausente ou com nome inesperado.'
+  \echo 'ERRO [0002]: PK de app.tab_produto ausente ou com nome inesperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: PK de app.products';
+    RAISE EXCEPTION 'Poscondicao falhou: PK de app.tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_product_images_pk
+\if :post3_tab_produto_imagem_pk
 \else
-  \echo 'ERRO [0002]: PK de app.product_images ausente ou com nome inesperado.'
+  \echo 'ERRO [0002]: PK de app.tab_produto_imagem ausente ou com nome inesperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: PK de app.product_images';
+    RAISE EXCEPTION 'Poscondicao falhou: PK de app.tab_produto_imagem';
   END;
   $fail$;
 \endif
-\if :post3_product_prices_pk
+\if :post3_tab_produto_preco_pk
 \else
-  \echo 'ERRO [0002]: PK de app.product_prices ausente ou com nome inesperado.'
+  \echo 'ERRO [0002]: PK de app.tab_produto_preco ausente ou com nome inesperado.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: PK de app.product_prices';
+    RAISE EXCEPTION 'Poscondicao falhou: PK de app.tab_produto_preco';
   END;
   $fail$;
 \endif
-\if :post3_categories_slug_unique
+\if :post3_tab_categoria_slug_unique
 \else
-  \echo 'ERRO [0002]: UNIQUE de slug em app.categories ausente.'
+  \echo 'ERRO [0002]: UNIQUE de slug_categoria em app.tab_categoria ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE slug de categories';
+    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE slug_categoria de tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_products_slug_unique
+\if :post3_tab_produto_slug_unique
 \else
-  \echo 'ERRO [0002]: UNIQUE de slug em app.products ausente.'
+  \echo 'ERRO [0002]: UNIQUE de slug_produto em app.tab_produto ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE slug de products';
+    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE slug_produto de tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_products_fk_restrict
+\if :post3_tab_produto_fk_restrict
 \else
-  \echo 'ERRO [0002]: FK products.category_id -> categories ON DELETE RESTRICT ausente ou incorreta.'
+  \echo 'ERRO [0002]: FK tab_produto.id_categoria -> tab_categoria ON DELETE RESTRICT ausente ou incorreta.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: FK products -> categories';
+    RAISE EXCEPTION 'Poscondicao falhou: FK tab_produto -> tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_product_images_fk_cascade
+\if :post3_tab_produto_imagem_fk_cascade
 \else
-  \echo 'ERRO [0002]: FK product_images.product_id -> products ON DELETE CASCADE ausente ou incorreta.'
+  \echo 'ERRO [0002]: FK tab_produto_imagem.id_produto -> tab_produto ON DELETE CASCADE ausente ou incorreta.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: FK product_images -> products';
+    RAISE EXCEPTION 'Poscondicao falhou: FK tab_produto_imagem -> tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_product_prices_fk_cascade
+\if :post3_tab_produto_preco_fk_cascade
 \else
-  \echo 'ERRO [0002]: FK product_prices.product_id -> products ON DELETE CASCADE ausente ou incorreta.'
+  \echo 'ERRO [0002]: FK tab_produto_preco.id_produto -> tab_produto ON DELETE CASCADE ausente ou incorreta.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: FK product_prices -> products';
+    RAISE EXCEPTION 'Poscondicao falhou: FK tab_produto_preco -> tab_produto';
   END;
   $fail$;
 \endif
@@ -1693,102 +1693,102 @@ SELECT
   END;
   $fail$;
 \endif
-\if :post3_categories_name_chk
+\if :post3_tab_categoria_name_chk
 \else
-  \echo 'ERRO [0002]: CHECK categories_name_not_empty_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_categoria_nome ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK name de categories';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK nome_categoria de tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_categories_slug_chk
+\if :post3_tab_categoria_slug_chk
 \else
-  \echo 'ERRO [0002]: CHECK categories_slug_format_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_categoria_slug ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK slug de categories';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK slug_categoria de tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_categories_sort_chk
+\if :post3_tab_categoria_sort_chk
 \else
-  \echo 'ERRO [0002]: CHECK categories_sort_order_nonneg_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_categoria_ordem ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK sort_order de categories';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK ordem_exibicao de tab_categoria';
   END;
   $fail$;
 \endif
-\if :post3_products_name_chk
+\if :post3_tab_produto_name_chk
 \else
-  \echo 'ERRO [0002]: CHECK products_name_not_empty_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_nome ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK name de products';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK nome_produto de tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_products_slug_chk
+\if :post3_tab_produto_slug_chk
 \else
-  \echo 'ERRO [0002]: CHECK products_slug_format_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_slug ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK slug de products';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK slug_produto de tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_products_sort_chk
+\if :post3_tab_produto_sort_chk
 \else
-  \echo 'ERRO [0002]: CHECK products_sort_order_nonneg_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_ordem ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK sort_order de products';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK ordem_exibicao de tab_produto';
   END;
   $fail$;
 \endif
-\if :post3_product_images_url_chk
+\if :post3_tab_produto_imagem_url_chk
 \else
-  \echo 'ERRO [0002]: CHECK product_images_image_url_not_empty_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_imagem_url ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK image_url de product_images';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK url_imagem de tab_produto_imagem';
   END;
   $fail$;
 \endif
-\if :post3_product_images_sort_chk
+\if :post3_tab_produto_imagem_sort_chk
 \else
-  \echo 'ERRO [0002]: CHECK product_images_sort_order_nonneg_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_imagem_ordem ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK sort_order de product_images';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK ordem_exibicao de tab_produto_imagem';
   END;
   $fail$;
 \endif
-\if :post3_product_prices_amount_chk
+\if :post3_tab_produto_preco_amount_chk
 \else
-  \echo 'ERRO [0002]: CHECK product_prices_amount_cents_positive_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_preco_valor ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK amount_cents de product_prices';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK valor_centavos de tab_produto_preco';
   END;
   $fail$;
 \endif
-\if :post3_product_prices_currency_chk
+\if :post3_tab_produto_preco_currency_chk
 \else
-  \echo 'ERRO [0002]: CHECK product_prices_currency_code_format_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_preco_moeda ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK currency_code de product_prices';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK codigo_moeda de tab_produto_preco';
   END;
   $fail$;
 \endif
-\if :post3_product_prices_window_chk
+\if :post3_tab_produto_preco_window_chk
 \else
-  \echo 'ERRO [0002]: CHECK product_prices_validity_window_chk ausente.'
+  \echo 'ERRO [0002]: CHECK ck_tab_produto_preco_vigencia ausente.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: CHECK janela de product_prices';
+    RAISE EXCEPTION 'Poscondicao falhou: CHECK janela de tab_produto_preco';
   END;
   $fail$;
 \endif
@@ -1801,17 +1801,17 @@ SELECT
       JOIN pg_namespace n ON n.oid = tbl.relnamespace
       WHERE n.nspname = 'app')
     = ARRAY[
-      'categories_pkey',
-      'categories_slug_key',
-      'product_images_one_primary_per_product_idx',
-      'product_images_pkey',
-      'product_images_product_id_idx',
-      'product_prices_pkey',
-      'product_prices_product_id_idx',
-      'products_category_id_idx',
-      'products_pkey',
-      'products_slug_key',
-      'schema_migrations_pkey'
+      'pk_tab_categoria',
+      'pk_tab_produto',
+      'pk_tab_produto_imagem',
+      'pk_tab_produto_preco',
+      'schema_migrations_pkey',
+      'tab_produto_id_categoria_idx',
+      'tab_produto_imagem_id_produto_idx',
+      'tab_produto_imagem_principal_unq',
+      'tab_produto_preco_id_produto_idx',
+      'unq_tab_categoria_slug',
+      'unq_tab_produto_slug'
     ]) AS indexes_exact,
   EXISTS (
     SELECT 1
@@ -1820,10 +1820,10 @@ SELECT
     JOIN pg_class tbl ON tbl.oid = i.indrelid
     JOIN pg_namespace n ON n.oid = tbl.relnamespace
     WHERE n.oid = :pre1_app_namespace_oid
-      AND tbl.relname = 'product_images'
+      AND tbl.relname = 'tab_produto_imagem'
       AND tbl.relkind = 'r'
       AND idx.relnamespace = n.oid
-      AND idx.relname = 'product_images_one_primary_per_product_idx'
+      AND idx.relname = 'tab_produto_imagem_principal_unq'
       AND i.indisunique = true
   ) AS primary_image_idx_on_table_unique,
   EXISTS (
@@ -1833,14 +1833,14 @@ SELECT
     JOIN pg_class tbl ON tbl.oid = i.indrelid
     JOIN pg_namespace n ON n.oid = tbl.relnamespace
     JOIN pg_attribute col ON col.attrelid = tbl.oid
-      AND col.attname = 'product_id'
+      AND col.attname = 'id_produto'
       AND col.attnum > 0
       AND NOT col.attisdropped
     WHERE n.oid = :pre1_app_namespace_oid
-      AND tbl.relname = 'product_images'
+      AND tbl.relname = 'tab_produto_imagem'
       AND tbl.relkind = 'r'
       AND idx.relnamespace = n.oid
-      AND idx.relname = 'product_images_one_primary_per_product_idx'
+      AND idx.relname = 'tab_produto_imagem_principal_unq'
       AND i.indnkeyatts = 1
       AND i.indnatts = 1
       AND i.indkey::smallint[] = ARRAY[col.attnum]::smallint[]
@@ -1852,13 +1852,13 @@ SELECT
     JOIN pg_class tbl ON tbl.oid = i.indrelid
     JOIN pg_namespace n ON n.oid = tbl.relnamespace
     WHERE n.oid = :pre1_app_namespace_oid
-      AND tbl.relname = 'product_images'
+      AND tbl.relname = 'tab_produto_imagem'
       AND tbl.relkind = 'r'
       AND idx.relnamespace = n.oid
-      AND idx.relname = 'product_images_one_primary_per_product_idx'
+      AND idx.relname = 'tab_produto_imagem_principal_unq'
       AND i.indpred IS NOT NULL
       AND replace(replace(pg_get_expr(i.indpred, i.indrelid), '::boolean', ''), ' ', '')
-          IN ('(is_primary=true)', 'is_primary=true', '(is_primaryISTRUE)', 'is_primaryISTRUE', 'is_primary')
+          IN ('(principal=true)', 'principal=true', '(principalISTRUE)', 'principalISTRUE', 'principal')
   ) AS primary_image_idx_pred_is_primary
 \gset post4_
 
@@ -1873,25 +1873,25 @@ SELECT
 \endif
 \if :post4_primary_image_idx_on_table_unique
 \else
-  \echo 'ERRO [0002]: UNIQUE INDEX parcial de imagem primaria nao pertence a app.product_images ou nao e UNIQUE.'
+  \echo 'ERRO [0002]: UNIQUE INDEX parcial de imagem primaria nao pertence a app.tab_produto_imagem ou nao e UNIQUE.'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE INDEX parcial nao pertence a app.product_images ou nao e UNIQUE';
+    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE INDEX parcial nao pertence a app.tab_produto_imagem ou nao e UNIQUE';
   END;
   $fail$;
 \endif
 \if :post4_primary_image_idx_indkey_product_id
 \else
-  \echo 'ERRO [0002]: UNIQUE INDEX parcial de imagem primaria nao referencia exatamente a coluna product_id (indkey/attnum).'
+  \echo 'ERRO [0002]: UNIQUE INDEX parcial de imagem primaria nao referencia exatamente a coluna id_produto (indkey/attnum).'
   DO $fail$
   BEGIN
-    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE INDEX parcial nao referencia exatamente product_id';
+    RAISE EXCEPTION 'Poscondicao falhou: UNIQUE INDEX parcial nao referencia exatamente id_produto';
   END;
   $fail$;
 \endif
 \if :post4_primary_image_idx_pred_is_primary
 \else
-  \echo 'ERRO [0002]: predicado do UNIQUE INDEX parcial de imagem primaria nao corresponde a is_primary=true.'
+  \echo 'ERRO [0002]: predicado do UNIQUE INDEX parcial de imagem primaria nao corresponde a principal=true.'
   DO $fail$
   BEGIN
     RAISE EXCEPTION 'Poscondicao falhou: predicado do UNIQUE INDEX parcial de imagem primaria';
@@ -1909,7 +1909,7 @@ SELECT
 SELECT
   (
     SELECT count(*)
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     WHERE (
       SELECT coalesce(array_agg(a.privilege_type ORDER BY a.privilege_type), ARRAY[]::text[])
       FROM pg_class c
@@ -1924,7 +1924,7 @@ SELECT
   ) = 4 AS app_dml_exact_all_four,
   NOT EXISTS (
     SELECT 1
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     JOIN pg_class c ON c.relname = t.relname AND c.relkind = 'r'
     JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app'
     CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, '{}'::aclitem[])) a
@@ -1935,7 +1935,7 @@ SELECT
   ) AS app_no_grant_option,
   NOT EXISTS (
     SELECT 1
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     JOIN pg_class c ON c.relname = t.relname AND c.relkind = 'r'
     JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app'
     CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, '{}'::aclitem[])) a
@@ -1946,7 +1946,7 @@ SELECT
   ) AS app_no_forbidden_privs,
   NOT EXISTS (
     SELECT 1
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     JOIN pg_class c ON c.relname = t.relname AND c.relkind = 'r'
     JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app'
     CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, '{}'::aclitem[])) a
@@ -1955,7 +1955,7 @@ SELECT
   ) AS public_zero_on_catalog,
   NOT EXISTS (
     SELECT 1
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     JOIN pg_class c ON c.relname = t.relname AND c.relkind = 'r'
     JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app'
     CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, '{}'::aclitem[])) a
@@ -1965,7 +1965,7 @@ SELECT
   ) AS migrator_zero_on_catalog,
   NOT EXISTS (
     SELECT 1
-    FROM unnest(ARRAY['categories','products','product_images','product_prices']) AS t(relname)
+    FROM unnest(ARRAY['tab_categoria','tab_produto','tab_produto_imagem','tab_produto_preco']) AS t(relname)
     JOIN pg_class c ON c.relname = t.relname AND c.relkind = 'r'
     JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app'
     CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, '{}'::aclitem[])) a
@@ -2097,9 +2097,9 @@ INSERT INTO app.schema_migrations (
   applied_as_role,
   database_name
 ) VALUES (
-  '0002_create_catalog_core',
+  '0002_criar_nucleo_catalogo',
   :'migration_sha256',
-  'Cria o nucleo estrutural do catalogo: app.categories, app.products, app.product_images e app.product_prices.',
+  'Cria o nucleo estrutural do catalogo: app.tab_categoria, app.tab_produto, app.tab_produto_imagem e app.tab_produto_preco.',
   now(),
   session_user::text,
   current_user::text,
@@ -2119,7 +2119,7 @@ SELECT
   EXISTS (
     SELECT 1
     FROM app.schema_migrations
-    WHERE migration_id = '0002_create_catalog_core'
+    WHERE migration_id = '0002_criar_nucleo_catalogo'
       AND checksum_sha256 IS NOT DISTINCT FROM :'migration_sha256'
       AND applied_by_login IS NOT DISTINCT FROM :'migrator_role'
       AND applied_as_role IS NOT DISTINCT FROM :'owner_role'
@@ -2546,4 +2546,4 @@ SELECT
 
 COMMIT;
 
-\echo '=== 0002: CREATE CATALOG CORE - concluido. Nucleo do catalogo criado, owned by owner_role, sem seed, Runtime APP com DML default nas 4 tabelas, ledger com 0001+0002. ==='
+\echo '=== 0002: CRIAR NUCLEO CATALOGO - concluido. Nucleo do catalogo criado, owned by owner_role, sem seed, Runtime APP com DML default nas 4 tabelas, ledger com 0001+0002. ==='

@@ -1,9 +1,12 @@
 # Especificação do Modelo de Dados do Catálogo — Amanteigados Lívia
 
-> Fase **5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT**.
-> **Somente draft.** A migration `0002_create_catalog_core` **não** foi
-> executada. Nenhum comando SQL, `psql` ou conexão PostgreSQL desta fase
-> alterou DEV, HOMOLOG ou PROD. Complementa
+> Revisão **R2** — nomenclatura oficial em português.
+> Artefato DDL: `0002_criar_nucleo_catalogo`. Checksum esperado:
+> `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`.
+> Carga inicial de HOMOLOG (não é migration):
+> `backend/database/releases/0001_catalogo_inicial.sql`.
+> A 0001 permanece imutável.
+> Complementa
 > `docs/database/MIGRATION_FRAMEWORK_SPEC.md`,
 > `docs/database/SCHEMA_SECURITY_SPEC.md`, `docs/catalog-spec.md` e
 > `docs/PROJECT_MAP.md`.
@@ -17,11 +20,50 @@ campos que o frontend atual realmente usa (`catalog-demo-data.js`,
 `catalog-core.js`, `produtos.js`), sem inventar entidades de pedido,
 estoque, fiscal, publicação ou administração.
 
-Artefato DDL: `backend/database/migrations/0002_create_catalog_core.sql`.
+Artefato DDL: `backend/database/migrations/0002_criar_nucleo_catalogo.sql`.
 
-Estado: **DRAFT / NÃO EXECUTADA**.
+Identificador no ledger: `0002_criar_nucleo_catalogo`.
 
-## 2. Inventário do catálogo atual (somente leitura)
+Estado: **pronta para aplicação oficial em HOMOLOG**. A 0001 permanece
+imutável. Seed/demo **não** entra na 0002; a carga inicial é o release
+`0001_catalogo_inicial.sql`.
+
+## 2. Padrão oficial de nomenclatura
+
+### Tabelas de negócio
+
+```
+app.tab_<nome_em_portugues>
+```
+
+Regras:
+
+- schema `app`;
+- prefixo `tab_`;
+- nome em português;
+- singular;
+- `snake_case`;
+- sem acentos;
+- nomes autoexplicativos.
+
+### Colunas
+
+- português;
+- `snake_case`;
+- nomes claros e autoexplicativos;
+- sem abreviações desnecessárias;
+- PK/FK no padrão `id_<entidade>`;
+- datas no padrão `data_<evento>`;
+- booleanos com nomes compreensíveis.
+
+### Exceção técnica
+
+`app.schema_migrations` é tabela técnica interna do framework de
+migrations já consolidado. **Não** recebe prefixo `tab_` e **não** é
+renomeada nesta fase (nem em nenhuma correção da 0002). A 0001 é
+imutável.
+
+## 3. Inventário do catálogo atual (somente leitura)
 
 Fonte demonstrativa (`window.CATALOG_DATA` em `catalog-demo-data.js`):
 
@@ -29,30 +71,31 @@ Fonte demonstrativa (`window.CATALOG_DATA` em `catalog-demo-data.js`):
 
 | Campo | Uso atual | Destino na 0002 |
 |---|---|---|
-| `id` | chave de filtro / `categoryId` do produto | substituído por `category_id` uuid |
-| `slug` | `?categoria=` em `/produtos` | `slug` |
-| `name` | chips e busca | `name` |
-| `active` | só categorias ativas com produto ativo | `is_active` |
-| `order` | ordenação dos chips | `sort_order` |
+| `id` | chave de filtro / `categoryId` do produto | substituído por `id_categoria` uuid |
+| `slug` | `?categoria=` em `/produtos` | `slug_categoria` |
+| `name` | chips e busca | `nome_categoria` |
+| `active` | só categorias ativas com produto ativo | `ativo` |
+| `order` | ordenação dos chips | `ordem_exibicao` |
 
-Não há `description` de categoria no demo; a coluna existe como `NULL`
-opcional para texto futuro, sem seed.
+Não há `description` de categoria no demo; a coluna
+`descricao_categoria` existe como `NULL` opcional para texto futuro,
+sem seed.
 
 ### Product (frontend)
 
 | Campo | Uso atual | Destino na 0002 |
 |---|---|---|
-| `id` | lookup, dialog, carrinho | substituído por `product_id` uuid |
-| `slug` | identificador estável de URL (ainda sem rota) | `slug` |
-| `name` | card, dialog, busca, ordenação | `name` |
-| `categoryId` | filtro e nome da categoria | `category_id` |
-| `description` | dialog | `description` |
+| `id` | lookup, dialog, carrinho | substituído por `id_produto` uuid |
+| `slug` | identificador estável de URL (ainda sem rota) | `slug_produto` |
+| `name` | card, dialog, busca, ordenação | `nome_produto` |
+| `categoryId` | filtro e nome da categoria | `id_categoria` |
+| `description` | dialog | `descricao_produto` |
 | `shortDescription` | card e busca | **fora desta migration** |
-| `price` / `promotionalPrice` | `getEffectivePrice()` | `app.product_prices` |
-| `image` | uma URL por produto | `app.product_images` |
-| `featured` | flag editorial | `is_featured` |
-| `active` | listagem / `isUsableProduct` | `is_active` |
-| `order` | ordenação de origem | `sort_order` |
+| `price` / `promotionalPrice` | `getEffectivePrice()` | `app.tab_produto_preco` |
+| `image` | uma URL por produto | `app.tab_produto_imagem` |
+| `featured` | flag editorial | `destaque` |
+| `active` | listagem / `isUsableProduct` | `ativo` |
+| `order` | ordenação de origem | `ordem_exibicao` |
 | `unit`, `weight` | meta do card/dialog | **fora desta migration** |
 | `customizable` | badge | **fora desta migration** |
 | `minQuantity`, `quantityStep`, `maxQuantity` | seletor e carrinho | **fora desta migration** |
@@ -63,30 +106,30 @@ A 0002 modela o núcleo (categoria, produto, imagens, preços). Campos
 comerciais/operacionais acima permanecem no frontend demo até migrations
 posteriores, se e quando forem necessários.
 
-## 3. Modelo textual
+## 4. Modelo textual
 
 ```
-categories
+tab_categoria
   1
   |
   N
-products
+tab_produto
   | \
   |  \
   N   N
-images prices
+tab_produto_imagem   tab_produto_preco
 ```
 
 Cardinalidade:
 
 - Uma categoria tem **N** produtos.
-- Um produto pertence a **exatamente 1** categoria (`category_id` NOT NULL).
+- Um produto pertence a **exatamente 1** categoria (`id_categoria` NOT NULL).
 - Um produto tem **0..N** imagens.
 - Um produto tem **0..N** preços.
 - Ausência de imagem ou preço é válida (o frontend já trata placeholder
   e “sem preço”).
 
-## 4. Estratégia de UUID
+## 5. Estratégia de UUID
 
 Todas as PKs são `uuid` **sem default gerador** no banco.
 
@@ -102,152 +145,169 @@ Proibido nesta migration: `SERIAL`, `BIGSERIAL`, `IDENTITY`,
 `CREATE SEQUENCE`, `gen_random_uuid()`, `uuid_generate_v4()`.
 
 O frontend demo ainda usa ids string (`tradicional`, `classicos`). A
-aplicação futura gera UUID e preserva `slug` como chave de URL.
+aplicação futura gera UUID e preserva `slug_categoria` / `slug_produto`
+como chave de URL.
 
-## 5. Tabelas
+## 6. Tabelas
 
-### 5.1 `app.categories`
+### 6.1 `app.tab_categoria`
 
 Objetivo: taxonomia do cardápio (chips, filtro, busca por nome da
 categoria).
 
 | Coluna | Tipo | Nulo | Default | Papel |
 |---|---|---|---|---|
-| `category_id` | `uuid` | NÃO | — (app) | PK |
-| `name` | `text` | NÃO | — | nome visível |
-| `slug` | `text` | NÃO | — | chave de URL |
-| `description` | `text` | SIM | — | texto opcional |
-| `sort_order` | `integer` | NÃO | `0` | ordem dos chips |
-| `is_active` | `boolean` | NÃO | `true` | visibilidade |
-| `created_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
-| `updated_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `id_categoria` | `uuid` | NÃO | — (app) | PK |
+| `nome_categoria` | `text` | NÃO | — | nome visível |
+| `slug_categoria` | `text` | NÃO | — | chave de URL |
+| `descricao_categoria` | `text` | SIM | — | texto opcional |
+| `ordem_exibicao` | `integer` | NÃO | `0` | ordem dos chips |
+| `ativo` | `boolean` | NÃO | `true` | visibilidade |
+| `data_criacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `data_atualizacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
 
 Regras:
 
-- `name` não vazio (`btrim(name) <> ''`);
-- `slug` UNIQUE e normalizado: `^[a-z0-9]+(-[a-z0-9]+)*$`;
-- `sort_order >= 0`.
+- `nome_categoria` não vazio (`btrim(nome_categoria) <> ''`);
+- `slug_categoria` UNIQUE e normalizado: `^[a-z0-9]+(-[a-z0-9]+)*$`;
+- `ordem_exibicao >= 0`.
 
-Não há trigger de `updated_at`. A aplicação atualiza o campo
+Constraints nomeadas: `pk_tab_categoria`, `unq_tab_categoria_slug`,
+`ck_tab_categoria_nome`, `ck_tab_categoria_slug`,
+`ck_tab_categoria_ordem`.
+
+Não há trigger de `data_atualizacao`. A aplicação atualiza o campo
 explicitamente em UPDATEs.
 
-### 5.2 `app.products`
+### 6.2 `app.tab_produto`
 
 Objetivo: item vendável do cardápio.
 
 | Coluna | Tipo | Nulo | Default | Papel |
 |---|---|---|---|---|
-| `product_id` | `uuid` | NÃO | — (app) | PK |
-| `category_id` | `uuid` | NÃO | — | FK para `categories` |
-| `name` | `text` | NÃO | — | nome visível |
-| `slug` | `text` | NÃO | — | chave de URL, UNIQUE global |
-| `description` | `text` | SIM | — | detalhe |
-| `is_active` | `boolean` | NÃO | `true` | visibilidade |
-| `is_featured` | `boolean` | NÃO | `false` | destaque editorial (`featured`) |
-| `sort_order` | `integer` | NÃO | `0` | ordem de origem |
-| `created_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
-| `updated_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `id_produto` | `uuid` | NÃO | — (app) | PK |
+| `id_categoria` | `uuid` | NÃO | — | FK para `tab_categoria` |
+| `nome_produto` | `text` | NÃO | — | nome visível |
+| `slug_produto` | `text` | NÃO | — | chave de URL, UNIQUE global |
+| `descricao_produto` | `text` | SIM | — | detalhe |
+| `ativo` | `boolean` | NÃO | `true` | visibilidade |
+| `destaque` | `boolean` | NÃO | `false` | destaque editorial (`featured`) |
+| `ordem_exibicao` | `integer` | NÃO | `0` | ordem de origem |
+| `data_criacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `data_atualizacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
 
 FK:
 
 ```
-category_id -> app.categories(category_id)
+id_categoria -> app.tab_categoria(id_categoria)
 ON DELETE RESTRICT
 ```
+
+Constraint: `fk_tab_produto_categoria`.
 
 Não se apaga categoria que ainda tem produtos. Estoque, fiscal,
 quantidade comercial e personalização **não** entram nesta tabela nesta
 fase.
 
-### 5.3 `app.product_images`
+### 6.3 `app.tab_produto_imagem`
 
 Objetivo: galeria por produto. O demo atual tem uma URL (`image`); o
-núcleo já admite várias linhas, com no máximo **uma** primária.
+núcleo já admite várias linhas, com no máximo **uma** principal.
 
 | Coluna | Tipo | Nulo | Default | Papel |
 |---|---|---|---|---|
-| `image_id` | `uuid` | NÃO | — (app) | PK |
-| `product_id` | `uuid` | NÃO | — | FK para `products` |
-| `image_url` | `text` | NÃO | — | URL/path da imagem |
-| `alt_text` | `text` | SIM | — | acessibilidade |
-| `sort_order` | `integer` | NÃO | `0` | ordem na galeria |
-| `is_primary` | `boolean` | NÃO | `false` | imagem principal do card |
-| `created_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `id_imagem` | `uuid` | NÃO | — (app) | PK |
+| `id_produto` | `uuid` | NÃO | — | FK para `tab_produto` |
+| `url_imagem` | `text` | NÃO | — | URL/path da imagem |
+| `texto_alternativo` | `text` | SIM | — | acessibilidade |
+| `ordem_exibicao` | `integer` | NÃO | `0` | ordem na galeria |
+| `principal` | `boolean` | NÃO | `false` | imagem principal do card |
+| `data_criacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
 
 FK:
 
 ```
-product_id -> app.products(product_id)
+id_produto -> app.tab_produto(id_produto)
 ON DELETE CASCADE
 ```
+
+Constraint: `fk_tab_produto_imagem_produto`.
 
 UNIQUE INDEX parcial:
 
 ```
-(product_id) WHERE is_primary = true
+tab_produto_imagem_principal_unq
+ON app.tab_produto_imagem (id_produto)
+WHERE principal = true
 ```
 
-Permite N imagens não primárias; no máximo uma primária por produto.
+Permite N imagens não principais; no máximo uma principal por produto.
 Produto sem imagem (zero linhas) permanece válido.
 
-### 5.4 `app.product_prices`
+### 6.4 `app.tab_produto_preco`
 
 Objetivo: preço em **centavos inteiros**, com flag promocional e janela
 opcional. Substitui o par float `price` / `promotionalPrice` do demo.
 
 | Coluna | Tipo | Nulo | Default | Papel |
 |---|---|---|---|---|
-| `price_id` | `uuid` | NÃO | — (app) | PK |
-| `product_id` | `uuid` | NÃO | — | FK para `products` |
-| `amount_cents` | `bigint` | NÃO | — | valor em centavos |
-| `currency_code` | `text` | NÃO | `'BRL'` | ISO-4217 de 3 letras |
-| `is_promotional` | `boolean` | NÃO | `false` | preço promocional |
-| `starts_at` | `timestamptz` | SIM | — | início da vigência |
-| `ends_at` | `timestamptz` | SIM | — | fim da vigência |
-| `is_active` | `boolean` | NÃO | `true` | vigência lógica |
-| `created_at` | `timestamptz` | NÃO | `now()` | auditoria mínima |
+| `id_preco` | `uuid` | NÃO | — (app) | PK |
+| `id_produto` | `uuid` | NÃO | — | FK para `tab_produto` |
+| `valor_centavos` | `bigint` | NÃO | — | valor em centavos |
+| `codigo_moeda` | `text` | NÃO | `'BRL'` | ISO-4217 de 3 letras |
+| `promocional` | `boolean` | NÃO | `false` | preço promocional |
+| `inicio_vigencia` | `timestamptz` | SIM | — | início da vigência |
+| `fim_vigencia` | `timestamptz` | SIM | — | fim da vigência |
+| `ativo` | `boolean` | NÃO | `true` | vigência lógica |
+| `data_criacao` | `timestamptz` | NÃO | `now()` | auditoria mínima |
 
 FK:
 
 ```
-product_id -> app.products(product_id)
+id_produto -> app.tab_produto(id_produto)
 ON DELETE CASCADE
 ```
 
+Constraint: `fk_tab_produto_preco_produto`.
+
 Regras:
 
-- `amount_cents > 0` — ausência de preço = **nenhuma linha**, nunca zero;
-- `currency_code ~ '^[A-Z]{3}$'`;
-- se `starts_at` e `ends_at` estão preenchidos: `ends_at > starts_at`.
+- `valor_centavos > 0` — ausência de preço = **nenhuma linha**, nunca zero;
+- `codigo_moeda ~ '^[A-Z]{3}$'` (exatamente 3 letras uppercase);
+- se `inicio_vigencia` e `fim_vigencia` estão preenchidos:
+  `fim_vigencia > inicio_vigencia`.
+
+Constraints: `ck_tab_produto_preco_valor`, `ck_tab_produto_preco_moeda`,
+`ck_tab_produto_preco_vigencia`.
 
 Sobreposição de períodos **não** é resolvida nesta migration. Fica para
 regra de negócio/API futura. `getEffectivePrice()` no frontend (promo
 estritamente menor que o preço-base) também permanece regra de
 aplicação, não de banco.
 
-## 6. Dinheiro em cents
+## 7. Dinheiro em cents
 
 Preços **não** são `numeric`/`float`/`money`.
 
-- `19.90` BRL no demo → `1990` em `amount_cents`;
+- `19.90` BRL no demo → `1990` em `valor_centavos`;
 - formatação `pt-BR` continua na aplicação (`Intl.NumberFormat`);
 - evita erro de ponto flutuante em somas de carrinho futuras.
 
 O frontend atual aceita `0` como preço válido (`isValidPrice`). O banco
-recusa `amount_cents = 0`. A ausência comercial continua sendo “sem
+recusa `valor_centavos = 0`. A ausência comercial continua sendo “sem
 linha de preço”, alinhada a `docs/catalog-spec.md` (“nunca 0 para
 ausente”).
 
-## 7. Timestamps
+## 8. Timestamps
 
 - Tipo: `timestamptz`.
-- `created_at` / `updated_at` em categorias e produtos: default `now()`
-  no INSERT.
-- Sem trigger de `updated_at`. UPDATE deve enviar o novo valor.
-- Imagens e preços têm só `created_at` nesta fase (histórico mínimo;
+- `data_criacao` / `data_atualizacao` em categorias e produtos: default
+  `now()` no INSERT.
+- Sem trigger de `data_atualizacao`. UPDATE deve enviar o novo valor.
+- Imagens e preços têm só `data_criacao` nesta fase (histórico mínimo;
   alteração de URL/preço pode ser nova linha em migrations futuras).
 
-## 8. Slug
+## 9. Slug
 
 Formato único para categorias e produtos:
 
@@ -259,50 +319,50 @@ Formato único para categorias e produtos:
 - hífen como separador;
 - sem hífen inicial/final;
 - sem hífens consecutivos;
-- UNIQUE global na respectiva tabela.
+- UNIQUE global na respectiva tabela (`slug_categoria`, `slug_produto`).
 
 A aplicação gera o slug (não há função SQL nesta migration). O demo já
 usa slugs nesse formato (`classicos`, `amanteigado` não composto, etc.).
 
-## 9. Indexes (somente os justificados)
+## 10. Indexes (somente os justificados)
 
 | Index | Tabela | Justificativa |
 |---|---|---|
-| `categories_pkey` | `categories` | PK |
-| `categories_slug_key` | `categories` | UNIQUE de `slug`; lookup `?categoria=` |
-| `products_pkey` | `products` | PK |
-| `products_slug_key` | `products` | UNIQUE de `slug` |
-| `products_category_id_idx` | `products` | FK e listagem por categoria; o PostgreSQL **não** cria index automático no lado N da FK |
-| `product_images_pkey` | `product_images` | PK |
-| `product_images_product_id_idx` | `product_images` | FK e galeria por produto |
-| `product_images_one_primary_per_product_idx` | `product_images` | no máximo uma primária (`WHERE is_primary = true`) |
-| `product_prices_pkey` | `product_prices` | PK |
-| `product_prices_product_id_idx` | `product_prices` | FK e preços por produto |
+| `pk_tab_categoria` | `tab_categoria` | PK |
+| `unq_tab_categoria_slug` | `tab_categoria` | UNIQUE de `slug_categoria`; lookup `?categoria=` |
+| `pk_tab_produto` | `tab_produto` | PK |
+| `unq_tab_produto_slug` | `tab_produto` | UNIQUE de `slug_produto` |
+| `tab_produto_id_categoria_idx` | `tab_produto` | FK e listagem por categoria; o PostgreSQL **não** cria index automático no lado N da FK |
+| `pk_tab_produto_imagem` | `tab_produto_imagem` | PK |
+| `tab_produto_imagem_id_produto_idx` | `tab_produto_imagem` | FK e galeria por produto |
+| `tab_produto_imagem_principal_unq` | `tab_produto_imagem` | no máximo uma principal (`WHERE principal = true`) |
+| `pk_tab_produto_preco` | `tab_produto_preco` | PK |
+| `tab_produto_preco_id_produto_idx` | `tab_produto_preco` | FK e preços por produto |
 
 **Não criados** (excesso nesta fase):
 
-- `(is_active, sort_order)` em `categories` — cardinalidade típica é
+- `(ativo, ordem_exibicao)` em `tab_categoria` — cardinalidade típica é
   pequena (o demo tem 4); PK + UNIQUE slug bastam;
-- índice composto de listagem ativa em `products` — o filtro
-  `is_active` + `category_id` cabe no index de FK + predicado; catálogo
+- índice composto de listagem ativa em `tab_produto` — o filtro
+  `ativo` + `id_categoria` cabe no index de FK + predicado; catálogo
   comercial esperado é pequeno;
-- índice parcial `WHERE is_active = true` em `product_prices` —
-  consulta parte de `product_id`; o index da FK já cobre.
+- índice parcial `WHERE ativo = true` em `tab_produto_preco` —
+  consulta parte de `id_produto`; o index da FK já cobre.
 
 `schema_migrations_pkey` permanece da 0001.
 
-## 10. Delete behavior
+## 11. Delete behavior
 
 | Relação | ON DELETE | Motivo |
 |---|---|---|
-| `products.category_id` → `categories` | `RESTRICT` | não órfão; não apagar categoria com produtos |
-| `product_images.product_id` → `products` | `CASCADE` | imagens não existem sem produto |
-| `product_prices.product_id` → `products` | `CASCADE` | preços não existem sem produto |
+| `tab_produto.id_categoria` → `tab_categoria` | `RESTRICT` | não órfão; não apagar categoria com produtos |
+| `tab_produto_imagem.id_produto` → `tab_produto` | `CASCADE` | imagens não existem sem produto |
+| `tab_produto_preco.id_produto` → `tab_produto` | `CASCADE` | preços não existem sem produto |
 
 Sem `ON DELETE SET NULL` (FKs NOT NULL). Sem cascade de categoria para
 produto.
 
-## 11. Runtime permissions
+## 12. Runtime permissions
 
 As 4 tabelas são criadas sob `owner_role` no schema `app`. A baseline
 5.0D.6F (`ALTER DEFAULT PRIVILEGES ... GRANT SELECT, INSERT, UPDATE,
@@ -336,7 +396,7 @@ nem o da `app_role` falha.
 O ledger `app.schema_migrations` **permanece** com zero privilege para
 APP, Migrator e PUBLIC. A 0002 não reabre o ledger.
 
-## 12. Migration ledger
+## 13. Migration ledger
 
 A 0002 depende da 0001.
 
@@ -346,7 +406,7 @@ não lê o ledger):
 - exatamente 1 registro;
 - `migration_id = 0001_create_migration_ledger`;
 - `checksum_sha256 = bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`;
-- `0002_create_catalog_core` ausente.
+- `0002_criar_nucleo_catalogo` ausente.
 
 Pós-condição:
 
@@ -356,10 +416,10 @@ Pós-condição:
   hardcoded no arquivo).
 
 Único INSERT de dados desta migration: o registro 0002 no ledger.
-Zero INSERT em categories/products/images/prices. `catalog-demo-data.js`
-**não** é migrado.
+Zero INSERT em `tab_categoria` / `tab_produto` / `tab_produto_imagem` /
+`tab_produto_preco`. `catalog-demo-data.js` **não** é migrado.
 
-## 13. Identidade e transação
+## 14. Identidade e transação
 
 Uma única transação:
 
@@ -383,7 +443,20 @@ A leitura do registro 0001 ocorre **depois** do `SET ROLE` porque o
 Migrator não tem SELECT no ledger (proteção da 0001). A existência da
 tabela e a ACL do ledger são validadas antes, via `pg_catalog`.
 
-## 14. O que ficou FORA do escopo
+## 15. Ambientes Supabase (desta fase)
+
+Nenhum SQL desta tarefa é executado contra qualquer ambiente.
+
+| Ambiente | Projeto Supabase | Papel nesta fase |
+|---|---|---|
+| HOMOLOG | `amanteigados-livia-homolog` | destino oficial de validação |
+| PROD | `amanteigados-livia-prod` | bloqueado até aprovação humana |
+
+HOMOLOG permanece o destino oficial de validação após DEV. PROD
+permanece bloqueado até aprovação humana explícita. Esta revisão R2
+**não** aplica a 0002 em DEV, HOMOLOG ou PROD.
+
+## 16. O que ficou FORA do escopo
 
 Não criados nesta migration:
 
@@ -395,12 +468,12 @@ Não criados nesta migration:
 - `shortDescription`, `unit`, `weight`, `customizable`;
 - `minQuantity` / `quantityStep` / `maxQuantity` / `productionTime`;
 - seed ou cópia de `catalog-demo-data.js`;
-- trigger de `updated_at`;
+- trigger de `data_atualizacao`;
 - exclusão de sobreposição de preços;
 - runner automático;
 - execução em DEV/HOMOLOG/PROD.
 
-## 15. Futuras migrations esperadas (não desta fase)
+## 17. Futuras migrations esperadas (não desta fase)
 
 Ordem ilustrativa, sujeita a gate:
 
@@ -412,8 +485,10 @@ Ordem ilustrativa, sujeita a gate:
 4. Publicação/versionamento de catálogo (releases).
 5. Painel admin e auditoria.
 
-Promoção continua `DEV → HOMOLOG → aprovação → PROD`. HOMOLOG e PROD
-permanecem **bloqueados** nesta fase.
+Promoção continua `DEV → HOMOLOG → aprovação → PROD`. HOMOLOG
+(`amanteigados-livia-homolog`) é o destino oficial de validação. PROD
+(`amanteigados-livia-prod`) permanece **bloqueado** até aprovação
+humana.
 
 ---
 

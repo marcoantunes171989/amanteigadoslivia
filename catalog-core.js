@@ -1,36 +1,70 @@
 // ===================== CATALOG CORE (FASE 4A.1) =====================
 // Camada de regras puras do catálogo — SEM DOM. Responsabilidade única:
-// resolver a fonte de dados atual (hoje catalog-demo-data.js, futuramente
-// API/banco) e expor preço/quantidade/lookup de produto como funções
-// puras, para que produtos.js e o futuro cart.js nunca dupliquem essas
-// regras (ver docs/cart-spec.md, seções 24-26).
+// resolver a fonte de dados atual (GET /api/catalogo em HOMOLOG) e
+// expor preço/quantidade/lookup de produto como funções puras, para que
+// produtos.js e carrinho.js nunca dupliquem essas regras
+// (ver docs/cart-spec.md, seções 24-26).
 //
 // Nunca deve conter: document, createElement, querySelector,
 // getElementById, innerHTML, textContent, replaceChildren,
 // addEventListener, classes CSS, toast, badge ou qualquer renderização.
 //
-// Carregar este script ANTES de cart.js e produtos.js, e DEPOIS de
-// catalog-demo-data.js (ver produtos.html).
+// Carregar este script ANTES de cart.js e produtos.js (ver produtos.html).
 (function () {
   'use strict';
 
-  // ---- Fonte de dados: resolvida uma única vez na inicialização ----
-  // Preserva exatamente o comportamento de loadCatalogSource() (Fase 3.3):
-  // nunca confia cegamente em window.CATALOG_DATA — se ausente ou
-  // malformada, cai com segurança para arrays vazios.
-  function loadCatalogSource() {
-    const source = (typeof window !== 'undefined' && window.CATALOG_DATA) || null;
+  // ---- Fonte de dados ----
+  // O snapshot síncrono de window.CATALOG_DATA permanece como fallback
+  // defensivo. A tela de HOMOLOG chama loadFromApi() e só então renderiza.
+  // Se a API falhar, o chamador deve exibir indisponibilidade — nunca
+  // substituir silenciosamente por dados fake.
+  function emptyCatalogSource() {
+    return { mode: null, categories: [], products: [] };
+  }
+
+  function applyCatalogSource(source) {
     if (!source || typeof source !== 'object') {
-      return { mode: null, categories: [], products: [] };
+      CATALOG_SOURCE = emptyCatalogSource();
+      return CATALOG_SOURCE;
     }
-    return {
+    CATALOG_SOURCE = {
       mode: typeof source.mode === 'string' ? source.mode : null,
       categories: Array.isArray(source.categories) ? source.categories : [],
       products: Array.isArray(source.products) ? source.products : [],
     };
+    return CATALOG_SOURCE;
   }
 
-  const CATALOG_SOURCE = loadCatalogSource();
+  function loadCatalogSource() {
+    return applyCatalogSource((typeof window !== 'undefined' && window.CATALOG_DATA) || null);
+  }
+
+  let CATALOG_SOURCE = emptyCatalogSource();
+  loadCatalogSource();
+
+  async function loadFromApi() {
+    const response = await fetch('/api/catalogo', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      applyCatalogSource(null);
+      throw new Error('catalog_unavailable');
+    }
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      applyCatalogSource(null);
+      throw new Error('catalog_unavailable');
+    }
+    applyCatalogSource(data);
+    if (typeof window !== 'undefined') {
+      window.CATALOG_DATA = data;
+    }
+    return CATALOG_SOURCE;
+  }
 
   function getMode() {
     return CATALOG_SOURCE.mode;
@@ -189,6 +223,7 @@
   }
 
   const AmanteigadosCatalog = {
+    loadFromApi,
     getMode,
     getCategories,
     getProducts,

@@ -7,25 +7,13 @@
 > `docs/cart-spec.md` e `docs/catalog-spec.md` (especificações de
 > produto/frontend) sem duplicá-los.
 
-**Fase ativa: 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT** —
-Draft da 0002 criado no Git; **0002 NÃO executada**. A fase 5.0D.6G
-(`MIGRATION FRAMEWORK`) foi **CONCLUÍDA / EXECUTADA / AUDITADA EM DEV**.
-Migration aplicada: `0001_create_migration_ledger`. Checksum:
-`bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`.
-Estado auditado: `app.schema_migrations` existe; owner =
-`amanteigados_dev_owner`; exatamente 1 registro; `applied_by_login` =
-`amanteigados_dev_migrator`; `applied_as_role` =
-`amanteigados_dev_owner`; `database_name` = `amanteigados_dev`; APP com
-zero privilege efetivo no ledger; Migrator com zero ACL direta; PUBLIC
-com zero ACL direta; default privileges 5.0D.6F intactos; `search_path`
-intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app`
-agora possui somente `schema_migrations` como relation; routines = 0;
-sequences = 0. A migration 0001 **não** deve ser reexecutada em DEV —
-migration histórica aplicada e imutável; qualquer ajuste futuro deve ser
-feito por nova migration forward-fix. Artefatos de draft da 0002:
-`backend/database/migrations/0002_create_catalog_core.sql`,
-`docs/database/CATALOG_DATA_MODEL_SPEC.md`. HOMOLOG e PROD permanecem
-bloqueados.
+**Fase ativa: FAST-TRACK HOMOLOG CATÁLOGO** — primeiro ambiente
+funcional em HOMOLOG (Vercel `homologacao` + Supabase
+`amanteigados-livia-homolog`). A 0002 (`0002_criar_nucleo_catalogo`)
+permanece versionada e **imutável** após esta revisão R2. Artefato de
+carga: `backend/database/releases/0001_catalogo_inicial.sql`. API:
+`GET /api/catalogo` (server-side `DATABASE_URL`, role Runtime APP).
+PROD (`amanteigados-livia-prod`) permanece bloqueado.
 
 ---
 
@@ -48,69 +36,30 @@ bloqueados.
 | 5.0D.6E | `DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` em DEV (`backend/database/config/002_owner_default_privileges.sql`), escopo global ao database | Concluída — **executado e auditado em DEV**; `owner_role` com exatamente 1 entrada `pg_default_acl` (global, FUNCTIONS, `PUBLIC` sem `EXECUTE`); zero default ACL de TABLES/SEQUENCES; `migrator_role`/`app_role` com zero `pg_default_acl` |
 | 5.0D.6F | Grants de runtime para `app_role` em DEV (`backend/database/config/003_runtime_app_grants.sql`) | Concluída — **CONCLUÍDO/AUDITADO EM DEV**; APP schema USAGE=true, CREATE=false; DB CREATE=false; TABLES futuras SELECT/INSERT/UPDATE/DELETE; SEQUENCES futuras USAGE; sem grant option; sem EXECUTE automático em FUNCTIONS; APP sem membership/SET ROLE Owner/Migrator; `search_path = app, pg_catalog`; schema `app` vazio; 003 **não** deve ser reexecutado em DEV |
 | 5.0D.6G | Framework de migrations PostgreSQL (`backend/database/migrations/`, ledger `app.schema_migrations`, spec `docs/database/MIGRATION_FRAMEWORK_SPEC.md`) | Concluída — **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**; `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro; `applied_by_login` = `amanteigados_dev_migrator`; `applied_as_role` = `amanteigados_dev_owner`; `database_name` = `amanteigados_dev`; APP com zero privilege efetivo no ledger; Migrator com zero ACL direta; PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV (histórica/imutável; ajuste futuro só por forward-fix) |
-| 5.0D.6H | Business migrations / catalog model | Draft — **0002 DRAFT no Git, NÃO executada**; HOMOLOG e PROD bloqueados |
+| 5.0D.6H | Business migrations / catalog model | 0002 versionada (`0002_criar_nucleo_catalogo`); nomenclatura PT (`app.tab_*`); release `0001_catalogo_inicial`; API `GET /api/catalogo`; HOMOLOG é o destino oficial; PROD bloqueado |
+| FAST-TRACK HML | Primeiro ambiente funcional HOMOLOG | Em execução — Vercel `homologacao` + Supabase `amanteigados-livia-homolog`; PROD não publicado |
 
 ## 2. Fase ativa
 
-**5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT** — Draft da
-primeira migration de negócio (núcleo do catálogo) criado no Git;
-**0002 NÃO executada**. Checkpoint Git deste draft (HEAD obrigatório):
-`b9ed7636a21a1698bbc9b6aad8ab8c26e0ef26a1`, branch
-`dev/backend-admin-local`. Bootstrap administrativo do schema `app` em
-DEV (5.0D.6C) **executado e auditado**: scripts
-`001_admin_prepare_app_schema.sql` → `002_migrator_create_app_schema.sql`
-→ `003_admin_finalize_app_schema.sql` executados nesta ordem no database
-`amanteigados_dev`, todos com exit code 0; POSTCHECK DEV aprovado.
-Schema `app` **existe** em `amanteigados_dev`, owner
-`amanteigados_dev_owner`. `search_path` POR DATABASE (5.0D.6D)
-**executado e auditado**: `app, pg_catalog` confirmado para Owner,
-Migrator e Runtime APP
-(`backend/database/config/001_admin_set_search_path.sql`).
-`DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` (5.0D.6E)
-**executado e auditado**: `ALTER DEFAULT PRIVILEGES FOR ROLE owner_role
-REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` aplicado (escopo global ao
-database, sem `IN SCHEMA`); `owner_role` com exatamente 1 entrada
-`pg_default_acl` (global, `defaclobjtype='f'`, `PUBLIC` sem `EXECUTE`),
-zero default ACL de TABLES/SEQUENCES; `migrator_role` e `app_role` com
-zero `pg_default_acl`; membership Migrator→Owner (`admin=false,
-inherit=false, set=true`) revalidada sem alteração. Fase 5.0D.6F
-(`RUNTIME APP GRANTS`) **CONCLUÍDA/AUDITADA EM DEV**. Estado auditado:
-APP schema USAGE=true; APP schema CREATE=false; DB CREATE=false; TABLES
-futuras SELECT, INSERT, UPDATE, DELETE; SEQUENCES futuras USAGE; sem
-grant option; sem EXECUTE automático em FUNCTIONS; APP sem membership
-Owner/Migrator; APP sem SET ROLE Owner/Migrator; `search_path = app,
-pg_catalog`. Uma tentativa autenticada posterior do
-`003_runtime_app_grants.sql` abortou em pré-condição porque APP já
-possuía USAGE; essa tentativa não chegou a `SET ROLE`, `GRANT`,
-`ALTER DEFAULT PRIVILEGES` ou `COMMIT`. Diagnóstico read-only
-posterior confirmou que o estado final completo já estava presente.
-Por segurança, `003` **não** deve ser reexecutado em DEV. A origem
-exata da aplicação anterior dos grants não foi determinada, mas o
-estado atual foi auditado integralmente. Fase 5.0D.6G
-(`MIGRATION FRAMEWORK`) **CONCLUÍDA / EXECUTADA / AUDITADA EM DEV**.
-Artefatos no Git:
-`backend/database/migrations/0001_create_migration_ledger.sql`,
-`backend/database/migrations/README.md`,
-`docs/database/MIGRATION_FRAMEWORK_SPEC.md`. Migration aplicada:
-`0001_create_migration_ledger`. Checksum:
-`bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`.
-Estado auditado: `app.schema_migrations` existe; owner =
-`amanteigados_dev_owner`; exatamente 1 registro; `applied_by_login` =
-`amanteigados_dev_migrator`; `applied_as_role` =
-`amanteigados_dev_owner`; `database_name` = `amanteigados_dev`; APP com
-zero privilege efetivo no ledger; Migrator com zero ACL direta; PUBLIC
-com zero ACL direta; default privileges 5.0D.6F intactos; `search_path`
-intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app`
-agora possui somente `schema_migrations` como relation; routines = 0;
-sequences = 0. A migration 0001 **não** deve ser reexecutada em DEV.
-Migration histórica aplicada e imutável. Qualquer ajuste futuro deve
-ser feito por nova migration forward-fix. Fase atual: **5.0D.6H
-BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT**. Artefatos de draft:
-`backend/database/migrations/0002_create_catalog_core.sql` e
-`docs/database/CATALOG_DATA_MODEL_SPEC.md`. A 0002 está **DRAFT / NÃO
-executada**. HOMOLOG e PROD permanecem bloqueados (ver
-`docs/database/SCHEMA_SECURITY_SPEC.md`, seções 7 e 8, e
-`docs/database/MIGRATION_FRAMEWORK_SPEC.md`).
+**FAST-TRACK HOMOLOG CATÁLOGO** — colocar o cardápio funcionando na
+Vercel HOMOLOG com banco Supabase HOMOLOG.
+
+- DEV = laboratório
+- HOMOLOG = validação oficial
+- PROD = cliente/público (não publicar nesta fase)
+
+Fluxo: `DEV → GitHub → Vercel HOMOLOG → Supabase HOMOLOG → teste/aprovação → Vercel PROD + Supabase PROD`.
+
+Artefatos:
+
+- `backend/database/migrations/0002_criar_nucleo_catalogo.sql` (SHA256
+  `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`)
+- `backend/database/releases/0001_catalogo_inicial.sql`
+- `GET /api/catalogo` (`api/catalogo.js` na Vercel; Express em `backend/src/app.js`)
+- Frontend `/produtos` e `/carrinho` consomem a API; sem fallback fake
+
+A 0001 permanece imutável (`bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`).
+A 0002 **não** é reexecutável. PROD permanece bloqueado.
 
 ## 3. Próximos gates
 
@@ -135,12 +84,12 @@ executada**. HOMOLOG e PROD permanecem bloqueados (ver
 
 ### Fase atual
 
-- 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT
-- Draft da 0002 criado no Git: `0002_create_catalog_core.sql` +
-  `docs/database/CATALOG_DATA_MODEL_SPEC.md`
-- 0002 **DRAFT / NÃO executada**
-- HOMOLOG permanece **bloqueado**
-- PROD permanece **bloqueado**
+- FAST-TRACK HOMOLOG CATÁLOGO
+- 0002 pronta para primeira aplicação oficial em HOMOLOG
+- Release versionado: `backend/database/releases/0001_catalogo_inicial.sql`
+- API: `GET /api/catalogo` com `DATABASE_URL` server-side
+- Frontend consome a API; sem fallback fake
+- HOMOLOG = validação oficial; PROD permanece **bloqueado**
 - `003_runtime_app_grants.sql` **não** deve ser reexecutado em DEV
 - `0001_create_migration_ledger` **não** deve ser reexecutada em DEV
 
@@ -149,16 +98,16 @@ executada**. HOMOLOG e PROD permanecem bloqueados (ver
 | Gate | Descrição | Pré-requisito |
 |---|---|---|
 | 1 | 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 **DRAFT / NÃO executada**) | Fase 5.0D.6G concluída/executada/auditada em DEV; 0001 histórica/imutável |
-| 2 | Promoção do schema homologado em DEV para HOMOLOG (somente após DEV completo; 0002 ainda **não executada**; HOMOLOG bloqueado) | Gate 1 aprovado + homologação comercial de catálogo (bloqueio independente, ver `docs/catalog-homologation.md`) |
-| 3 | Promoção HOMOLOG → PROD via fluxo de release (`DRAFT → READY_FOR_HOMOLOG → HOMOLOGATED → PUBLISHED`), somente após aprovação humana explícita | Gate 2 aprovado, gate explícito de produção |
+| 2 | Promoção do schema homologado em DEV para HOMOLOG (`amanteigados-livia-homolog`, destino oficial de validação; somente após DEV completo; 0002 ainda **não executada**) | Gate 1 aprovado + homologação comercial de catálogo (bloqueio independente, ver `docs/catalog-homologation.md`) |
+| 3 | Promoção HOMOLOG → PROD (`amanteigados-livia-prod`) via fluxo de release (`DRAFT → READY_FOR_HOMOLOG → HOMOLOGATED → PUBLISHED`), somente após aprovação humana explícita | Gate 2 aprovado, gate explícito de produção |
 
 ## 4. Ambientes
 
 | Ambiente | Banco | Estado atual |
 |---|---|---|
-| DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**: `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro (`applied_by_login` = `amanteigados_dev_migrator`, `applied_as_role` = `amanteigados_dev_owner`, `database_name` = `amanteigados_dev`); APP com zero privilege efetivo no ledger; Migrator/PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 **DRAFT / NÃO executada**); HOMOLOG e PROD bloqueados |
-| HOMOLOG | Supabase (Session Pooler 5432, TLS) | `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); `public` sem tabelas de negócio; nenhum objeto de negócio criado |
-| PROD | Não provisionado | Nomes de role equivalentes previstos, **não criados nesta fase** |
+| DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**: `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro (`applied_by_login` = `amanteigados_dev_migrator`, `applied_as_role` = `amanteigados_dev_owner`, `database_name` = `amanteigados_dev`); APP com zero privilege efetivo no ledger; Migrator/PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 `0002_criar_nucleo_catalogo` **DRAFT / NÃO executada**); HOMOLOG (`amanteigados-livia-homolog`) destino oficial de validação; PROD (`amanteigados-livia-prod`) bloqueado até aprovação humana |
+| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. `amanteigados_homolog_owner` (NOLOGIN), `amanteigados_homolog_migrator` (SCRAM-SHA-256, login validado, `SET ROLE` owner validado), `amanteigados_homolog_app` (SCRAM-SHA-256, login validado, sem `SET ROLE` privilegiado, sem DDL); `public` sem tabelas de negócio; nenhum objeto de negócio criado; 0002 **não executada** |
+| PROD | Supabase `amanteigados-livia-prod` | Bloqueado até aprovação humana. Nomes de role equivalentes previstos, **não criados nesta fase**; 0002 **não executada** |
 
 ### Política DEV-first
 
@@ -199,9 +148,9 @@ equivalente). Ver `docs/database/SCHEMA_SECURITY_SPEC.md`, seção
 
 | Área | Status | Observação |
 |---|---|---|
-| Frontend | Estável | Landing page + `/produtos` + `/carrinho` fiéis à referência; catálogo em modo demo |
-| Backend | Em desenvolvimento | Fundação Express + config + pool + readiness prontos; sem rotas de negócio ainda |
-| Database | Bootstrap DEV + `search_path` + `DEFAULT PRIVILEGES` + runtime APP grants + migration framework executados e auditados | Schema `app` existe em DEV (owner `amanteigados_dev_owner`), somente `schema_migrations` como relation; `search_path` por database executado e auditado (5.0D.6D); `DEFAULT PRIVILEGES` de FUNCTIONS para `owner_role` executado e auditado (5.0D.6E); grants de runtime para `app_role` CONCLUÍDOS/AUDITADOS (5.0D.6F); 5.0D.6G MIGRATION FRAMEWORK CONCLUÍDO/EXECUTADO/AUDITADO EM DEV (`0001_create_migration_ledger`, checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 **DRAFT / NÃO executada**); HOMOLOG e PROD permanecem bloqueados |
+| Frontend | Estável | Landing + `/produtos` + `/carrinho`; catálogo via `GET /api/catalogo` |
+| Backend | HOMOLOG catalog API | Express `/api/catalogo` + função Vercel `api/catalogo.js`; `DATABASE_URL` server-side |
+| Database | 0002 + release inicial prontos para HOMOLOG | Núcleo `app.tab_*`; carga `releases/0001_catalogo_inicial.sql`; PROD bloqueado |
 | Admin (painel administrativo) | Não iniciado | Depende do schema `app` e do modelo de releases |
 | Releases (painel "Ambientes & Releases") | Não iniciado | Requisitos documentados nesta fase em `SCHEMA_SECURITY_SPEC.md`, seção "Painel Ambientes & Releases" |
 

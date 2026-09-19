@@ -12,6 +12,7 @@
 
   const els = {
     demoNotice: document.getElementById('cartDemoNotice'),
+    unavailableState: document.getElementById('cartUnavailableState'),
     emptyState: document.getElementById('cartEmptyState'),
     emptyTitle: document.getElementById('cartEmptyTitle'),
     layout: document.getElementById('cartLayout'),
@@ -294,9 +295,22 @@
 
   // ===================== INICIALIZAÇÃO =====================
   Cart.loadCart();
-  if (els.demoNotice) {
-    els.demoNotice.hidden = Catalog.getMode() !== 'demo';
-  }
-  renderCart();
   updateCartBadges();
+
+  async function bootCart() {
+    try {
+      await Catalog.loadFromApi();
+    } catch {
+      if (els.unavailableState) els.unavailableState.hidden = false;
+      if (els.emptyState) els.emptyState.hidden = true;
+      if (els.layout) els.layout.hidden = true;
+      return;
+    }
+    if (els.demoNotice) {
+      els.demoNotice.hidden = Catalog.getMode() !== 'demo';
+    }
+    renderCart();
+  }
+
+  bootCart();
 })();

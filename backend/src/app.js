@@ -1,4 +1,6 @@
 import express from 'express';
+import { getCatalogPayload } from './catalog.js';
+import pool from './database.js';
 import { checkReadiness } from './readiness.js';
 
 const app = express();
@@ -15,6 +17,17 @@ app.get('/health', (_request, response) => {
     status: 'ok',
     service: 'amanteigados-livia-api',
   });
+});
+
+app.get('/api/catalogo', async (_request, response) => {
+  response.set('Cache-Control', 'no-store');
+
+  try {
+    const payload = await getCatalogPayload(pool);
+    response.status(200).json(payload);
+  } catch {
+    response.status(503).json({ error: 'catalog_unavailable' });
+  }
 });
 
 app.get('/ready', async (_request, response) => {

@@ -10,10 +10,13 @@ const ALLOWED_NODE_ENVS = Object.freeze(['development', 'test', 'production']);
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
 
-const REQUIRED_VARS = Object.freeze([
+const REQUIRED_APP_VARS = Object.freeze([
   'NODE_ENV',
   'HOST',
   'PORT',
+]);
+
+const REQUIRED_DB_VARS = Object.freeze([
   'DB_HOST',
   'DB_PORT',
   'DB_NAME',
@@ -57,7 +60,7 @@ function requirePortNumber(env, name) {
 }
 
 export function validateEnv(env) {
-  for (const name of REQUIRED_VARS) {
+  for (const name of REQUIRED_APP_VARS) {
     requireNonBlank(env, name);
   }
 
@@ -74,6 +77,24 @@ export function validateEnv(env) {
   }
 
   const port = requirePortNumber(env, 'PORT');
+  const databaseUrl = isBlank(env.DATABASE_URL) ? null : env.DATABASE_URL.trim();
+
+  if (databaseUrl) {
+    return Object.freeze({
+      app: Object.freeze({
+        nodeEnv,
+        host,
+        port,
+      }),
+      database: Object.freeze({
+        connectionString: databaseUrl,
+      }),
+    });
+  }
+
+  for (const name of REQUIRED_DB_VARS) {
+    requireNonBlank(env, name);
+  }
 
   const dbHost = requireNonBlank(env, 'DB_HOST');
   const dbPort = requirePortNumber(env, 'DB_PORT');

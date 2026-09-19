@@ -3,19 +3,35 @@ import config from './config.js';
 
 const { Pool } = pg;
 
-const APPLICATION_NAME = 'amanteigados-livia-api-dev';
+const APPLICATION_NAME = 'amanteigados-livia-api';
 
-const pool = new Pool({
-  host: config.database.host,
-  port: config.database.port,
-  database: config.database.name,
-  user: config.database.user,
-  password: config.database.password,
-  max: 5,
-  connectionTimeoutMillis: 3000,
-  idleTimeoutMillis: 10000,
-  application_name: APPLICATION_NAME,
-});
+function createPool() {
+  const common = {
+    max: 5,
+    connectionTimeoutMillis: 3000,
+    idleTimeoutMillis: 10000,
+    application_name: APPLICATION_NAME,
+  };
+
+  if (config.database.connectionString) {
+    return new Pool({
+      ...common,
+      connectionString: config.database.connectionString,
+      ssl: { rejectUnauthorized: false },
+    });
+  }
+
+  return new Pool({
+    ...common,
+    host: config.database.host,
+    port: config.database.port,
+    database: config.database.name,
+    user: config.database.user,
+    password: config.database.password,
+  });
+}
+
+const pool = createPool();
 
 pool.on('error', (error) => {
   console.error('[amanteigados-livia-api] unexpected database pool error', {
