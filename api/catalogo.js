@@ -13,9 +13,10 @@ function createPoolFromDiscreteEnv() {
     user: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,
     ssl: { rejectUnauthorized: false },
-    max: 3,
-    connectionTimeoutMillis: 5000,
-    idleTimeoutMillis: 10000,
+    max: 1,
+    connectionTimeoutMillis: 8000,
+    idleTimeoutMillis: 1000,
+    allowExitOnIdle: true,
     application_name: 'amanteigados-livia-api-homolog',
   });
 }
@@ -30,9 +31,10 @@ function createPoolFromUrl() {
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 3,
-    connectionTimeoutMillis: 5000,
-    idleTimeoutMillis: 10000,
+    max: 1,
+    connectionTimeoutMillis: 8000,
+    idleTimeoutMillis: 1000,
+    allowExitOnIdle: true,
     application_name: 'amanteigados-livia-api-homolog',
   });
 }

@@ -107,29 +107,27 @@ export function mapCatalogRows({
 }
 
 export async function getCatalogPayload(queryable) {
-  const [categoriesResult, productsResult, imagesResult, pricesResult] = await Promise.all([
-    queryable.query(`
+  const categoriesResult = await queryable.query(`
       SELECT id_categoria, nome_categoria, slug_categoria, ordem_exibicao, ativo
       FROM app.tab_categoria
       ORDER BY ordem_exibicao ASC, nome_categoria ASC
-    `),
-    queryable.query(`
+    `);
+  const productsResult = await queryable.query(`
       SELECT id_produto, id_categoria, nome_produto, slug_produto, descricao_produto,
              destaque, ativo, ordem_exibicao
       FROM app.tab_produto
       ORDER BY ordem_exibicao ASC, nome_produto ASC
-    `),
-    queryable.query(`
+    `);
+  const imagesResult = await queryable.query(`
       SELECT id_imagem, id_produto, url_imagem, texto_alternativo, ordem_exibicao, principal
       FROM app.tab_produto_imagem
       ORDER BY ordem_exibicao ASC
-    `),
-    queryable.query(`
+    `);
+  const pricesResult = await queryable.query(`
       SELECT id_preco, id_produto, valor_centavos, codigo_moeda, promocional,
              inicio_vigencia, fim_vigencia, ativo, data_criacao
       FROM app.tab_produto_preco
-    `),
-  ]);
+    `);
 
   return mapCatalogRows({
     categories: categoriesResult.rows,
