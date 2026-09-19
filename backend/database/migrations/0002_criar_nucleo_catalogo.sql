@@ -1838,18 +1838,19 @@ SELECT
     JOIN pg_class idx ON idx.oid = i.indexrelid
     JOIN pg_class tbl ON tbl.oid = i.indrelid
     JOIN pg_namespace n ON n.oid = tbl.relnamespace
-    JOIN pg_attribute col ON col.attrelid = tbl.oid
-      AND col.attname = 'id_produto'
-      AND col.attnum > 0
-      AND NOT col.attisdropped
+    JOIN pg_attribute a ON a.attrelid = tbl.oid
+      AND a.attname = 'id_produto'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
     WHERE n.oid = :pre1_app_namespace_oid
       AND tbl.relname = 'tab_produto_imagem'
       AND tbl.relkind = 'r'
       AND idx.relnamespace = n.oid
       AND idx.relname = 'tab_produto_imagem_principal_unq'
+      AND i.indisunique = true
       AND i.indnkeyatts = 1
       AND i.indnatts = 1
-      AND i.indkey::smallint[] = ARRAY[col.attnum]::smallint[]
+      AND i.indkey[0] = a.attnum
   ) AS primary_image_idx_indkey_product_id,
   EXISTS (
     SELECT 1
