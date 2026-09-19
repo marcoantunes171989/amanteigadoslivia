@@ -12,6 +12,6 @@
   },
   "scripts": {
     "test": "node --test backend/src/catalog.test.js",
-    "build": "node --check api/catalogo.js backend/src/catalog.js"
+    "build": "node --check api/catalogo.js api/health-db.js backend/src/catalog.js"
   }
 }

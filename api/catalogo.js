@@ -5,31 +5,64 @@ const { Pool } = pg;
 
 let pool = null;
 
-function getPool() {
+function createPoolFromDiscreteEnv() {
+  return new Pool({
+    host: process.env.DATABASE_HOST,
+    port: Number(process.env.DATABASE_PORT || 5432),
+    database: process.env.DATABASE_NAME,
+    user: process.env.DATABASE_USER,
+    password: process.env.DATABASE_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+    max: 3,
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 10000,
+    application_name: 'amanteigados-livia-api-homolog',
+  });
+}
+
+function createPoolFromUrl() {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString || connectionString.trim() === '') {
-    throw new Error('DATABASE_URL is required');
+    throw new Error('DATABASE_HOST or DATABASE_URL is required');
   }
 
-  if (!pool) {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-      connectionTimeoutMillis: 3000,
-      idleTimeoutMillis: 10000,
-      application_name: 'amanteigados-livia-api-homolog',
-    });
+  return new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    max: 3,
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 10000,
+    application_name: 'amanteigados-livia-api-homolog',
+  });
+}
 
-    pool.on('error', (error) => {
-      console.error('[amanteigados-livia-api] unexpected database pool error', {
-        code: error.code ?? 'unknown_error',
-      });
-    });
+export function getPool() {
+  if (pool) {
+    return pool;
   }
+
+  const host = process.env.DATABASE_HOST;
+  pool = host && host.trim() !== ''
+    ? createPoolFromDiscreteEnv()
+    : createPoolFromUrl();
+
+  pool.on('error', (error) => {
+    console.error('[catalog-api] unexpected database pool error', {
+      code: error?.code || 'unknown',
+      name: error?.name || 'Error',
+    });
+  });
 
   return pool;
+}
+
+export function logDatabaseError(scope, error) {
+  console.error(scope, {
+    code: error?.code || 'unknown',
+    name: error?.name || 'Error',
+    message: error?.message || 'unknown error',
+  });
 }
 
 export default async function handler(request, response) {
@@ -43,7 +76,10 @@ export default async function handler(request, response) {
   try {
     const payload = await getCatalogPayload(getPool());
     response.status(200).json(payload);
-  } catch {
-    response.status(503).json({ error: 'catalog_unavailable' });
+  } catch (error) {
+    logDatabaseError('[catalog-api] database request failed', error);
+    response.status(503).json({
+      error: 'catalog_unavailable',
+    });
   }
 }
