@@ -12,7 +12,7 @@
     "pg": "8.23.0"
   },
   "scripts": {
-    "test": "node --test backend/src/catalog.test.js backend/src/money.test.js backend/src/admin-auth.test.js backend/src/admin-catalog.test.js backend/src/admin-http.test.js backend/src/admin-v2.test.js",
-    "build": "node --check api/catalogo.js api/catalogo/revisao.js api/vendas.js api/health-db.js api/admin/login.js api/admin/logout.js api/admin/catalogo.js api/admin/vendas.js api/admin/relatorios.js api/admin/auditoria.js api/admin/usuarios.js api/admin/alteracoes-agendadas.js api/admin/publicacoes.js api/admin/imagens/upload-url.js api/interno/processar-alteracoes-agendadas.js api/interno/processar-publicacoes.js backend/src/catalog.js backend/src/catalog-revision.js backend/src/admin-auth.js backend/src/admin-catalog.js backend/src/admin-http.js backend/src/admin-audit.js backend/src/admin-users.js backend/src/admin-sales.js backend/src/admin-schedule.js backend/src/admin-publish.js backend/src/admin-storage.js backend/src/admin-reports.js backend/src/password.js backend/src/money.js backend/src/admin-errors.js backend/src/app.js"
+    "test": "node --test backend/src/catalog.test.js backend/src/money.test.js backend/src/admin-auth.test.js backend/src/admin-catalog.test.js backend/src/admin-http.test.js backend/src/admin-v2.test.js backend/src/admin-api-dispatch.test.js",
+    "build": "node --check api/catalogo.js api/catalogo/revisao.js api/vendas.js api/health-db.js api/admin-router.js api/interno-router.js backend/src/catalog.js backend/src/catalog-revision.js backend/src/admin-auth.js backend/src/admin-catalog.js backend/src/admin-http.js backend/src/admin-audit.js backend/src/admin-users.js backend/src/admin-sales.js backend/src/admin-schedule.js backend/src/admin-publish.js backend/src/admin-storage.js backend/src/admin-reports.js backend/src/password.js backend/src/money.js backend/src/admin-errors.js backend/src/app.js"
   }
 }

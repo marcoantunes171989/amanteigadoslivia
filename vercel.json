@@ -5,5 +5,15 @@
   "installCommand": "npm install",
   "outputDirectory": ".",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/api/admin/:path*",
+      "destination": "/api/admin-router?slug=:path*"
+    },
+    {
+      "source": "/api/interno/:job",
+      "destination": "/api/interno-router?job=:job"
+    }
+  ]
 }
