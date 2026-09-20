@@ -70,18 +70,24 @@
   --sh-page: 0 8px 28px rgba(74,46,42,.09);
   --sh-card: 0 1px 4px rgba(74,46,42,.05);
 
-  --pad: clamp(20px, 3.3vw, 40px);
+  --pad: clamp(16px, 3.3vw, 40px);
+  --content-max: 1200px;
+  --header-h: 88px;
 }
 
 *{ box-sizing:border-box; margin:0; padding:0; }
-html{ scroll-behavior:smooth; }
+html{ scroll-behavior:smooth; overflow-x:clip; }
 body{
   font-family:var(--sans);
   color:var(--text);
   background:var(--page);
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
+  overflow-x:clip;
 }
+body.nav-locked{ overflow:hidden; }
+[id]{ scroll-margin-top: calc(var(--header-h) + 12px); }
+input, select, textarea{ font-size:16px; }
 img{ display:block; max-width:100%; }
 a{ color:inherit; text-decoration:none; }
 .ico{ width:1em; height:1em; display:inline-block; fill:none; flex:0 0 auto; }
@@ -95,9 +101,10 @@ a{ color:inherit; text-decoration:none; }
    levemente a viewport em ~320px antes desta mudança) passa a gerar scroll
    horizontal real — antes ficava mascarado pelo recorte do card externo. */
 .page{
-  width:100%;
+  width:min(100%, 1440px);
+  margin:0 auto;
   background:var(--page);
-  overflow:hidden;
+  overflow:visible;
   position:relative;
 }
 
@@ -124,20 +131,19 @@ a{ color:inherit; text-decoration:none; }
 .btn-white:hover{ background:#fff; transform:translateY(-1px); }
 
 /* ===================== HEADER ===================== */
-/* Sticky avaliado e descartado: .page usa overflow:hidden para recortar os
-   cantos arredondados do "cartão flutuante" (compartilhado com /produtos),
-   e isso impede position:sticky de funcionar corretamente dentro dela.
-   Mantido position:relative + isolation para um empilhamento robusto do
-   menu mobile, sem o comportamento sticky. */
 .site-header{
-  position:relative; z-index:40; isolation:isolate;
+  position:sticky; top:0; z-index:60;
   display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;
-  padding:10px var(--pad);
-  background:var(--surface);
+  min-height:var(--header-h);
+  padding:8px var(--pad);
+  background:rgba(255,253,252,.94);
   border-bottom:1px solid rgba(231,221,211,.55);
   box-shadow:0 2px 10px rgba(74,46,42,.05);
 }
-.brand{ width:104px; height:104px; flex:0 0 auto; }
+.brand{ width:72px; height:72px; flex:0 0 auto; }
+.nav-admin{ color:var(--muted) !important; font-size:.88em; font-weight:500; }
+.nav-admin.active::after{ display:none; }
+.nav-backdrop{ display:none; }
 .brand img{ width:100%; height:100%; border-radius:50%; object-fit:contain; background:var(--surface); box-shadow:0 5px 16px rgba(57,38,26,.14); }
 .nav{ grid-column:2; justify-self:center; display:flex; gap:clamp(20px,2.6vw,44px); font-size:.95rem; font-weight:500; }
 .nav a{ position:relative; color:var(--text); padding:4px 0; transition:color .18s; }
@@ -145,7 +151,7 @@ a{ color:inherit; text-decoration:none; }
 .nav a.active{ color:var(--primary); }
 .nav a.active::after{ content:""; position:absolute; left:0; right:0; bottom:-3px; height:1.5px; background:var(--primary); border-radius:2px; }
 .nav a:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
-.header-actions{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; }
+.header-actions{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; position:relative; z-index:80; }
 .order-btn{ height:44px; }
 .order-btn .ico{ font-size:1.2em; }
 .mobile-cardapio{
@@ -401,7 +407,7 @@ a{ color:inherit; text-decoration:none; }
 /* ===================== MOTION / EFEITOS ===================== */
 @keyframes fadeUp   { from{ opacity:0; transform:translateY(18px); } to{ opacity:1; transform:none; } }
 @keyframes photoIn  { from{ opacity:0; transform:translateX(28px) scale(1.04); } to{ opacity:1; transform:none; } }
-@keyframes headerIn { from{ opacity:0; transform:translateY(-10px); } to{ opacity:1; transform:none; } }
+@keyframes headerIn { from{ opacity:0; } to{ opacity:1; } }
 
 /* entrada da tela inicial ao carregar */
 .site-header{ animation:headerIn .6s .05s both ease; }
@@ -438,28 +444,34 @@ a{ color:inherit; text-decoration:none; }
 
 /* ===================== TABLET (640–899) ===================== */
 @media (max-width:899px){
-  .site-header{ display:flex; align-items:center; height:auto; padding:10px var(--pad); }
-  .brand{ width:72px; height:72px; }
+  :root{ --header-h: 72px; }
+  .site-header{ display:flex; align-items:center; height:auto; padding:8px var(--pad); }
+  .brand{ width:56px; height:56px; }
   .header-actions{ margin-left:auto; }
   .hero{ background-image:none; }
   .cta-orn.left{ display:none; }
   .cta-orn.right{ width:88px; }
-  .nav{
-    position:fixed; inset:0 0 auto 0; top:92px; margin:0;
-    grid-column:auto; justify-self:stretch; width:auto;
-    flex-direction:column; gap:0; background:var(--surface);
-    border-bottom:1px solid var(--border); box-shadow:var(--sh-page);
-    padding:6px var(--pad) 16px; transform:translateY(-130%); z-index:20;
-    visibility:hidden; transition:transform .3s ease, visibility 0s linear .3s;
+  .nav-backdrop{
+    display:block; position:fixed; inset:0; background:rgba(46,32,29,.28);
+    z-index:70; opacity:0; pointer-events:none; transition:opacity .2s ease;
   }
-  /* fechado: visibility:hidden remove os links do menu da ordem de tabulação
-     enquanto ele está fora da tela (evita foco "invisível" via teclado) */
-  .nav.open{ transform:translateY(0); visibility:visible; transition:transform .3s ease, visibility 0s linear 0s; }
-  .nav a{ padding:13px 0; border-bottom:1px solid var(--border); width:100%; }
+  .nav-backdrop.is-open{ opacity:1; pointer-events:auto; }
+  .nav-backdrop[hidden]{ display:none; }
+  .nav{
+    position:fixed; top:0; right:0; bottom:0; left:auto; margin:0;
+    grid-column:auto; justify-self:stretch; width:min(86vw, 320px);
+    flex-direction:column; gap:0; background:var(--surface);
+    border-left:1px solid var(--border); box-shadow:var(--sh-page);
+    padding:calc(var(--header-h) + 8px) 20px 24px; transform:translateX(105%); z-index:75;
+    visibility:hidden; overflow-y:auto; transition:transform .28s ease, visibility 0s linear .28s;
+  }
+  .nav.open{ transform:translateX(0); visibility:visible; transition:transform .28s ease, visibility 0s linear 0s; }
+  .nav a{ padding:14px 4px; min-height:44px; display:flex; align-items:center; border-bottom:1px solid var(--border); width:100%; }
   .nav a.active::after{ display:none; }
   .order-btn{ display:none; }
   .mobile-cardapio{ display:inline-flex; }
   .icon-btn{ display:inline-flex; }
+  .icon-btn:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
 
   /* hero one column: copy, buttons, photo */
   .hero{ min-height:0; padding:22px var(--pad) 26px; display:flex; flex-direction:column; }
@@ -564,13 +576,13 @@ a{ color:inherit; text-decoration:none; }
   margin:22px 0 20px;
 }
 .search-field{
-  position:relative; flex:1 1 320px; min-width:220px; max-width:460px;
+  position:relative; flex:1 1 auto; min-width:0; max-width:none;
   display:flex; align-items:center;
 }
 .search-ico{ position:absolute; left:16px; color:var(--muted); font-size:1.05rem; pointer-events:none; }
 .search-input{
-  width:100%; height:44px; padding:0 44px; border-radius:999px; border:1.5px solid var(--border);
-  background:var(--surface); color:var(--text); font-family:var(--sans); font-size:.92rem;
+  width:100%; height:48px; padding:0 44px; border-radius:999px; border:1.5px solid var(--border);
+  background:var(--surface); color:var(--text); font-family:var(--sans); font-size:16px;
 }
 .search-input::placeholder{ color:var(--muted); }
 .search-input:focus-visible{ outline:2px solid var(--primary); outline-offset:2px; }
@@ -610,23 +622,28 @@ a{ color:inherit; text-decoration:none; }
 .results-status{ color:var(--muted); font-size:.85rem; margin-bottom:16px; min-height:1.2em; }
 
 /* ---- Grid de produtos: 3 colunas (1280+) -> 2 (768–1279) -> 1 (<768) ---- */
-.products-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:22px; align-items:stretch; }
-@media (max-width:1279px){
-  .products-grid{ grid-template-columns:repeat(2,1fr); }
+.products-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap:clamp(16px, 2vw, 24px);
+  align-items:stretch;
 }
 /* 768–899px: a grade já é 2 colunas aqui, mas .card (compartilhado com a
    Home) vira flex-row em <=899px — força coluna para não espremer dois
    cards horizontais lado a lado numa faixa estreita. */
 @media (min-width:768px) and (max-width:899px){
   .products-grid .product-card{ flex-direction:column; }
-  .products-grid .product-card .card-img{ flex:none; aspect-ratio:4/3; }
+  .products-grid .product-card .card-img{ flex:none; aspect-ratio:1/1; }
 }
 @media (max-width:767px){
   .products-grid{ grid-template-columns:1fr; gap:16px; }
 }
 
-.product-card .card-img{ aspect-ratio:4/3; }
+.product-card{ height:100%; }
+.product-card .card-img{ aspect-ratio:1/1; }
 .product-card .card-foot{ flex:1; flex-direction:column; align-items:stretch; gap:8px; padding:16px 18px 18px; }
+.product-info{ display:flex; flex-direction:column; gap:6px; flex:1; }
+.product-card .product-meta{ margin-top:auto; padding-top:8px; }
 .product-category{
   color:var(--rose); font-family:var(--sans); font-weight:600; font-size:.74rem;
   letter-spacing:.06em; text-transform:uppercase;
@@ -869,6 +886,7 @@ a{ color:inherit; text-decoration:none; }
 
 @media (min-width:900px){
   .cart-layout{ grid-template-columns:minmax(0,1fr) minmax(300px,360px); gap:32px; }
+  .cart-summary{ position:sticky; top:calc(var(--header-h) + 16px); }
 }
 
 @media (max-width:639px){
@@ -879,4 +897,34 @@ a{ color:inherit; text-decoration:none; }
     grid-area:controls; flex-direction:row; align-items:center; justify-content:space-between;
     margin-top:6px; padding-top:10px; border-top:1px solid var(--border);
   }
+}
+
+.product-cta{ min-height:44px; }
+.product-dialog{
+  max-height:calc(100dvh - 16px);
+}
+@media (max-width:767px){
+  .product-dialog{
+    width:calc(100% - 12px);
+    max-width:calc(100% - 12px);
+    max-height:calc(100dvh - 12px);
+  }
+  .dialog-panel{ max-height:calc(100dvh - 12px); }
+  .dialog-body{ max-height:calc(100dvh - 12px); }
+}
+.cart-summary input{
+  width:100%;
+  min-height:44px;
+  margin-bottom:10px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-btn);
+  padding:0 12px;
+  font:inherit;
+  font-size:16px;
+  background:var(--surface);
+}
+.icon-btn:focus-visible,
+.mobile-cardapio:focus-visible{
+  outline:2px solid var(--primary);
+  outline-offset:2px;
 }

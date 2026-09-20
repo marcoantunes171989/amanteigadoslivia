@@ -1,5 +1,4 @@
-(() => {
-  'use strict';
+import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
 
   const loginView = document.getElementById('loginView');
   const appView = document.getElementById('appView');
@@ -25,14 +24,14 @@
   };
 
   const TITLES = {
-    overview: ['Painel', 'Visão Geral'],
-    categories: ['Catálogo', 'Categorias'],
-    products: ['Catálogo', 'Produtos'],
-    sales: ['Operação', 'Vendas'],
-    reports: ['Operação', 'Relatórios'],
-    publications: ['Ambientes', 'Publicações'],
-    audit: ['Segurança', 'Auditoria'],
-    users: ['Segurança', 'Usuários'],
+    overview: ['Painel', 'Visão Geral', 'Acompanhe o painel da loja em homologação.'],
+    categories: ['Catálogo', 'Categorias', 'Organize as categorias ativas do cardápio.'],
+    products: ['Catálogo', 'Produtos', 'Gerencie nomes, preços, imagens e disponibilidade.'],
+    sales: ['Operação', 'Vendas', 'Acompanhe pedidos e o status de cada venda.'],
+    reports: ['Análise', 'Relatórios', 'Acompanhe o desempenho do negócio.'],
+    publications: ['Gestão', 'Publicações', 'Homologação ativa. Produção permanece bloqueada.'],
+    audit: ['Gestão', 'Auditoria', 'Consulte o histórico de ações administrativas.'],
+    users: ['Gestão', 'Usuários', 'Gerencie acessos do painel.'],
   };
 
   const state = {
@@ -49,6 +48,13 @@
     salesStatus: 'todos',
     reportTab: 'visao',
     reportPeriod: '30d',
+    reportStart: '',
+    reportEnd: '',
+    auditPeriod: '',
+    auditUser: '',
+    auditAction: '',
+    auditEntity: '',
+    auditResult: '',
     slugManual: false,
     pendingFile: null,
   };
@@ -70,7 +76,8 @@
   }
 
   function toast(message, success = true) {
-    const node = el('div', { className: `toast${success ? ' is-success' : ' is-error'}`, text: message });
+    const variant = success === 'warning' ? ' is-warning' : success ? ' is-success' : ' is-error';
+    const node = el('div', { className: `toast${variant}`, text: message });
     toastRegion.append(node);
     setTimeout(() => node.remove(), 4200);
   }
@@ -141,12 +148,35 @@
   function closeDrawer() {
     adminSidebar.classList.remove('is-open');
     sidebarBackdrop.classList.add('hidden');
+    document.body.classList.remove('drawer-locked');
+    menuToggle?.setAttribute('aria-expanded', 'false');
+  }
+
+  function openDrawer() {
+    adminSidebar.classList.add('is-open');
+    sidebarBackdrop.classList.remove('hidden');
+    document.body.classList.add('drawer-locked');
+    menuToggle?.setAttribute('aria-expanded', 'true');
+  }
+
+  function applySidebarCollapsed(collapsed) {
+    document.getElementById('appView')?.classList.toggle('is-collapsed', collapsed);
+    const button = document.getElementById('sidebarCollapse');
+    if (button) {
+      button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      button.setAttribute('data-tooltip', collapsed ? 'Expandir menu' : 'Recolher menu');
+      const label = button.querySelector('span');
+      if (label) label.textContent = collapsed ? 'Expandir menu' : 'Recolher menu';
+    }
   }
 
   function setView(view) {
     state.view = view;
-    document.querySelectorAll('.nav-btn').forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.view === view);
+    document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle('is-active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
     });
     Object.entries(views).forEach(([name, node]) => {
       node.classList.toggle('hidden', name !== view);
@@ -154,6 +184,8 @@
     const titles = TITLES[view];
     document.getElementById('viewEyebrow').textContent = titles[0];
     document.getElementById('viewTitle').textContent = titles[1];
+    const subtitle = document.getElementById('viewSubtitle');
+    if (subtitle) subtitle.textContent = titles[2] || '';
     document.getElementById('viewBreadcrumb').textContent = `Início / ${titles[0]} / ${titles[1]}`;
     closeDrawer();
     refreshView();
@@ -174,9 +206,46 @@
     return el('p', { className: 'empty', text });
   }
 
+  function periodQuery() {
+    const params = new URLSearchParams({ periodo: state.reportPeriod === 'personalizado' ? '30d' : state.reportPeriod });
+    if (state.reportPeriod === 'personalizado') {
+      if (state.reportStart) params.set('data_inicio', state.reportStart);
+      if (state.reportEnd) params.set('data_fim', state.reportEnd);
+    }
+    return params;
+  }
+
+  function periodFilters(onChange) {
+    const options = [
+      ['hoje', 'Hoje'],
+      ['7d', '7 dias'],
+      ['30d', '30 dias'],
+      ['mes', 'Este mês'],
+      ['personalizado', 'Personalizado'],
+    ];
+    return el('div', { className: 'period-filters' }, [
+      ...options.map(([id, label]) => el('button', {
+        className: `chip${state.reportPeriod === id ? ' is-active' : ''}`,
+        type: 'button',
+        text: label,
+        onClick: () => { state.reportPeriod = id; onChange(); },
+      })),
+      state.reportPeriod === 'personalizado' ? el('div', { className: 'period-custom' }, [
+        field('reportStart', 'Data inicial', el('input', {
+          id: 'reportStart', type: 'date', value: state.reportStart,
+          onChange: (event) => { state.reportStart = event.target.value; onChange(); },
+        })),
+        field('reportEnd', 'Data final', el('input', {
+          id: 'reportEnd', type: 'date', value: state.reportEnd,
+          onChange: (event) => { state.reportEnd = event.target.value; onChange(); },
+        })),
+      ]) : null,
+    ]);
+  }
+
   function chart(rows, key) {
     const max = Math.max(1, ...rows.map((row) => Number(row[key] || 0)));
-    if (!rows.length) return emptyState('Sem vendas registradas no periodo');
+    if (!rows.length) return emptyState('Nenhuma venda encontrada para este período.');
     return el('div', { className: 'chart' }, rows.map((row) => el('div', {
       className: `chart-bar${key.includes('faturamento') ? ' is-alt' : ''}`,
       title: `${row.dia}: ${row[key]}`,
@@ -189,7 +258,7 @@
   }
 
   async function loadReports() {
-    state.reports = await request(`/api/admin/relatorios?periodo=${encodeURIComponent(state.reportPeriod)}`);
+    state.reports = await request(`/api/admin/relatorios?${periodQuery()}`);
   }
 
   async function loadSales() {
@@ -203,7 +272,13 @@
   }
 
   async function loadAudit() {
-    const payload = await request('/api/admin/auditoria');
+    const params = new URLSearchParams();
+    if (state.auditPeriod) params.set('periodo', state.auditPeriod);
+    if (state.auditUser) params.set('usuario', state.auditUser);
+    if (state.auditAction) params.set('acao', state.auditAction);
+    if (state.auditEntity) params.set('entidade', state.auditEntity);
+    if (state.auditResult) params.set('sucesso', state.auditResult);
+    const payload = await request(`/api/admin/auditoria?${params}`);
     state.auditoria = payload.eventos || [];
   }
 
@@ -279,7 +354,7 @@
         el('span', { text: 'Produtos mais vendidos' }),
         (state.reports?.produtos || []).length
           ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Qtd', 'Receita'], (state.reports.produtos || []).slice(0, 8).map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
-          : emptyState('Sem vendas registradas no periodo'),
+          : emptyState('Nenhuma venda encontrada para este período.'),
       ]),
     );
   }
@@ -355,6 +430,13 @@
             el('td', {}, [productActions(product)]),
           ]))),
         ]) : emptyState('Nenhum produto encontrado.'),
+        rows.length ? el('div', { className: 'product-cards' }, rows.map((product) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: product.nome_produto }),
+          el('span', { className: 'muted', text: product.nome_categoria || '—' }),
+          el('span', { text: product.preco_normal ? `R$ ${product.preco_normal}` : '—' }),
+          badge(product.ativo),
+          productActions(product),
+        ]))) : null,
       ]),
     );
   }
@@ -397,7 +479,17 @@
               el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
             ] : [el('span', { className: 'muted', text: '—' })]),
           ]))),
-        ]) : emptyState('Sem vendas registradas no periodo'),
+        ]) : emptyState('Nenhuma venda encontrada para este período.'),
+        state.vendas.length ? el('div', { className: 'sales-cards' }, state.vendas.map((venda) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: venda.nome_cliente || String(venda.id_venda).slice(0, 8) }),
+          el('span', { text: formatDate(venda.data_venda) }),
+          el('span', { text: money(venda.valor_total_centavos) }),
+          el('span', { className: 'muted', text: venda.status_venda }),
+          venda.status_venda === 'PENDENTE' ? el('div', { className: 'actions' }, [
+            el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
+            el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
+          ]) : null,
+        ]))) : null,
       ]),
     );
   }
@@ -420,15 +512,18 @@
       ['auditoria', 'Auditoria'],
     ];
     views.reports.replaceChildren(
+      periodFilters(() => refreshView()),
       el('div', { className: 'toolbar' }, [
-        el('div', { className: 'tabs' }, tabs.map(([id, label]) => el('button', {
+        el('div', { className: 'tabs', role: 'tablist', 'aria-label': 'Seções de relatórios' }, tabs.map(([id, label]) => el('button', {
           className: `chip${state.reportTab === id ? ' is-active' : ''}`,
           type: 'button',
+          role: 'tab',
+          'aria-selected': state.reportTab === id ? 'true' : 'false',
           text: label,
           onClick: () => { state.reportTab = id; renderReports(); },
         }))),
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => {
-          window.location.href = `/api/admin/relatorios?formato=csv&secao=${state.reportTab === 'produtos' ? 'produtos' : state.reportTab === 'auditoria' ? 'auditoria' : 'vendas'}&periodo=${state.reportPeriod}`;
+          window.location.href = `/api/admin/relatorios?formato=csv&secao=${state.reportTab === 'produtos' ? 'produtos' : state.reportTab === 'auditoria' ? 'auditoria' : 'vendas'}&${periodQuery()}`;
         } }),
       ]),
       reportBody(reports),
@@ -450,7 +545,7 @@
     if (state.reportTab === 'produtos') {
       return (reports.produtos || []).length
         ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Quantidade', 'Receita'], reports.produtos.map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
-        : emptyState('Sem vendas registradas no periodo');
+        : emptyState('Nenhuma venda encontrada para este período.');
     }
     if (state.reportTab === 'catalogo') {
       const c = reports.catalogo || {};
@@ -481,10 +576,16 @@
 
   function renderPublications() {
     const data = state.publicacoes || {};
+    const homologOnline = Boolean(data.homolog?.database_status || data.homolog?.git_sha);
     views.publications.replaceChildren(
       el('div', { className: 'env-grid' }, [
         el('article', { className: 'card' }, [
-          el('span', { text: 'HOMOLOG' }),
+          el('div', { className: 'env-status' }, [
+            el('span', { className: `status-dot ${homologOnline ? 'is-online' : 'is-offline'}`, 'aria-hidden': 'true' }),
+            el('strong', { text: 'HOMOLOG' }),
+            el('span', { text: homologOnline ? 'Online' : 'Indisponível' }),
+          ]),
+          el('p', { className: 'muted', text: 'Ambiente ativo para testes.' }),
           el('p', { text: `Git SHA: ${data.homolog?.git_sha || '—'}` }),
           el('p', { text: `Vercel: ${data.homolog?.vercel_status || '—'}` }),
           el('p', { text: `Database: ${data.homolog?.database_status || '—'}` }),
@@ -493,13 +594,18 @@
           el('p', { text: `Produtos ativos: ${data.homolog?.produtos_ativos ?? 0}` }),
         ]),
         el('article', { className: 'card' }, [
-          el('span', { text: 'PRODUÇÃO' }),
+          el('div', { className: 'env-status' }, [
+            el('span', { className: 'status-dot is-offline', 'aria-hidden': 'true' }),
+            el('strong', { text: 'PRODUÇÃO' }),
+            el('span', { text: 'Não configurada' }),
+          ]),
+          el('p', { className: 'muted', text: 'Aguardando configuração. Publicação permanece bloqueada.' }),
           el('strong', { text: data.producao?.status || 'Aguardando configuração de produção' }),
         ]),
       ]),
       el('div', { className: 'toolbar', style: 'margin-top:16px' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Validar promoção', onClick: validatePromo }),
-        el('button', { className: 'btn btn-primary', type: 'button', text: 'Publicar agora', onClick: publishNow }),
+        el('button', { className: 'btn btn-primary', type: 'button', text: 'Publicar agora', disabled: true, title: 'Produção ainda não habilitada' }),
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Agendar publicação', onClick: schedulePublish }),
       ]),
       el('article', { className: 'card' }, [
@@ -527,19 +633,55 @@
   }
 
   async function schedulePublish() {
-    const data = window.prompt('Data (AAAA-MM-DD)');
-    const hora = window.prompt('Hora (HH:mm)');
-    if (!data || !hora) return;
-    await request('/api/admin/publicacoes', {
-      method: 'POST',
-      body: JSON.stringify({ acao: 'agendar', tipo_publicacao: 'CATALOGO', data_agendada: `${data}T${hora}:00-03:00`, observacao: 'Agendamento HML' }),
-    });
-    toast('Publicação agendada.');
-    refreshView();
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Agendar publicação' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      field('data_agendada', 'Data', input('data_agendada', { type: 'date', required: true })),
+      field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time', required: true })),
+      el('p', { className: 'muted', text: 'A publicação em produção permanece bloqueada até a configuração do ambiente.' }),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Agendar' }),
+      ]),
+    ]));
+    resourceForm.dataset.kind = 'publicacao';
+    formDialog.showModal();
   }
 
   function renderAudit() {
     views.audit.replaceChildren(
+      el('div', { className: 'audit-filters' }, [
+        field('auditPeriod', 'Período', el('select', {
+          id: 'auditPeriod', value: state.auditPeriod,
+          onChange: (event) => { state.auditPeriod = event.target.value; refreshView(); },
+        }, [
+          el('option', { value: '', text: 'Todos' }),
+          el('option', { value: 'hoje', text: 'Hoje', selected: state.auditPeriod === 'hoje' }),
+          el('option', { value: '7d', text: '7 dias', selected: state.auditPeriod === '7d' }),
+          el('option', { value: '30d', text: '30 dias', selected: state.auditPeriod === '30d' }),
+          el('option', { value: 'mes', text: 'Este mês', selected: state.auditPeriod === 'mes' }),
+        ])),
+        field('auditUser', 'Usuário', el('input', {
+          id: 'auditUser', type: 'search', placeholder: 'Nome ou e-mail', value: state.auditUser,
+          onChange: (event) => { state.auditUser = event.target.value; refreshView(); },
+        })),
+        field('auditAction', 'Ação', el('input', {
+          id: 'auditAction', type: 'search', placeholder: 'LOGIN_SUCESSO', value: state.auditAction,
+          onChange: (event) => { state.auditAction = event.target.value; refreshView(); },
+        })),
+        field('auditEntity', 'Entidade', el('input', {
+          id: 'auditEntity', type: 'search', placeholder: 'produto', value: state.auditEntity,
+          onChange: (event) => { state.auditEntity = event.target.value; refreshView(); },
+        })),
+        field('auditResult', 'Resultado', el('select', {
+          id: 'auditResult',
+          onChange: (event) => { state.auditResult = event.target.value; refreshView(); },
+        }, [
+          el('option', { value: '', text: 'Todos' }),
+          el('option', { value: 'true', text: 'Sucesso', selected: state.auditResult === 'true' }),
+          el('option', { value: 'false', text: 'Falha', selected: state.auditResult === 'false' }),
+        ])),
+      ]),
       el('div', { className: 'toolbar' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => { window.location.href = '/api/admin/auditoria?formato=csv'; } }),
       ]),
@@ -554,7 +696,14 @@
             item.sucesso ? 'Sucesso' : 'Falha',
             item.descricao_evento || '—',
           ]))
-          : emptyState('Nenhum evento de auditoria.'),
+          : emptyState('Nenhum evento de auditoria encontrado para estes filtros.'),
+        state.auditoria.length ? el('div', { className: 'audit-cards' }, state.auditoria.map((item) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: item.acao }),
+          el('span', { text: item.email_usuario || '—' }),
+          el('span', { className: 'muted', text: formatDate(item.data_evento) }),
+          el('span', { text: item.sucesso ? 'Sucesso' : 'Falha' }),
+          el('p', { text: item.descricao_evento || '—' }),
+        ]))) : null,
       ]),
     );
   }
@@ -578,6 +727,14 @@
             ]),
           ]))),
         ]) : emptyState('Nenhum usuário cadastrado.'),
+        state.usuarios.length ? el('div', { className: 'user-cards' }, state.usuarios.map((user) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: user.nome_usuario }),
+          el('span', { text: user.email_usuario }),
+          el('span', { className: 'muted', text: user.perfil_usuario }),
+          badge(user.ativo),
+          el('span', { text: `Último login: ${formatDate(user.data_ultimo_login)}` }),
+          el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }),
+        ]))) : null,
       ]),
     );
   }
@@ -743,7 +900,8 @@
   async function mutate(recurso, acao, id, dados) {
     try {
       const result = await request('/api/admin/catalogo', { method: 'POST', body: JSON.stringify({ recurso, acao, id, dados }) });
-      if (result.agendada) toast(`Alteração agendada para ${formatDate(result.alteracao?.data_vigencia)}`);
+      if (result.agendada) toast('Alteração agendada.');
+      else if (recurso === 'produto') toast('Produto salvo.');
       else toast('Alteração salva com sucesso.');
       await refreshView();
     } catch (error) {
@@ -765,6 +923,7 @@
       body: file,
     });
     if (!put.ok) throw new Error('Falha no envio da imagem.');
+    toast('Imagem enviada.');
     return signed.public_url;
   }
 
@@ -773,6 +932,12 @@
     formError('');
     const kind = resourceForm.dataset.kind;
     const data = new FormData(resourceForm);
+    const submitBtn = resourceForm.querySelector('[type="submit"]');
+    const originalLabel = submitBtn?.textContent;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Salvando...';
+    }
     try {
       if (kind === 'categoria') {
         await mutate('categoria', data.get('id_categoria') ? 'editar' : 'criar', data.get('id_categoria') || undefined, {
@@ -820,12 +985,31 @@
         } else {
           await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'criar', dados: payload }) });
         }
-        toast('Usuário salvo.');
+        toast('Usuário atualizado.');
+        await refreshView();
+      } else if (kind === 'publicacao') {
+        const dataAgendada = String(data.get('data_agendada') || '');
+        const horaAgendada = String(data.get('hora_agendada') || '');
+        await request('/api/admin/publicacoes', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: 'agendar',
+            tipo_publicacao: 'CATALOGO',
+            data_agendada: `${dataAgendada}T${horaAgendada}:00-03:00`,
+            observacao: 'Agendamento HML',
+          }),
+        });
+        toast('Publicação agendada.');
         await refreshView();
       }
       formDialog.close();
     } catch (error) {
       formError(error.message || 'Não foi possível salvar.');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalLabel || 'Salvar';
+      }
     }
   });
 
@@ -833,6 +1017,7 @@
     event.preventDefault();
     loginError.hidden = true;
     loginButton.disabled = true;
+    loginButton.textContent = 'Entrando...';
     try {
       await request('/api/admin/login', {
         method: 'POST',
@@ -848,6 +1033,7 @@
       loginError.textContent = error.status === 401 ? 'E-mail ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.';
     } finally {
       loginButton.disabled = false;
+      loginButton.textContent = 'Entrar';
     }
   });
 
@@ -856,14 +1042,23 @@
     showLogin();
   });
 
-  document.querySelectorAll('.nav-btn').forEach((button) => {
+  document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));
   });
   menuToggle?.addEventListener('click', () => {
-    adminSidebar.classList.add('is-open');
-    sidebarBackdrop.classList.remove('hidden');
+    if (adminSidebar.classList.contains('is-open')) closeDrawer();
+    else openDrawer();
   });
+  document.getElementById('sidebarClose')?.addEventListener('click', closeDrawer);
   sidebarBackdrop?.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && adminSidebar.classList.contains('is-open')) closeDrawer();
+  });
+  document.getElementById('sidebarCollapse')?.addEventListener('click', () => {
+    const collapsed = !document.getElementById('appView').classList.contains('is-collapsed');
+    applySidebarCollapsed(collapsed);
+    writeSidebarCollapsed(window.localStorage, collapsed);
+  });
 
   function showLogin() {
     appView.classList.add('hidden');
@@ -873,6 +1068,7 @@
   async function showApp() {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
+    applySidebarCollapsed(readSidebarCollapsed(window.localStorage));
     setView(state.view);
   }
 
@@ -890,4 +1086,3 @@
   }
 
   boot();
-})();

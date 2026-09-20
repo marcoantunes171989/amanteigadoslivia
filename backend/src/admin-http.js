@@ -472,6 +472,19 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
       params.push(query.sucesso === 'true');
       where.push(`sucesso = $${params.length}`);
     }
+    if (query.usuario) {
+      params.push(`%${query.usuario}%`);
+      where.push(`(u.email_usuario ILIKE $${params.length} OR u.nome_usuario ILIKE $${params.length})`);
+    }
+    if (query.periodo === 'hoje') {
+      where.push(`a.data_evento >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`);
+    } else if (query.periodo === '7d') {
+      where.push(`a.data_evento >= now() - interval '7 days'`);
+    } else if (query.periodo === '30d') {
+      where.push(`a.data_evento >= now() - interval '30 days'`);
+    } else if (query.periodo === 'mes') {
+      where.push(`a.data_evento >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`);
+    }
     const sql = `-- op:list_auditoria
       SELECT a.id_auditoria, a.id_usuario_admin, u.nome_usuario, u.email_usuario,
              a.acao, a.entidade, a.id_registro, a.sucesso, a.descricao_evento, a.data_evento

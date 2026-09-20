@@ -297,8 +297,10 @@ if (els.grid) {
       return;
     }
     const img = document.createElement('img');
-    img.loading = 'lazy';
+    img.loading = container.closest('.products-grid')?.children.length ? 'lazy' : 'eager';
     img.decoding = 'async';
+    img.width = 600;
+    img.height = 600;
     // Ilustração demonstrativa (Fase 3.3) nunca é descrita como se fosse
     // fotografia real do produto — alt e legenda deixam a natureza clara.
     img.alt = product.demo === true ? `Ilustração demonstrativa de ${product.name}` : product.name;
@@ -516,10 +518,26 @@ if (els.grid) {
   }
 
   // ===================== RENDER PRINCIPAL =====================
-  function renderCatalog() {
+  let lastCatalogSignature = '';
+  function catalogSignature(list) {
+    return [
+      state.query,
+      state.category,
+      state.sort,
+      (list || []).map((p) => [p.id, p.name, p.shortDescription, p.description, p.price, p.promotionalPrice, p.image, p.active, p.featured, p.categoryId].join('|')).join(';'),
+    ].join('\n');
+  }
+
+  function renderCatalog(options = {}) {
     const activeList = getActiveProducts();
     const categoryFiltered = filterByCategory(activeList, state.category);
     const visibleList = sortProducts(filterBySearch(categoryFiltered, state.query), state.sort);
+    const signature = catalogSignature(visibleList);
+    if (options.soft && signature === lastCatalogSignature) {
+      renderResultsStatus(visibleList.length, activeList.length);
+      return;
+    }
+    lastCatalogSignature = signature;
 
     renderSortOptions(activeList);
     renderResultsStatus(visibleList.length, activeList.length);
@@ -776,9 +794,12 @@ if (els.grid) {
   }
 
   window.addEventListener('amanteigados:catalogo-atualizado', () => {
+    if (els.searchInput) state.query = els.searchInput.value;
+    const y = window.scrollY;
     if (els.demoNotice) els.demoNotice.hidden = getCatalogModeValue() !== 'demo';
     renderCategories();
-    renderCatalog();
+    renderCatalog({ soft: true });
+    if (Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
   });
 
   bootCatalog();

@@ -14,12 +14,12 @@
 </head>
 <body>
   <div id="loginView" class="login-shell hidden">
-    <form id="loginForm" class="login-card" autocomplete="off">
+    <form id="loginForm" class="login-card">
       <img src="assets/logo.jpg" alt="" width="88" height="88" />
       <p class="eyebrow">Amanteigados Lívia</p>
       <h1>Painel Administrativo</h1>
       <label for="adminEmail">E-mail</label>
-      <input id="adminEmail" name="email" type="email" autocomplete="username" required />
+      <input id="adminEmail" name="email" type="email" autocomplete="email" required />
       <label for="adminPassword">Senha</label>
       <input id="adminPassword" name="senha" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn btn-primary" id="loginButton">Entrar</button>
@@ -36,53 +36,69 @@
           <strong>Amanteigados Lívia</strong>
           <span>Homologação</span>
         </div>
+        <button type="button" class="icon-btn sidebar-close" id="sidebarClose" aria-label="Fechar menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <nav class="admin-nav" aria-label="Menu do painel">
-        <button type="button" class="nav-btn is-active" data-view="overview">
+        <button type="button" class="nav-btn is-active" data-view="overview" data-tooltip="Visão Geral" aria-current="page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h7V4H4v9Zm9 7h7v-9h-7v9ZM4 20h7v-5H4v5Zm9-9h7V4h-7v7Z" fill="currentColor"/></svg>
-          Visão Geral
+          <span>Visão Geral</span>
         </button>
         <p class="nav-label">Catálogo</p>
-        <button type="button" class="nav-btn" data-view="categories">
+        <button type="button" class="nav-btn" data-view="categories" data-tooltip="Categorias">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z" fill="currentColor"/></svg>
-          Categorias
+          <span>Categorias</span>
         </button>
-        <button type="button" class="nav-btn" data-view="products">
+        <button type="button" class="nav-btn" data-view="products" data-tooltip="Produtos">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l3 7H4l3-7Zm-3 9h16v7H4v-7Z" fill="currentColor"/></svg>
-          Produtos
+          <span>Produtos</span>
         </button>
-        <button type="button" class="nav-btn" data-view="sales">
+        <p class="nav-label">Operação</p>
+        <button type="button" class="nav-btn" data-view="sales" data-tooltip="Vendas">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM3 3h3l2.4 10.4A2 2 0 0 0 10.3 15H18a2 2 0 0 0 1.9-1.4L22 7H7" fill="currentColor"/></svg>
-          Vendas
+          <span>Vendas</span>
         </button>
-        <button type="button" class="nav-btn" data-view="reports">
+        <p class="nav-label">Análise</p>
+        <button type="button" class="nav-btn" data-view="reports" data-tooltip="Relatórios">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9h3v10H5Zm6 0V5h3v14h-3Zm6 0v-7h3v7h-3Z" fill="currentColor"/></svg>
-          Relatórios
+          <span>Relatórios</span>
         </button>
-        <button type="button" class="nav-btn" data-view="publications">
+        <p class="nav-label">Gestão</p>
+        <button type="button" class="nav-btn" data-view="publications" data-tooltip="Publicações">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
-          Publicações
+          <span>Publicações</span>
         </button>
-        <button type="button" class="nav-btn" data-view="audit">
+        <button type="button" class="nav-btn" data-view="audit" data-tooltip="Auditoria">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Zm3 4h6v2H9V8Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>
-          Auditoria
+          <span>Auditoria</span>
         </button>
-        <button type="button" class="nav-btn" data-view="users">
+        <button type="button" class="nav-btn" data-view="users" data-tooltip="Usuários">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 8a8 8 0 0 1 16 0H4Z" fill="currentColor"/></svg>
-          Usuários
+          <span>Usuários</span>
         </button>
       </nav>
-      <button type="button" class="btn btn-ghost" id="logoutButton">Sair</button>
+      <div class="sidebar-footer">
+        <button type="button" class="nav-btn collapse-btn" id="sidebarCollapse" data-tooltip="Recolher menu" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Recolher menu</span>
+        </button>
+        <button type="button" class="btn btn-ghost" id="logoutButton" data-tooltip="Sair">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V4H4v16h6v-3M10 12h10M17 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Sair</span>
+        </button>
+      </div>
     </aside>
 
     <main class="admin-main">
       <header class="admin-header">
-        <button type="button" class="icon-btn" id="menuToggle" aria-label="Abrir menu">
+        <button type="button" class="icon-btn" id="menuToggle" aria-label="Abrir menu" aria-controls="adminSidebar" aria-expanded="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
         </button>
         <div>
           <p class="eyebrow" id="viewEyebrow">Painel</p>
           <h1 id="viewTitle">Visão Geral</h1>
+          <p class="view-subtitle" id="viewSubtitle">Acompanhe o painel da loja em homologação.</p>
           <p class="breadcrumb" id="viewBreadcrumb">Início / Visão Geral</p>
         </div>
       </header>
@@ -103,6 +119,6 @@
     <form id="resourceForm" method="dialog"></form>
   </dialog>
 
-  <script src="admin.js"></script>
+  <script type="module" src="admin.js"></script>
 </body>
 </html>

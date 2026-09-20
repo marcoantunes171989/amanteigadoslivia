@@ -1,13 +1,25 @@
+import {
+  catalogItemsSignature,
+  createRefreshGate,
+  isDevHost,
+  shouldApplyRevision,
+} from './ui-core.js';
+
 (function () {
   'use strict';
 
   const Catalog = window.AmanteigadosCatalog;
   if (!Catalog) return;
 
+  const gate = createRefreshGate({ minIntervalMs: 280 });
   let lastRevision = null;
   let fallbackTimer = null;
   let dueTimer = null;
-  window.AmanteigadosSync = { mechanism: 'FALLBACK' };
+  window.AmanteigadosSync = {
+    mechanism: 'FALLBACK',
+    subscribed: false,
+    lastSignature: '',
+  };
 
   function pricesSnapshot() {
     return (Catalog.getProducts() || []).map((product) => ({
@@ -34,10 +46,25 @@
     }
   }
 
-  async function refreshCatalog() {
-    const previous = pricesSnapshot();
-    await Catalog.loadFromApi();
-    warnCartIfPricesChanged(previous);
+  function devLog(...args) {
+    if (!isDevHost(window.location.hostname)) return;
+    console.info('[catalog-sync]', ...args);
+  }
+
+  async function refreshCatalog(source) {
+    return gate.run(async () => {
+      const previous = pricesSnapshot();
+      const before = catalogItemsSignature(Catalog.getProducts());
+      await Catalog.loadFromApi();
+      const after = catalogItemsSignature(Catalog.getProducts());
+      window.AmanteigadosSync.lastSignature = after;
+      warnCartIfPricesChanged(previous);
+      if (before === after) {
+        devLog('refresh skipped, signature unchanged', source);
+      } else {
+        devLog('catalog refreshed', source);
+      }
+    });
   }
 
   function scheduleNext(proxima) {
@@ -46,7 +73,7 @@
     const wait = new Date(proxima).getTime() - Date.now();
     if (wait <= 0 || wait > 24 * 60 * 60 * 1000) return;
     dueTimer = setTimeout(() => {
-      refreshCatalog().catch(() => {});
+      refreshCatalog('schedule').catch(() => {});
     }, wait + 400);
   }
 
@@ -55,8 +82,8 @@
       const response = await fetch('/api/catalogo/revisao', { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
       const payload = await response.json();
-      if (lastRevision && payload.revisao && payload.revisao !== lastRevision) {
-        await refreshCatalog();
+      if (shouldApplyRevision(lastRevision, payload.revisao)) {
+        if (lastRevision) await refreshCatalog('fallback');
       }
       lastRevision = payload.revisao || lastRevision;
       scheduleNext(payload.proxima_atualizacao);
@@ -68,24 +95,37 @@
 
   async function connectRealtime(config) {
     try {
-      const mod = await import('https://esm.sh/@supabase/supabase-js@2');
+      const mod = await import('https://esm.sh/@supabase/supabase-js@2.57.4');
       const client = mod.createClient(config.url, config.anon_key, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
-      const channel = client.channel(config.channel);
+      const channel = client.channel(config.channel, {
+        config: { broadcast: { ack: true } },
+      });
       channel.on('broadcast', { event: config.event }, () => {
         window.AmanteigadosSync.mechanism = 'REALTIME';
-        refreshCatalog().catch(() => {});
+        devLog('broadcast received', config.channel, config.event);
+        refreshCatalog('realtime').catch(() => {});
       });
       await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('TIMED_OUT')), 4000);
         channel.subscribe((status) => {
-          if (status === 'SUBSCRIBED') resolve();
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error(status));
+          devLog('subscription', status);
+          window.AmanteigadosSync.subscribed = status === 'SUBSCRIBED';
+          if (status === 'SUBSCRIBED') {
+            clearTimeout(timeout);
+            resolve();
+          }
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            clearTimeout(timeout);
+            reject(new Error(status));
+          }
         });
       });
-      window.AmanteigadosSync.mechanism = 'REALTIME';
       return true;
-    } catch {
+    } catch (error) {
+      window.AmanteigadosSync.subscribed = false;
+      devLog('realtime unavailable', error?.message || error);
       return false;
     }
   }
@@ -93,7 +133,7 @@
   async function start() {
     const payload = await pollRevision();
     const realtime = payload?.realtime;
-    if (realtime?.url && realtime?.anon_key) {
+    if (realtime?.url && realtime?.anon_key && realtime?.channel && realtime?.event) {
       const ok = await connectRealtime(realtime);
       if (!ok) window.AmanteigadosSync.mechanism = 'FALLBACK';
     }
