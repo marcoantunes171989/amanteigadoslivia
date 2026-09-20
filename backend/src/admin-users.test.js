@@ -144,7 +144,7 @@ test('reset de senha protegido por permissao', async () => {
   assert.equal(ok.ok, true);
 });
 
-test('API nao cria SUPER_ADMIN', async () => {
+test('ADMIN nao cria SUPER_ADMIN', async () => {
   await assert.rejects(
     () => createUsuario(poolWith(null), {
       nome: 'X',
@@ -154,6 +154,66 @@ test('API nao cria SUPER_ADMIN', async () => {
     }, { perfil: 'ADMIN' }),
     (error) => error instanceof AdminError && error.status === 403,
   );
+});
+
+test('ROOT protegido cria SUPER_ADMIN nao protegido', async () => {
+  const created = await createUsuario(poolWith(null), {
+    nome: 'Novo Super',
+    email: 'novo-super@example.com',
+    senha: 'senha-forte-123',
+    perfil: 'SUPER_ADMIN',
+  }, {
+    id_usuario_admin: 'root-1',
+    perfil: 'SUPER_ADMIN',
+    protegido: true,
+  });
+  assert.equal(created.perfil_usuario, 'SUPER_ADMIN');
+  assert.equal(created.protegido, false);
+  assert.equal(created.ativo, true);
+  assert.equal(created.senha, undefined);
+  assert.equal(created.senha_hash, undefined);
+  assert.equal(created.senha_salt, undefined);
+});
+
+test('SUPER_ADMIN novo nao protegido nao cria SUPER_ADMIN', async () => {
+  await assert.rejects(
+    () => createUsuario(poolWith(null), {
+      nome: 'Outro Super',
+      email: 'outro-super@example.com',
+      senha: 'senha-forte-123',
+      perfil: 'SUPER_ADMIN',
+    }, {
+      id_usuario_admin: 'super-2',
+      perfil: 'SUPER_ADMIN',
+      protegido: false,
+    }),
+    (error) => error instanceof AdminError && error.status === 403,
+  );
+});
+
+test('GESTOR nao cria usuarios', async () => {
+  await assert.rejects(
+    () => createUsuario(poolWith(null), {
+      nome: 'Y',
+      email: 'y@example.com',
+      senha: 'senha-forte-123',
+      perfil: 'GESTOR',
+    }, { id_usuario_admin: 'gestor-1', perfil: 'GESTOR' }),
+    (error) => error instanceof AdminError && error.status === 403,
+  );
+});
+
+test('ADMIN cria GESTOR e senha nao retorna', async () => {
+  const created = await createUsuario(poolWith(null), {
+    nome: 'Gerente',
+    email: 'gerente@example.com',
+    senha: 'senha-forte-123',
+    perfil: 'GESTOR',
+  }, { id_usuario_admin: 'admin-1', perfil: 'ADMIN' });
+  assert.equal(created.perfil_usuario, 'GESTOR');
+  assert.equal(created.protegido, false);
+  assert.equal(created.senha, undefined);
+  assert.equal(created.senha_hash, undefined);
 });
 
 test('listagem retorna protegido sem hash ou salt', async () => {
@@ -184,6 +244,55 @@ test('SUPER_ADMIN pode alterar nome e email sem desproteger', async () => {
   assert.equal(updated.perfil_usuario, 'SUPER_ADMIN');
   assert.equal(updated.protegido, true);
   assert.equal(updated.ativo, true);
+});
+
+test('ROOT continua protegido apos edicao de nome', async () => {
+  const user = userRow();
+  const updated = await updateUsuario(poolWith(user), user.id_usuario_admin, {
+    nome: 'Super Atualizado',
+    email: 'super.novo@example.com',
+  }, {
+    id_usuario_admin: user.id_usuario_admin,
+    perfil: 'SUPER_ADMIN',
+    protegido: true,
+  });
+  assert.equal(updated.protegido, true);
+  assert.equal(updated.perfil_usuario, 'SUPER_ADMIN');
+  assert.equal(updated.ativo, true);
+});
+
+test('ROOT pode inativar SUPER_ADMIN nao protegido', async () => {
+  const user = userRow({
+    id_usuario_admin: '33333333-3333-4333-8333-333333333333',
+    email_usuario: 'outro-super@example.com',
+    protegido: false,
+  });
+  const updated = await updateUsuario(poolWith(user), user.id_usuario_admin, {
+    ativo: false,
+  }, {
+    id_usuario_admin: '11111111-1111-4111-8111-111111111111',
+    perfil: 'SUPER_ADMIN',
+    protegido: true,
+  });
+  assert.equal(updated.ativo, false);
+  assert.equal(updated.protegido, false);
+});
+
+test('reset senha nao devolve hash', async () => {
+  const user = userRow({
+    id_usuario_admin: '44444444-4444-4444-8444-444444444444',
+    perfil_usuario: 'GESTOR',
+    protegido: false,
+  });
+  const result = await resetUsuarioSenha(poolWith(user), user.id_usuario_admin, 'senha-forte-123', {
+    id_usuario_admin: 'root-1',
+    perfil: 'SUPER_ADMIN',
+    protegido: true,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.senha, undefined);
+  assert.equal(result.senha_hash, undefined);
+  assert.equal(result.senha_salt, undefined);
 });
 
 test('hashPassword continues to use scrypt salt', async () => {

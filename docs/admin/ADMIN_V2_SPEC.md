@@ -21,13 +21,28 @@ Login por e-mail + senha contra `app.tab_usuario_admin`.
 
 - Hash: `crypto.scrypt` com salt aleatório por usuário (`senha_hash` + `senha_salt`)
 - Comparação: `timingSafeEqual`
-- Sessão: cookie HttpOnly, Secure, SameSite=Lax, HMAC SHA-256
-- Payload: `id_usuario_admin`, `email`, `perfil`, `exp`
+- Sessão: cookie HttpOnly, Secure, SameSite=Lax, Path=/, HMAC SHA-256, TTL 12 horas
+- Payload: `id_usuario_admin`, `email`, `perfil`, `protegido`, `exp`
+- Boot do painel: `GET /api/admin/sessao`. Catálogo 500/502/503 não desloga.
 - Rate limit best-effort no login
 - CSRF: Origin/Host em mutações admin
-- Bootstrap do primeiro usuário: `scripts/criar-usuario-admin.mjs` (interativo, senha oculta)
+- Configuração inicial HML: `scripts/configurar-acessos-admin-hml.mjs` (interativo, senha oculta)
+- URL canônica HML: https://amanteigados-livia-homolog.vercel.app/admin
 
 `ADMIN_PASSWORD` não é mais o login operacional da tela.
+
+## Gestão de usuários
+
+Somente pelo painel, após o ROOT autenticado.
+
+| Ator | Pode criar | Pode editar / resetar senha |
+|---|---|---|
+| ROOT (`SUPER_ADMIN` protegido) | Super Admin, Administrador, Gerente | Super Admin não protegido, Administrador, Gerente; senha própria |
+| `SUPER_ADMIN` não protegido | Administrador, Gerente | Administrador, Gerente |
+| `ADMIN` | Gerente | Gerente |
+| `GESTOR` | nenhum | nenhum |
+
+Novo Super Admin criado pelo painel nasce `protegido=false`. O ROOT existente permanece permanente: não pode ser excluído, inativado, rebaixado ou desprotegido.
 
 ## Auditoria
 

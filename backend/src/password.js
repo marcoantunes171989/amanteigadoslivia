@@ -18,6 +18,16 @@ export function timingSafeEqualBuffer(left, right) {
   return crypto.timingSafeEqual(a, b);
 }
 
+export function passwordPolicyError(password) {
+  if (typeof password !== 'string' || password.length < 8) {
+    return 'Senha deve ter pelo menos 8 caracteres.';
+  }
+  if (password.length < 10 || !/[A-Za-zÀ-ÿ]/.test(password) || !/\d/.test(password)) {
+    return 'Senha deve ter pelo menos 10 caracteres, com letra e número.';
+  }
+  return null;
+}
+
 export async function hashPassword(password) {
   if (typeof password !== 'string' || password.length < 8) {
     throw new Error('password_too_short');

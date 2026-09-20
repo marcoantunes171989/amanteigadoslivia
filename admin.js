@@ -1,4 +1,12 @@
 import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
+import {
+  DATA_LOAD_ERROR_MESSAGE,
+  canAccessUsuarios,
+  creatablePerfisFor,
+  decideSessionErrorAction,
+  perfilBadgeLabel,
+  perfilFormLabel,
+} from './admin-session-ui.js';
 
   const loginView = document.getElementById('loginView');
   const appView = document.getElementById('appView');
@@ -156,9 +164,30 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       error.status = response.status;
       error.code = payload?.error || 'request_failed';
       error.payload = payload;
+      const action = decideSessionErrorAction(response.status);
+      if (action === 'login' && !String(url).includes('/api/admin/login')) {
+        showLogin();
+      }
       throw error;
     }
     return payload;
+  }
+
+  function hideDataError() {
+    document.getElementById('dataErrorBanner')?.classList.add('hidden');
+  }
+
+  function showDataError() {
+    document.getElementById('dataErrorBanner')?.classList.remove('hidden');
+  }
+
+  function applySessionChrome() {
+    const usersNav = document.getElementById('navUsers');
+    const allowed = canAccessUsuarios(currentSession());
+    usersNav?.classList.toggle('hidden', !allowed);
+    if (!allowed && state.view === 'users') {
+      state.view = 'overview';
+    }
   }
 
   function closeDrawer() {
@@ -271,7 +300,14 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
 
   async function loadCatalog() {
     state.catalog = await request('/api/admin/catalogo');
-    if (state.catalog?.sessao) state.sessao = state.catalog.sessao;
+    if (state.catalog?.sessao) {
+      applySessaoPayload({
+        usuario: {
+          ...currentSession(),
+          ...state.catalog.sessao,
+        },
+      });
+    }
   }
 
   function currentSession() {
@@ -329,6 +365,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
   }
 
   async function refreshView() {
+    hideDataError();
     try {
       if (state.view === 'overview') {
         await Promise.all([loadCatalog(), loadReports()]);
@@ -360,11 +397,25 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         renderUsers();
       }
     } catch (error) {
-      if (error.status === 401) {
+      const action = decideSessionErrorAction(error.status);
+      if (action === 'login') {
         showLogin();
         return;
       }
-      toast(error.message || 'Não foi possível carregar os dados.', false);
+      if (action === 'retry') {
+        showDataError();
+        toast(DATA_LOAD_ERROR_MESSAGE, false);
+        return;
+      }
+      if (action === 'forbidden') {
+        toast(error.message || 'Sem permissão para esta ação.', false);
+        return;
+      }
+      if (action === 'rate_limit') {
+        toast(error.message || 'Muitas tentativas. Tente novamente em instantes.', false);
+        return;
+      }
+      toast(error.message || DATA_LOAD_ERROR_MESSAGE, false);
     }
   }
 
@@ -962,22 +1013,24 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
   }
 
   function renderUsers() {
+    const canCreate = creatablePerfisFor(currentSession()).length > 0;
     views.users.replaceChildren(
       el('div', { className: 'toolbar' }, [
-        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo usuário', onClick: () => openUserForm() }),
+        canCreate
+          ? el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo usuário', onClick: () => openUserForm() })
+          : null,
       ]),
       el('div', { className: 'table-wrap' }, [
         state.usuarios.length ? el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Status', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Status', 'Protegido', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
           el('tbody', {}, state.usuarios.map((user) => el('tr', {}, [
             el('td', { text: user.nome_usuario }),
             el('td', { text: user.email_usuario }),
             el('td', {}, [userBadges(user)]),
             el('td', {}, [badge(user.ativo)]),
+            el('td', { text: user.protegido ? 'Sim' : 'Não' }),
             el('td', { text: formatDate(user.data_ultimo_login) }),
-            el('td', {}, [
-              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }),
-            ]),
+            el('td', {}, [userActions(user)]),
           ]))),
         ]) : emptyState('Nenhum usuário cadastrado.'),
         state.usuarios.length ? el('div', { className: 'user-cards' }, state.usuarios.map((user) => el('article', { className: 'mobile-card' }, [
@@ -985,16 +1038,47 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
           el('span', { text: user.email_usuario }),
           userBadges(user),
           badge(user.ativo),
+          el('span', { text: user.protegido ? 'Protegido: sim' : 'Protegido: não' }),
           el('span', { text: `Último login: ${formatDate(user.data_ultimo_login)}` }),
-          el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }),
+          userActions(user),
         ]))) : null,
       ]),
     );
   }
 
+  function userActions(user) {
+    const nodes = [];
+    if (canEditUser(user)) {
+      nodes.push(el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }));
+    }
+    if (canResetUserPassword(user)) {
+      nodes.push(el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Redefinir senha', onClick: () => openPasswordResetForm(user) }));
+    }
+    return el('div', { className: 'actions' }, nodes);
+  }
+
+  function canEditUser(user) {
+    const session = currentSession();
+    if (user?.protegido) return isSelfUser(user) && session.perfil === 'SUPER_ADMIN';
+    if (isRootSuperAdminSession(session)) return true;
+    if (session.perfil === 'SUPER_ADMIN') return user?.perfil_usuario !== 'SUPER_ADMIN';
+    if (session.perfil === 'ADMIN') return user?.perfil_usuario === 'GESTOR';
+    return false;
+  }
+
+  function canResetUserPassword(user) {
+    if (user?.protegido) return canResetProtectedPassword(user);
+    return canEditUser(user);
+  }
+
   function userBadges(user) {
-    const nodes = [el('span', { className: 'muted', text: user.perfil_usuario === 'SUPER_ADMIN' ? 'SUPER ADMIN' : user.perfil_usuario })];
-    if (user.protegido) nodes.push(el('span', { className: 'badge badge-ok', text: 'Protegido' }));
+    const nodes = [
+      el('span', {
+        className: `badge ${user.perfil_usuario === 'SUPER_ADMIN' ? 'badge-root' : user.perfil_usuario === 'ADMIN' ? 'badge-ok' : 'badge-warn'}`,
+        text: perfilBadgeLabel(user.perfil_usuario),
+      }),
+    ];
+    if (user.protegido) nodes.push(el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }));
     return el('div', { className: 'user-flags' }, nodes);
   }
 
@@ -1088,7 +1172,12 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
 
   function openUserForm(user) {
     const protectedUser = user?.protegido === true;
-    const canReset = !user || !protectedUser || canResetProtectedPassword(user);
+    const session = currentSession();
+    const createPerfis = user ? [] : creatablePerfisFor(session);
+    const editPerfis = protectedUser
+      ? ['SUPER_ADMIN']
+      : (isRootSuperAdminSession(session) ? ['SUPER_ADMIN', 'ADMIN', 'GESTOR'] : creatablePerfisFor(session));
+    const perfis = user ? editPerfis : createPerfis;
     resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
       el('div', { className: 'dialog-header' }, [el('h2', { text: user ? 'Editar usuário' : 'Novo usuário' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
       el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
@@ -1096,14 +1185,18 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
       protectedUser
         ? el('p', { className: 'muted', text: 'SUPER ADMIN protegido. Perfil, proteção e status não podem ser alterados.' })
-        : field('perfil', 'Perfil', el('select', { id: 'perfil', name: 'perfil' }, [
-          el('option', { value: 'ADMIN', text: 'ADMIN', selected: user?.perfil_usuario !== 'GESTOR' }),
-          el('option', { value: 'GESTOR', text: 'GESTOR', selected: user?.perfil_usuario === 'GESTOR' }),
-        ])),
-      canReset
-        ? field('senha', user ? 'Nova senha (opcional)' : 'Senha *', input('senha', { type: 'password', required: !user, minlength: '8' }))
-        : el('p', { className: 'muted', text: 'A senha deste usuário protegido só pode ser redefinida pelo próprio Super Admin.' }),
-      protectedUser ? null : checkbox('ativo', 'Ativo', user ? user.ativo : true),
+        : field('perfil', 'Perfil *', el('select', { id: 'perfil', name: 'perfil', required: true }, perfis.map((perfil) => el('option', {
+          value: perfil,
+          text: perfilFormLabel(perfil),
+          selected: (user?.perfil_usuario || perfis[0]) === perfil,
+        })))),
+      user
+        ? null
+        : field('senha', 'Senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+      user
+        ? null
+        : field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+      protectedUser ? null : checkbox('ativo', 'Status ativo', user ? user.ativo : true),
       el('p', { id: 'formError', className: 'form-error', hidden: true }),
       el('div', { className: 'dialog-actions' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
@@ -1111,6 +1204,27 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       ]),
     ]));
     resourceForm.dataset.kind = 'usuario';
+    formDialog.showModal();
+  }
+
+  function isRootSuperAdminSession(session) {
+    return session?.perfil === 'SUPER_ADMIN' && session?.protegido === true;
+  }
+
+  function openPasswordResetForm(user) {
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Redefinir senha' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
+      el('p', { className: 'muted', text: user?.email_usuario || '' }),
+      field('senha', 'Nova senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+      field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
+      ]),
+    ]));
+    resourceForm.dataset.kind = 'reset-senha';
     formDialog.showModal();
   }
 
@@ -1171,6 +1285,8 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       await refreshView();
     } catch (error) {
       toast(error.message || 'Não foi possível salvar.', false);
+      const action = decideSessionErrorAction(error.status);
+      if (action === 'login') showLogin();
       throw error;
     }
   }
@@ -1235,10 +1351,15 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         });
       } else if (kind === 'usuario') {
         const id = data.get('id_usuario_admin');
+        const senha = String(data.get('senha') || '');
+        const senhaConfirmacao = String(data.get('senha_confirmacao') || '');
+        if (!id && senha !== senhaConfirmacao) {
+          formError('A confirmação da senha não confere.');
+          return;
+        }
         const payload = {
           nome: String(data.get('nome') || ''),
           email: String(data.get('email') || ''),
-          senha: String(data.get('senha') || ''),
         };
         const current = state.usuarios.find((item) => String(item.id_usuario_admin) === String(id));
         if (current?.protegido) {
@@ -1250,13 +1371,29 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         }
         if (id) {
           await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'editar', id, dados: payload }) });
-          if (payload.senha) {
-            await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'redefinir_senha', id, senha: payload.senha }) });
-          }
+          toast('Usuário atualizado.');
         } else {
-          await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'criar', dados: payload }) });
+          payload.senha = senha;
+          const created = await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'criar', dados: payload }) });
+          if (created?.usuario?.senha || created?.senha) {
+            throw new Error('Resposta inválida do servidor.');
+          }
+          toast('Usuário criado.');
         }
-        toast('Usuário atualizado.');
+        await refreshView();
+      } else if (kind === 'reset-senha') {
+        const id = data.get('id_usuario_admin');
+        const senha = String(data.get('senha') || '');
+        const senhaConfirmacao = String(data.get('senha_confirmacao') || '');
+        if (senha !== senhaConfirmacao) {
+          formError('A confirmação da senha não confere.');
+          return;
+        }
+        const result = await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'redefinir_senha', id, senha }) });
+        if (result?.senha || result?.usuario?.senha) {
+          throw new Error('Resposta inválida do servidor.');
+        }
+        toast('Senha atualizada.');
         await refreshView();
       } else if (kind === 'publicacao') {
         const dataAgendada = String(data.get('data_agendada') || '');
@@ -1327,7 +1464,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     loginButton.disabled = true;
     loginButton.textContent = 'Entrando...';
     try {
-      await request('/api/admin/login', {
+      const payload = await request('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({
           email: document.getElementById('adminEmail').value,
@@ -1335,6 +1472,15 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         }),
       });
       loginForm.reset();
+      if (payload?.usuario) {
+        state.sessao = {
+          id_usuario_admin: payload.usuario.id_usuario_admin,
+          email: payload.usuario.email_usuario,
+          perfil: payload.usuario.perfil_usuario,
+          protegido: payload.usuario.protegido === true,
+          nome_usuario: payload.usuario.nome_usuario,
+        };
+      }
       await showApp();
     } catch (error) {
       loginError.hidden = false;
@@ -1371,26 +1517,47 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
   function showLogin() {
     appView.classList.add('hidden');
     loginView.classList.remove('hidden');
+    hideDataError();
   }
 
   async function showApp() {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
     applySidebarCollapsed(readSidebarCollapsed(window.localStorage));
+    applySessionChrome();
     setView(state.view);
+  }
+
+  function applySessaoPayload(payload) {
+    const usuario = payload?.usuario || payload;
+    if (!usuario) return;
+    state.sessao = {
+      id_usuario_admin: usuario.id_usuario_admin,
+      email: usuario.email || usuario.email_usuario,
+      perfil: usuario.perfil || usuario.perfil_usuario,
+      protegido: usuario.protegido === true,
+      nome_usuario: usuario.nome_usuario,
+    };
   }
 
   async function boot() {
     try {
-      await request('/api/admin/catalogo');
+      const sessao = await request('/api/admin/sessao');
+      applySessaoPayload(sessao);
       await showApp();
     } catch (error) {
-      showLogin();
-      if (error.status && error.status !== 401) {
-        loginError.hidden = false;
-        loginError.textContent = 'Não foi possível carregar o painel.';
+      if (decideSessionErrorAction(error.status) === 'login') {
+        showLogin();
+        return;
       }
+      await showApp();
+      showDataError();
+      toast(DATA_LOAD_ERROR_MESSAGE, false);
     }
   }
+
+  document.getElementById('dataErrorRetry')?.addEventListener('click', () => {
+    refreshView();
+  });
 
   boot();

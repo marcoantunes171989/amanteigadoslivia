@@ -99,7 +99,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Zm3 4h6v2H9V8Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>
           <span>Auditoria</span>
         </button>
-        <button type="button" class="nav-btn" data-view="users" data-tooltip="Usuários">
+        <button type="button" class="nav-btn" data-view="users" data-tooltip="Usuários" id="navUsers">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 8a8 8 0 0 1 16 0H4Z" fill="currentColor"/></svg>
           <span>Usuários</span>
         </button>
@@ -128,6 +128,10 @@
           <p class="breadcrumb" id="viewBreadcrumb">Início / Visão Geral</p>
         </div>
       </header>
+      <div id="dataErrorBanner" class="data-error-banner hidden" role="alert">
+        <p>Não foi possível carregar os dados agora.</p>
+        <button type="button" class="btn btn-primary" id="dataErrorRetry">Tentar novamente</button>
+      </div>
       <section id="overviewView" class="view-panel"></section>
       <section id="categoriesView" class="view-panel hidden"></section>
       <section id="productsView" class="view-panel hidden"></section>

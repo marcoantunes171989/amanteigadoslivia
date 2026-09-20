@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AdminError, mapDatabaseError } from './admin-errors.js';
-import { hashPassword } from './password.js';
+import { hashPassword, passwordPolicyError } from './password.js';
 
 export const PERFIS_USUARIO = Object.freeze(['SUPER_ADMIN', 'ADMIN', 'GESTOR']);
 
@@ -91,12 +91,35 @@ export function sessionPerfil(session) {
   return String(session?.perfil || session?.perfil_usuario || '').trim().toUpperCase();
 }
 
+export function isRootSuperAdmin(actor) {
+  return sessionPerfil(actor) === 'SUPER_ADMIN' && isProtectedUser(actor);
+}
+
+export function canListUsuarios(actor) {
+  const perfil = sessionPerfil(actor);
+  return perfil === 'SUPER_ADMIN' || perfil === 'ADMIN';
+}
+
+export function creatablePerfisFor(actor) {
+  if (isRootSuperAdmin(actor)) return ['SUPER_ADMIN', 'ADMIN', 'GESTOR'];
+  if (sessionPerfil(actor) === 'SUPER_ADMIN') return ['ADMIN', 'GESTOR'];
+  if (sessionPerfil(actor) === 'ADMIN') return ['GESTOR'];
+  return [];
+}
+
 function isSelf(session, id) {
   return Boolean(session?.id_usuario_admin && String(session.id_usuario_admin) === String(id));
 }
 
 function forbiddenProtected() {
   throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
+}
+
+export function assertPasswordPolicy(password) {
+  const message = passwordPolicyError(password);
+  if (message) {
+    throw new AdminError(400, 'validation_error', message);
+  }
 }
 
 export function publicUser(row) {
@@ -114,26 +137,76 @@ export function publicUser(row) {
   };
 }
 
+export function assertCanCreateUsuario(actor, perfil) {
+  if (!creatablePerfisFor(actor).includes(perfil)) {
+    forbiddenProtected();
+  }
+}
+
 export function assertCanManageProtectedUser(session, current, next = {}) {
   if (!current) {
     throw new AdminError(404, 'not_found', 'Usuário não encontrado.');
   }
-  if (!isProtectedUser(current) && current.perfil_usuario !== 'SUPER_ADMIN') {
-    return;
-  }
 
-  const actor = sessionPerfil(session);
+  const actorPerfil = sessionPerfil(session);
   const self = isSelf(session, current.id_usuario_admin);
   const nextPerfil = next.perfil_usuario === undefined ? current.perfil_usuario : next.perfil_usuario;
   const nextAtivo = next.ativo === undefined ? current.ativo === true : next.ativo === true;
   const nextProtegido = next.protegido === undefined ? isProtectedUser(current) : next.protegido === true;
 
-  if (nextAtivo === false || nextPerfil !== 'SUPER_ADMIN' || nextProtegido === false) {
+  if (isProtectedUser(current)) {
+    if (nextAtivo === false || nextPerfil !== 'SUPER_ADMIN' || nextProtegido === false) {
+      forbiddenProtected();
+    }
+    if (next.resetPassword && !(self && actorPerfil === 'SUPER_ADMIN')) {
+      forbiddenProtected();
+    }
+    if (!(self && actorPerfil === 'SUPER_ADMIN')) {
+      forbiddenProtected();
+    }
+    return;
+  }
+
+  if (actorPerfil === 'GESTOR' || !actorPerfil) {
     forbiddenProtected();
   }
-  if (next.resetPassword && !(self && actor === 'SUPER_ADMIN')) {
-    forbiddenProtected();
+
+  if (isRootSuperAdmin(session)) {
+    return;
   }
+
+  if (actorPerfil === 'SUPER_ADMIN') {
+    if (current.perfil_usuario === 'SUPER_ADMIN' || nextPerfil === 'SUPER_ADMIN') {
+      forbiddenProtected();
+    }
+    return;
+  }
+
+  if (actorPerfil === 'ADMIN') {
+    if (current.perfil_usuario !== 'GESTOR' || nextPerfil !== 'GESTOR') {
+      forbiddenProtected();
+    }
+    return;
+  }
+
+  forbiddenProtected();
+}
+
+export async function loadActor(queryable, session) {
+  if (!session?.id_usuario_admin) {
+    throw new AdminError(401, 'unauthorized', 'Sessão administrativa ausente ou inválida.');
+  }
+  const result = await queryable.query(SQL_USERS.getById, [session.id_usuario_admin]);
+  const actor = result.rows[0];
+  if (!actor || actor.ativo !== true) {
+    throw new AdminError(401, 'unauthorized', 'Sessão administrativa ausente ou inválida.');
+  }
+  return {
+    ...actor,
+    id_usuario_admin: String(actor.id_usuario_admin),
+    perfil: actor.perfil_usuario,
+    protegido: isProtectedUser(actor),
+  };
 }
 
 export async function findUsuarioByEmail(queryable, email) {
@@ -154,13 +227,12 @@ export async function createUsuario(queryable, dados = {}, session = {}) {
   const nome = requiredText(dados.nome_usuario ?? dados.nome, 'Nome');
   const email = normalizeEmail(dados.email_usuario ?? dados.email);
   const senha = dados.senha;
-  if (typeof senha !== 'string' || senha.length < 8) {
-    throw new AdminError(400, 'validation_error', 'Senha deve ter pelo menos 8 caracteres.');
-  }
+  assertPasswordPolicy(senha);
   const perfil = normalizePerfil(dados.perfil_usuario ?? dados.perfil, 'ADMIN');
-  if (perfil === 'SUPER_ADMIN' || dados.protegido === true) {
+  if (dados.protegido === true) {
     throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
   }
+  assertCanCreateUsuario(session, perfil);
   const ativo = dados.ativo !== false;
   const hashed = await hashPassword(senha);
   try {
@@ -231,9 +303,7 @@ export async function resetUsuarioSenha(queryable, id, senha, session = {}) {
   if (!id) {
     throw new AdminError(400, 'validation_error', 'Usuário é obrigatório.');
   }
-  if (typeof senha !== 'string' || senha.length < 8) {
-    throw new AdminError(400, 'validation_error', 'Senha deve ter pelo menos 8 caracteres.');
-  }
+  assertPasswordPolicy(senha);
   const current = await queryable.query(SQL_USERS.getById, [id]);
   if (!current.rows[0]) {
     throw new AdminError(404, 'not_found', 'Usuário não encontrado.');

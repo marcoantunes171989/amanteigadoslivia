@@ -30,11 +30,13 @@ test('preserves SUPER_ADMIN in signed session without secrets', () => {
     id_usuario_admin: 'u-super',
     email: 'super@example.com',
     perfil: 'SUPER_ADMIN',
+    protegido: true,
   }, 1_000_000);
   const session = readSession(token, SECRET, 1_000_000);
   assert.equal(session.perfil, 'SUPER_ADMIN');
   assert.equal(session.email, 'super@example.com');
   assert.equal(session.id_usuario_admin, 'u-super');
+  assert.equal(session.protegido, true);
   assert.doesNotMatch(token, /senha|hash|salt/i);
 });
 

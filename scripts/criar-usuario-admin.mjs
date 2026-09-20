@@ -75,12 +75,25 @@ async function main() {
       max: 1,
     });
 
+    const root = await pool.query(`
+      SELECT id_usuario_admin, perfil_usuario, protegido, ativo
+        FROM app.tab_usuario_admin
+       WHERE perfil_usuario = 'SUPER_ADMIN' AND protegido = true AND ativo = true
+       LIMIT 1
+    `);
+    if (!root.rows[0]) {
+      throw new Error('root_super_admin_ausente');
+    }
     const usuario = await createUsuario(pool, {
       id_usuario_admin: randomUUID(),
       nome_usuario: nome,
       email_usuario: email,
       senha,
       perfil_usuario: 'ADMIN',
+    }, {
+      id_usuario_admin: String(root.rows[0].id_usuario_admin),
+      perfil: 'SUPER_ADMIN',
+      protegido: true,
     });
     await pool.end();
     console.log('PASS');

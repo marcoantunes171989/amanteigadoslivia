@@ -116,6 +116,10 @@ async function main() {
       email_usuario: `teste.hml.v2.${randomUUID().slice(0, 8)}@amanteigados.invalid`,
       senha: 'SenhaTempV2#hml',
       perfil_usuario: 'GESTOR',
+    }, {
+      id_usuario_admin: firstAdmin.id_usuario_admin,
+      perfil: firstAdmin.perfil_usuario,
+      protegido: false,
     });
     ids.usuarioSecundario = secundario.id_usuario_admin;
     log('usuario_secundario', Boolean(secundario.id_usuario_admin), `id=${secundario.id_usuario_admin}`);

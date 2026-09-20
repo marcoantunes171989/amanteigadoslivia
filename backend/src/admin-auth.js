@@ -52,6 +52,7 @@ export function signSession(secret, claimsOrNow, maybeNow) {
     id_usuario_admin: claims.id_usuario_admin || null,
     email: claims.email || null,
     perfil: claims.perfil || 'ADMIN',
+    protegido: claims.protegido === true,
     exp: now + SESSION_TTL_SECONDS * 1000,
   });
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
@@ -88,6 +89,7 @@ export function readSession(token, secret, now = Date.now()) {
       id_usuario_admin: data.id_usuario_admin || null,
       email: data.email || null,
       perfil: data.perfil || 'ADMIN',
+      protegido: data.protegido === true,
       exp: data.exp,
     };
   } catch {

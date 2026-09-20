@@ -9,6 +9,7 @@ import {
   handleAdminPublicacoes,
   handleAdminRelatorios,
   handleAdminSolicitacoes,
+  handleAdminSessao,
   handleAdminUploadUrl,
   handleAdminUsuarios,
   handleAdminVendas,
@@ -17,6 +18,7 @@ import {
 export const ADMIN_ROUTES = {
   login: handleAdminLogin,
   logout: handleAdminLogout,
+  sessao: handleAdminSessao,
   catalogo: handleAdminCatalog,
   vendas: handleAdminVendas,
   relatorios: handleAdminRelatorios,

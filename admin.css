@@ -707,6 +707,26 @@ th { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
   display: grid;
   gap: 8px;
 }
+.data-error-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(168, 62, 62, 0.1);
+  color: var(--error);
+}
+
+.data-error-banner p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.badge-root { background: rgba(122, 62, 72, 0.12); color: var(--cacau); }
+
 .user-flags {
   display: flex;
   gap: 8px;

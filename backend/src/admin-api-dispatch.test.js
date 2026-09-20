@@ -10,6 +10,7 @@ import {
   handleAdminLogout,
   handleAdminPublicacoes,
   handleAdminRelatorios,
+  handleAdminSessao,
   handleAdminSolicitacoes,
   handleAdminUploadUrl,
   handleAdminUsuarios,
@@ -83,6 +84,7 @@ afterEach(() => {
 test('admin router exposes a static map of public URLs', () => {
   assert.equal(ADMIN_ROUTES.login, handleAdminLogin);
   assert.equal(ADMIN_ROUTES.logout, handleAdminLogout);
+  assert.equal(ADMIN_ROUTES.sessao, handleAdminSessao);
   assert.equal(ADMIN_ROUTES.catalogo, handleAdminCatalog);
   assert.equal(ADMIN_ROUTES.vendas, handleAdminVendas);
   assert.equal(ADMIN_ROUTES.relatorios, handleAdminRelatorios);
@@ -103,6 +105,7 @@ test('admin router exposes a static map of public URLs', () => {
     'logout',
     'publicacoes',
     'relatorios',
+    'sessao',
     'solicitacoes',
     'usuarios',
     'vendas',
@@ -163,6 +166,7 @@ test('valid admin routes keep original method handling', async () => {
   const cases = [
     ['/api/admin/login', 'GET', 405],
     ['/api/admin/logout', 'GET', 405],
+    ['/api/admin/sessao', 'POST', 405],
     ['/api/admin/catalogo', 'PUT', 405],
     ['/api/admin/imagens/upload-url', 'GET', 401],
   ];
@@ -186,6 +190,7 @@ test('protected admin routes still require a session', async () => {
 
   for (const url of [
     '/api/admin/catalogo',
+    '/api/admin/sessao',
     '/api/admin/vendas',
     '/api/admin/relatorios',
     '/api/admin/auditoria',

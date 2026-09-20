@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { COOKIE_NAME, signSession } from './admin-auth.js';
-import { handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
+import { handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
 import { hashPassword } from './password.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
@@ -296,21 +296,35 @@ test('SUPER_ADMIN login sets session cookie with perfil', async () => {
 
 test('delete de usuario e bloqueado na API', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
+  const actorId = '22222222-2222-4222-8222-222222222222';
   const response = mockResponse();
   await handleAdminUsuarios({
     method: 'POST',
     headers: {
       cookie: `${COOKIE_NAME}=${signSession(SECRET, {
-        id_usuario_admin: '22222222-2222-4222-8222-222222222222',
+        id_usuario_admin: actorId,
         email: 'super@example.com',
         perfil: 'SUPER_ADMIN',
+        protegido: true,
       })}`,
     },
     body: { acao: 'excluir', id: '11111111-1111-4111-8111-111111111111' },
   }, response, {
     getPool() {
       return {
-        async query() {
+        async query(sql, params = []) {
+          if (String(sql).includes('op:get_usuario_id') && String(params[0]) === actorId) {
+            return {
+              rows: [{
+                id_usuario_admin: actorId,
+                nome_usuario: 'Super',
+                email_usuario: 'super@example.com',
+                perfil_usuario: 'SUPER_ADMIN',
+                ativo: true,
+                protegido: true,
+              }],
+            };
+          }
           throw new Error('pool should not run for blocked delete');
         },
       };
@@ -318,4 +332,35 @@ test('delete de usuario e bloqueado na API', async () => {
   });
   assert.equal(response.statusCode, 403);
   assert.equal(response.body.error, 'forbidden');
+});
+
+test('GET /api/admin/sessao returns 200 for a valid cookie without catalog', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const response = mockResponse();
+  await handleAdminSessao({
+    method: 'GET',
+    headers: {
+      cookie: `${COOKIE_NAME}=${signSession(SECRET, {
+        id_usuario_admin: 'u-root',
+        email: 'super@example.com',
+        perfil: 'SUPER_ADMIN',
+        protegido: true,
+      })}`,
+    },
+  }, response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.autenticado, true);
+  assert.equal(response.body.usuario.email, 'super@example.com');
+  assert.equal(response.body.usuario.perfil, 'SUPER_ADMIN');
+  assert.equal(response.body.usuario.protegido, true);
+  assert.equal(response.body.usuario.senha_hash, undefined);
+  assert.equal(response.body.usuario.senha_salt, undefined);
+});
+
+test('GET /api/admin/sessao returns 401 without a cookie', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const response = mockResponse();
+  await handleAdminSessao({ method: 'GET', headers: {} }, response);
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.body.error, 'unauthorized');
 });

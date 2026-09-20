@@ -7,6 +7,7 @@ import {
   handleAdminLogout,
   handleAdminPublicacoes,
   handleAdminRelatorios,
+  handleAdminSessao,
   handleAdminUploadUrl,
   handleAdminUsuarios,
   handleAdminVendas,
@@ -51,6 +52,7 @@ app.get('/api/catalogo/revisao', (request, response) => handleCatalogRevision(re
 app.post('/api/vendas', (request, response) => handlePublicVenda(request, response, deps));
 app.post('/api/admin/login', (request, response) => handleAdminLogin(request, response, deps));
 app.post('/api/admin/logout', (request, response) => handleAdminLogout(request, response, deps));
+app.get('/api/admin/sessao', (request, response) => handleAdminSessao(request, response, deps));
 app.all('/api/admin/catalogo', (request, response) => handleAdminCatalog(request, response, deps));
 app.all('/api/admin/vendas', (request, response) => handleAdminVendas(request, response, deps));
 app.get('/api/admin/relatorios', (request, response) => handleAdminRelatorios(request, response, deps));
