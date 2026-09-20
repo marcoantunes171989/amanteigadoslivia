@@ -40,6 +40,7 @@ Tabela `app.tab_auditoria_admin`. Eventos de login, catálogo, vendas, usuários
 - Upload via signed URL para o bucket público `produto-imagens`
 - Alteração imediata ou agendada (`app.tab_alteracao_agendada`, timezone `America/Sao_Paulo`)
 - Worker interno `POST /api/interno/processar-alteracoes-agendadas` (`INTERNAL_JOB_SECRET`)
+- `/api/catalogo` e `/api/catalogo/revisao` também aplicam alterações devidas automaticamente
 - `/produtos` atualiza sem F5: Realtime Broadcast no canal `catalogo-homolog` + fallback `GET /api/catalogo/revisao` a cada 10s + timeout da próxima vigência
 
 ## Vendas e relatórios
