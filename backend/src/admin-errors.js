@@ -45,6 +45,9 @@ export function mapDatabaseError(error) {
   if (error?.code === '23514') {
     return new AdminError(400, 'validation_error', 'Dados inválidos para o catálogo.');
   }
+  if (error?.code === '23001') {
+    return new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
+  }
   if (isDatabaseUnavailable(error)) {
     return new AdminError(503, 'database_unavailable', 'Catálogo temporariamente indisponível.');
   }

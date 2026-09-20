@@ -6,6 +6,7 @@ import {
   passwordsMatch,
   signSession,
   verifySession,
+  readSession,
 } from './admin-auth.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
@@ -22,6 +23,19 @@ test('signs and verifies an HMAC SHA-256 admin session', () => {
   assert.equal(verifySession(token, SECRET, 1_000_000), true);
   assert.equal(verifySession(token, 'other-secret-value-32-bytes-long', 1_000_000), false);
   assert.equal(verifySession('tampered.' + token.split('.')[1], SECRET, 1_000_000), false);
+});
+
+test('preserves SUPER_ADMIN in signed session without secrets', () => {
+  const token = signSession(SECRET, {
+    id_usuario_admin: 'u-super',
+    email: 'super@example.com',
+    perfil: 'SUPER_ADMIN',
+  }, 1_000_000);
+  const session = readSession(token, SECRET, 1_000_000);
+  assert.equal(session.perfil, 'SUPER_ADMIN');
+  assert.equal(session.email, 'super@example.com');
+  assert.equal(session.id_usuario_admin, 'u-super');
+  assert.doesNotMatch(token, /senha|hash|salt/i);
 });
 
 test('rejects expired sessions', () => {

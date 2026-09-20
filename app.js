@@ -90,3 +90,39 @@ if ('IntersectionObserver' in window && !prefersReduced) {
   }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
   revealEls.forEach((el) => revealObserver.observe(el));
 }
+
+(function setupAppNavigation() {
+  const nav = document.getElementById('appBottomNav');
+  const more = document.getElementById('appMoreSheet');
+  const toggle = document.getElementById('appMoreToggle');
+  if (!nav) return;
+
+  const path = window.location.pathname || '/';
+  const hash = window.location.hash || '';
+  let active = 'inicio';
+  if (path.startsWith('/carrinho')) active = 'carrinho';
+  else if (path.startsWith('/produtos')) active = 'cardapio';
+  else if (hash === '#encomendas') active = 'encomendas';
+  else if (hash === '#festas-momentos' || hash === '#personalizados-historia') active = 'mais';
+
+  nav.querySelectorAll('[data-nav]').forEach((item) => {
+    item.classList.toggle('is-active', item.getAttribute('data-nav') === active);
+  });
+
+  function setMoreOpen(open) {
+    if (!more || !toggle) return;
+    more.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  toggle?.addEventListener('click', () => setMoreOpen(more?.hidden !== false));
+  more?.addEventListener('click', (event) => {
+    if (event.target === more || event.target.closest('a')) setMoreOpen(false);
+  });
+  more?.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', () => setMoreOpen(false));
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setMoreOpen(false);
+  });
+})();

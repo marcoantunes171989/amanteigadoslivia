@@ -106,3 +106,45 @@ export function buildRealtimeBroadcastBody(channel, event, payload) {
 export function realtimeBroadcastUrl(supabaseUrl) {
   return `${String(supabaseUrl || '').replace(/\/$/, '')}/realtime/v1/api/broadcast`;
 }
+
+export const APP_SHELL_MAX_PX = 1024;
+export const PHONE_MAX_PX = 767;
+
+export function isAppShellViewport(width) {
+  return Number(width) <= APP_SHELL_MAX_PX;
+}
+
+export function isPhoneViewport(width) {
+  return Number(width) <= PHONE_MAX_PX;
+}
+
+export function appBottomNavItems() {
+  return [
+    { id: 'inicio', label: 'Início', href: '/' },
+    { id: 'cardapio', label: 'Cardápio', href: '/produtos' },
+    { id: 'encomendas', label: 'Encomendas', href: '/#encomendas' },
+    { id: 'carrinho', label: 'Carrinho', href: '/carrinho' },
+    { id: 'mais', label: 'Mais', href: '#mais' },
+  ];
+}
+
+export function appMoreMenuItems() {
+  return [
+    { id: 'festas', label: 'Festas', href: '/#festas-momentos' },
+    { id: 'personalizados', label: 'Personalizados', href: '/#personalizados-historia' },
+    { id: 'admin', label: 'Painel Administrativo', href: '/admin' },
+  ];
+}
+
+export function activeAppNavId(pathname, hash = '') {
+  const path = String(pathname || '/');
+  const frag = String(hash || '').replace(/^#/, '');
+  if (path.startsWith('/carrinho')) return 'carrinho';
+  if (path.startsWith('/produtos')) return 'cardapio';
+  if (path === '/' || path === '/index.html' || path === '') {
+    if (frag === 'encomendas') return 'encomendas';
+    if (frag === 'festas-momentos' || frag === 'personalizados-historia') return 'mais';
+    return 'inicio';
+  }
+  return 'inicio';
+}

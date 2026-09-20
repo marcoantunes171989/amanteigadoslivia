@@ -72,6 +72,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     auditResult: '',
     slugManual: false,
     pendingFile: null,
+    sessao: null,
   };
 
   function el(tag, props = {}, children = []) {
@@ -270,6 +271,21 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
 
   async function loadCatalog() {
     state.catalog = await request('/api/admin/catalogo');
+    if (state.catalog?.sessao) state.sessao = state.catalog.sessao;
+  }
+
+  function currentSession() {
+    return state.sessao || {};
+  }
+
+  function isSelfUser(user) {
+    return Boolean(user?.id_usuario_admin && String(currentSession().id_usuario_admin) === String(user.id_usuario_admin));
+  }
+
+  function canResetProtectedPassword(user) {
+    return user?.protegido === true
+      && isSelfUser(user)
+      && currentSession().perfil === 'SUPER_ADMIN';
   }
 
   async function loadReports() {
@@ -489,14 +505,24 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
   }
 
   function contentCard(item) {
+    const principal = item.imagem_principal || (item.imagens || []).find((image) => image.principal === true) || null;
+    const galeria = item.galeria || (item.imagens || []).filter((image) => image.principal !== true);
     return el('article', { className: 'card' }, [
       el('strong', { text: item.titulo || item.tipo_conteudo }),
       el('span', { className: 'muted', text: `${item.secao} · ${item.tipo_conteudo}` }),
       item.descricao ? el('p', { text: item.descricao }) : null,
-      (item.imagens || []).length ? el('div', { className: 'thumbs' }, item.imagens.slice(0, 4).map((image) => thumb(image.url_imagem, image.texto_alternativo))) : null,
+      el('div', { className: 'image-slot' }, [
+        el('span', { className: 'muted', text: 'Imagem principal' }),
+        principal ? thumb(principal.url_imagem, principal.texto_alternativo) : el('span', { className: 'muted', text: 'Sem imagem no slot' }),
+        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Substituir imagem', onClick: () => openPrincipalImageForm(item, principal) }),
+      ]),
+      item.tipo_conteudo === 'GALERIA' ? el('div', { className: 'image-slot' }, [
+        el('span', { className: 'muted', text: 'Galeria' }),
+        galeria.length ? el('div', { className: 'thumbs' }, galeria.slice(0, 6).map((image) => thumb(image.url_imagem, image.texto_alternativo))) : el('span', { className: 'muted', text: 'Nenhuma imagem extra' }),
+        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: '+ Adicionar à galeria', onClick: () => openGalleryAddForm(item) }),
+      ]) : null,
       el('div', { className: 'actions' }, [
         el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openContentForm(item) }),
-        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Imagem', onClick: () => openGalleryForm(item) }),
       ]),
     ]);
   }
@@ -588,27 +614,51 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     formDialog.showModal();
   }
 
-  function openGalleryForm(item) {
+  function openPrincipalImageForm(item, principal) {
+    openImageForm({
+      title: 'Imagem principal',
+      kind: 'imagem-principal',
+      item,
+      url: principal?.url_imagem || '',
+      alt: principal?.texto_alternativo || '',
+      submitLabel: 'Substituir imagem',
+    });
+  }
+
+  function openGalleryAddForm(item) {
+    openImageForm({
+      title: 'Adicionar à galeria',
+      kind: 'galeria-add',
+      item,
+      url: '',
+      alt: '',
+      submitLabel: '+ Adicionar à galeria',
+    });
+  }
+
+  function openImageForm({ title, kind, item, url, alt, submitLabel }) {
     resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Imagem da galeria' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      field('url_imagem', 'URL da imagem', input('url_imagem', { value: item.imagens?.[0]?.url_imagem || '' })),
+      el('div', { className: 'dialog-header' }, [el('h2', { text: title }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      field('url_imagem', 'URL da imagem', input('url_imagem', { value: url || '' })),
       field('arquivo_imagem', 'Upload local', el('input', { id: 'arquivo_imagem', type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
-      field('texto_alternativo', 'Texto alternativo', input('texto_alternativo', { value: item.imagens?.[0]?.texto_alternativo || '' })),
-      field('ordem_exibicao', 'Ordem', input('ordem_exibicao', { type: 'number', value: '0' })),
-      el('label', {}, [el('input', { id: 'principal', type: 'checkbox', checked: true }), el('span', { text: ' Imagem principal' })]),
+      field('texto_alternativo', 'Texto alternativo', input('texto_alternativo', { value: alt || '' })),
       el('img', { id: 'imagePreview', className: 'thumb hidden', alt: '' }),
       el('input', { type: 'hidden', id: 'origem_imagem', value: 'url' }),
       el('p', { id: 'formError', className: 'form-error', hidden: true }),
       el('div', { className: 'dialog-actions' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar imagem' }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: submitLabel }),
       ]),
     ]));
-    resourceForm.dataset.kind = 'galeria';
+    resourceForm.dataset.kind = kind;
     resourceForm.dataset.id = item.id_conteudo_site;
     state.pendingFile = null;
     bindImagePreview();
     formDialog.showModal();
+  }
+
+  function openGalleryForm(item) {
+    openPrincipalImageForm(item, item.imagem_principal || item.imagens?.[0]);
   }
 
   function renderRequests() {
@@ -918,11 +968,11 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       ]),
       el('div', { className: 'table-wrap' }, [
         state.usuarios.length ? el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Ativo', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Status', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
           el('tbody', {}, state.usuarios.map((user) => el('tr', {}, [
             el('td', { text: user.nome_usuario }),
             el('td', { text: user.email_usuario }),
-            el('td', { text: user.perfil_usuario }),
+            el('td', {}, [userBadges(user)]),
             el('td', {}, [badge(user.ativo)]),
             el('td', { text: formatDate(user.data_ultimo_login) }),
             el('td', {}, [
@@ -933,13 +983,19 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         state.usuarios.length ? el('div', { className: 'user-cards' }, state.usuarios.map((user) => el('article', { className: 'mobile-card' }, [
           el('strong', { text: user.nome_usuario }),
           el('span', { text: user.email_usuario }),
-          el('span', { className: 'muted', text: user.perfil_usuario }),
+          userBadges(user),
           badge(user.ativo),
           el('span', { text: `Último login: ${formatDate(user.data_ultimo_login)}` }),
           el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }),
         ]))) : null,
       ]),
     );
+  }
+
+  function userBadges(user) {
+    const nodes = [el('span', { className: 'muted', text: user.perfil_usuario === 'SUPER_ADMIN' ? 'SUPER ADMIN' : user.perfil_usuario })];
+    if (user.protegido) nodes.push(el('span', { className: 'badge badge-ok', text: 'Protegido' }));
+    return el('div', { className: 'user-flags' }, nodes);
   }
 
   function field(id, label, control, full = false) {
@@ -1031,17 +1087,23 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
   }
 
   function openUserForm(user) {
+    const protectedUser = user?.protegido === true;
+    const canReset = !user || !protectedUser || canResetProtectedPassword(user);
     resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
       el('div', { className: 'dialog-header' }, [el('h2', { text: user ? 'Editar usuário' : 'Novo usuário' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
       el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
       field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
       field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
-      field('perfil', 'Perfil', el('select', { id: 'perfil', name: 'perfil' }, [
-        el('option', { value: 'ADMIN', text: 'ADMIN', selected: user?.perfil_usuario !== 'GESTOR' }),
-        el('option', { value: 'GESTOR', text: 'GESTOR', selected: user?.perfil_usuario === 'GESTOR' }),
-      ])),
-      field('senha', user ? 'Nova senha (opcional)' : 'Senha *', input('senha', { type: 'password', required: !user, minlength: '8' })),
-      checkbox('ativo', 'Ativo', user ? user.ativo : true),
+      protectedUser
+        ? el('p', { className: 'muted', text: 'SUPER ADMIN protegido. Perfil, proteção e status não podem ser alterados.' })
+        : field('perfil', 'Perfil', el('select', { id: 'perfil', name: 'perfil' }, [
+          el('option', { value: 'ADMIN', text: 'ADMIN', selected: user?.perfil_usuario !== 'GESTOR' }),
+          el('option', { value: 'GESTOR', text: 'GESTOR', selected: user?.perfil_usuario === 'GESTOR' }),
+        ])),
+      canReset
+        ? field('senha', user ? 'Nova senha (opcional)' : 'Senha *', input('senha', { type: 'password', required: !user, minlength: '8' }))
+        : el('p', { className: 'muted', text: 'A senha deste usuário protegido só pode ser redefinida pelo próprio Super Admin.' }),
+      protectedUser ? null : checkbox('ativo', 'Ativo', user ? user.ativo : true),
       el('p', { id: 'formError', className: 'form-error', hidden: true }),
       el('div', { className: 'dialog-actions' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
@@ -1176,10 +1238,16 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         const payload = {
           nome: String(data.get('nome') || ''),
           email: String(data.get('email') || ''),
-          perfil: String(data.get('perfil') || 'ADMIN'),
-          ativo: resourceForm.ativo.checked,
           senha: String(data.get('senha') || ''),
         };
+        const current = state.usuarios.find((item) => String(item.id_usuario_admin) === String(id));
+        if (current?.protegido) {
+          payload.perfil = 'SUPER_ADMIN';
+          payload.ativo = true;
+        } else {
+          payload.perfil = String(data.get('perfil') || 'ADMIN');
+          payload.ativo = resourceForm.ativo ? resourceForm.ativo.checked : true;
+        }
         if (id) {
           await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'editar', id, dados: payload }) });
           if (payload.senha) {
@@ -1225,23 +1293,21 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         });
         toast('Conteúdo salvo.');
         await refreshView();
-      } else if (kind === 'galeria') {
+      } else if (kind === 'imagem-principal' || kind === 'galeria' || kind === 'galeria-add') {
         const url = await uploadSelectedImage('site');
         await request('/api/admin/conteudo', {
           method: 'POST',
           body: JSON.stringify({
-            acao: 'alterar_galeria',
+            acao: kind === 'galeria-add' ? 'adicionar_galeria' : 'substituir_imagem_principal',
             dados: {
               id_conteudo_site: resourceForm.dataset.id,
               url_imagem: url,
               texto_alternativo: document.getElementById('texto_alternativo').value,
-              ordem_exibicao: Number(document.getElementById('ordem_exibicao').value || 0),
-              principal: document.getElementById('principal')?.checked === true,
               ativo: true,
             },
           }),
         });
-        toast('Galeria atualizada.');
+        toast(kind === 'galeria-add' ? 'Imagem adicionada à galeria.' : 'Imagem principal substituída.');
         await refreshView();
       }
       formDialog.close();

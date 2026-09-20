@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AdminError } from './admin-errors.js';
 import { getCatalogRevision, getPublicRealtimeConfig } from './catalog-revision.js';
+import { withTransaction } from './db-tx.js';
 import { formatWhatsAppDisplay, normalizeWhatsAppPhone } from './whatsapp.js';
 
 export const PUBLIC_CONFIG_KEYS = Object.freeze([
@@ -62,7 +63,44 @@ export function publicConfigMap(rows = []) {
   return map;
 }
 
-function mapContent(row, images = []) {
+function mapImage(image) {
+  return {
+    id_conteudo_imagem: String(image.id_conteudo_imagem),
+    url_imagem: image.url_imagem,
+    texto_alternativo: image.texto_alternativo,
+    ordem_exibicao: image.ordem_exibicao ?? 0,
+    principal: image.principal === true,
+    ativo: image.ativo === true,
+  };
+}
+
+function imagesForContent(row, images = []) {
+  return images
+    .filter((image) => String(image.id_conteudo_site) === String(row.id_conteudo_site) && image.ativo !== false)
+    .sort((a, b) => {
+      if (a.principal === true && b.principal !== true) return -1;
+      if (b.principal === true && a.principal !== true) return 1;
+      return (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0);
+    });
+}
+
+export function visibleImagesForSlot(row, images = [], { publicView = false } = {}) {
+  const all = imagesForContent(row, images).map(mapImage);
+  const principal = all.find((image) => image.principal === true) || null;
+  const galeria = all.filter((image) => image.principal !== true);
+  let visiveis = all;
+  if (publicView) {
+    visiveis = row.tipo_conteudo === 'GALERIA' ? galeria : (principal ? [principal] : []);
+  }
+  return {
+    imagens: visiveis,
+    imagem_principal: principal,
+    galeria,
+  };
+}
+
+function mapContent(row, images = [], options = {}) {
+  const slots = visibleImagesForSlot(row, images, options);
   return {
     id_conteudo_site: String(row.id_conteudo_site),
     secao: row.secao,
@@ -74,21 +112,9 @@ function mapContent(row, images = []) {
     url_destino: row.url_destino,
     ordem_exibicao: row.ordem_exibicao ?? 0,
     ativo: row.ativo === true,
-    imagens: images
-      .filter((image) => String(image.id_conteudo_site) === String(row.id_conteudo_site) && image.ativo !== false)
-      .sort((a, b) => {
-        if (a.principal === true && b.principal !== true) return -1;
-        if (b.principal === true && a.principal !== true) return 1;
-        return (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0);
-      })
-      .map((image) => ({
-        id_conteudo_imagem: String(image.id_conteudo_imagem),
-        url_imagem: image.url_imagem,
-        texto_alternativo: image.texto_alternativo,
-        ordem_exibicao: image.ordem_exibicao ?? 0,
-        principal: image.principal === true,
-        ativo: image.ativo === true,
-      })),
+    imagens: slots.imagens,
+    imagem_principal: slots.imagem_principal,
+    galeria: slots.galeria,
   };
 }
 
@@ -150,7 +176,7 @@ export async function getPublicSiteContent(queryable) {
       logo_topo_url: configuracao.logo_topo_url || 'assets/logo.jpg',
       logo_rodape_url: configuracao.logo_rodape_url || 'assets/footer-brand.png',
     },
-    secoes: (row.conteudos || []).map((item) => mapContent(item, row.imagens || [])),
+    secoes: (row.conteudos || []).map((item) => mapContent(item, row.imagens || [], { publicView: true })),
     revisao_site: revisao,
     proxima_atualizacao: proxima,
     realtime,
@@ -285,7 +311,78 @@ export async function saveSiteContent(queryable, payload = {}) {
   return { id_conteudo_site: String(id), ...data };
 }
 
-export async function saveContentImage(queryable, payload = {}) {
+export async function replacePrincipalImage(queryable, payload = {}) {
+  if (!payload.id_conteudo_site) {
+    throw new AdminError(400, 'validation_error', 'Conteúdo é obrigatório.');
+  }
+  const url = clip(payload.url_imagem, 1000);
+  if (!isSafePublicUrl(url)) {
+    throw new AdminError(400, 'validation_error', 'URL de imagem inválida.');
+  }
+  const alt = optionalText(payload.texto_alternativo, TEXT_LIMITS.texto_alternativo);
+  return withTransaction(queryable, async (client) => {
+    const existing = await client.query(
+      `-- op:list_imagens_conteudo
+        SELECT id_conteudo_imagem, id_conteudo_site, url_imagem, texto_alternativo,
+               ordem_exibicao, principal, ativo
+        FROM app.tab_conteudo_imagem
+        WHERE id_conteudo_site = $1
+        ORDER BY ordem_exibicao ASC, data_criacao ASC
+      `,
+      [payload.id_conteudo_site],
+    );
+    const rows = existing.rows;
+    const sameUrl = rows.find((row) => row.url_imagem === url);
+    const previousPrincipal = rows.find((row) => row.principal === true);
+    await client.query(
+      `-- op:clear_principal_conteudo
+        UPDATE app.tab_conteudo_imagem
+           SET principal = false
+         WHERE id_conteudo_site = $1 AND principal = true
+      `,
+      [payload.id_conteudo_site],
+    );
+    if (sameUrl) {
+      await client.query(
+        `-- op:set_principal_conteudo
+          UPDATE app.tab_conteudo_imagem
+             SET principal = true, ativo = true, texto_alternativo = COALESCE($2, texto_alternativo),
+                 url_imagem = $3
+           WHERE id_conteudo_imagem = $1
+        `,
+        [sameUrl.id_conteudo_imagem, alt, url],
+      );
+      return { id_conteudo_imagem: String(sameUrl.id_conteudo_imagem), principal: true, substituida: true };
+    }
+    if (previousPrincipal) {
+      await client.query(
+        `-- op:update_conteudo_imagem_principal
+          UPDATE app.tab_conteudo_imagem
+             SET url_imagem = $2,
+                 texto_alternativo = $3,
+                 principal = true,
+                 ativo = true
+           WHERE id_conteudo_imagem = $1
+        `,
+        [previousPrincipal.id_conteudo_imagem, url, alt],
+      );
+      return { id_conteudo_imagem: String(previousPrincipal.id_conteudo_imagem), principal: true, substituida: true };
+    }
+    const id = payload.id_conteudo_imagem || randomUUID();
+    await client.query(
+      `-- op:insert_conteudo_imagem_principal
+        INSERT INTO app.tab_conteudo_imagem (
+          id_conteudo_imagem, id_conteudo_site, url_imagem, texto_alternativo,
+          ordem_exibicao, principal, ativo
+        ) VALUES ($1,$2,$3,$4,$5,true,true)
+      `,
+      [id, payload.id_conteudo_site, url, alt, Number.isInteger(payload.ordem_exibicao) ? payload.ordem_exibicao : 0],
+    );
+    return { id_conteudo_imagem: String(id), principal: true, substituida: false };
+  });
+}
+
+export async function addGalleryImage(queryable, payload = {}) {
   if (!payload.id_conteudo_site) {
     throw new AdminError(400, 'validation_error', 'Conteúdo é obrigatório.');
   }
@@ -294,43 +391,80 @@ export async function saveContentImage(queryable, payload = {}) {
     throw new AdminError(400, 'validation_error', 'URL de imagem inválida.');
   }
   const id = payload.id_conteudo_imagem || randomUUID();
-  if (payload.id_conteudo_imagem) {
+  await queryable.query(
+    `-- op:insert_conteudo_imagem_galeria
+      INSERT INTO app.tab_conteudo_imagem (
+        id_conteudo_imagem, id_conteudo_site, url_imagem, texto_alternativo,
+        ordem_exibicao, principal, ativo
+      ) VALUES ($1,$2,$3,$4,$5,false,$6)
+    `,
+    [
+      id,
+      payload.id_conteudo_site,
+      url,
+      optionalText(payload.texto_alternativo, TEXT_LIMITS.texto_alternativo),
+      Number.isInteger(payload.ordem_exibicao) ? payload.ordem_exibicao : 0,
+      payload.ativo !== false,
+    ],
+  );
+  return { id_conteudo_imagem: String(id), principal: false };
+}
+
+export async function saveContentImage(queryable, payload = {}) {
+  if (payload.id_conteudo_imagem && payload.principal !== true) {
+    if (!payload.id_conteudo_site) {
+      throw new AdminError(400, 'validation_error', 'Conteúdo é obrigatório.');
+    }
+    const url = clip(payload.url_imagem, 1000);
+    if (!isSafePublicUrl(url)) {
+      throw new AdminError(400, 'validation_error', 'URL de imagem inválida.');
+    }
     await queryable.query(
       `-- op:update_conteudo_imagem
         UPDATE app.tab_conteudo_imagem
            SET url_imagem = $2,
                texto_alternativo = $3,
                ordem_exibicao = $4,
-               principal = $5,
-               ativo = $6
+               principal = false,
+               ativo = $5
          WHERE id_conteudo_imagem = $1
       `,
-      [id, url, optionalText(payload.texto_alternativo, TEXT_LIMITS.texto_alternativo), Number.isInteger(payload.ordem_exibicao) ? payload.ordem_exibicao : 0, payload.principal === true, payload.ativo !== false],
+      [
+        payload.id_conteudo_imagem,
+        url,
+        optionalText(payload.texto_alternativo, TEXT_LIMITS.texto_alternativo),
+        Number.isInteger(payload.ordem_exibicao) ? payload.ordem_exibicao : 0,
+        payload.ativo !== false,
+      ],
     );
-  } else {
-    await queryable.query(
-      `-- op:insert_conteudo_imagem
-        INSERT INTO app.tab_conteudo_imagem (
-          id_conteudo_imagem, id_conteudo_site, url_imagem, texto_alternativo,
-          ordem_exibicao, principal, ativo
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-      `,
-      [id, payload.id_conteudo_site, url, optionalText(payload.texto_alternativo, TEXT_LIMITS.texto_alternativo), Number.isInteger(payload.ordem_exibicao) ? payload.ordem_exibicao : 0, payload.principal === true, payload.ativo !== false],
-    );
+    return { id_conteudo_imagem: String(payload.id_conteudo_imagem), principal: false };
   }
-  return { id_conteudo_imagem: String(id) };
+  if (payload.principal === true || !payload.id_conteudo_imagem) {
+    return replacePrincipalImage(queryable, payload);
+  }
+  return addGalleryImage(queryable, payload);
 }
 
 export async function executeContentAction(queryable, body = {}) {
   const acao = String(body.acao || '').toLowerCase();
+  const dados = body.dados || body;
   if (acao === 'salvar_configuracao' || acao === 'alterar_branding') {
-    return { configuracao: await upsertSiteConfig(queryable, body.dados || body) };
+    return { configuracao: await upsertSiteConfig(queryable, dados) };
   }
   if (acao === 'salvar_conteudo') {
-    return { conteudo: await saveSiteContent(queryable, body.dados || body) };
+    return { conteudo: await saveSiteContent(queryable, dados) };
+  }
+  if (acao === 'substituir_imagem_principal') {
+    return { imagem: await replacePrincipalImage(queryable, dados) };
+  }
+  if (acao === 'adicionar_galeria') {
+    return { imagem: await addGalleryImage(queryable, dados) };
   }
   if (acao === 'salvar_imagem' || acao === 'alterar_galeria') {
-    return { imagem: await saveContentImage(queryable, body.dados || body) };
+    if (dados.principal === false) {
+      return { imagem: await addGalleryImage(queryable, dados) };
+    }
+    return { imagem: await replacePrincipalImage(queryable, dados) };
   }
   throw new AdminError(400, 'validation_error', 'Ação de conteúdo inválida.');
 }

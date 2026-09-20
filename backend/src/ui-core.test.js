@@ -11,6 +11,11 @@ import {
   preserveCatalogFilters,
   buildRealtimeBroadcastBody,
   realtimeBroadcastUrl,
+  appBottomNavItems,
+  appMoreMenuItems,
+  activeAppNavId,
+  isAppShellViewport,
+  isPhoneViewport,
 } from '../../ui-core.js';
 
 test('sidebar collapsed preference uses a visual-only localStorage key', () => {
@@ -94,5 +99,29 @@ test('public header and footer use official branding alt text', () => {
     assert.match(html, /class="footer-brand"[\s\S]*alt="Amanteigados Lívia — Feitos com Amor"/);
     assert.match(html, /href="https:\/\/www\.instagram\.com\/amanteigadoslivia\/"/);
     assert.match(html, /href="https:\/\/wa\.me\//);
+  }
+});
+
+test('app shell navigation exposes phone items and more menu', () => {
+  const items = appBottomNavItems();
+  const more = appMoreMenuItems();
+  assert.deepEqual(items.map((item) => item.id), ['inicio', 'cardapio', 'encomendas', 'carrinho', 'mais']);
+  assert.equal(items.every((item) => item.label.length <= 12), true);
+  assert.equal(more.some((item) => item.href === '/#festas-momentos'), true);
+  assert.equal(more.some((item) => item.href === '/admin'), true);
+  assert.equal(activeAppNavId('/produtos'), 'cardapio');
+  assert.equal(activeAppNavId('/carrinho'), 'carrinho');
+  assert.equal(activeAppNavId('/', '#encomendas'), 'encomendas');
+  assert.equal(activeAppNavId('/', ''), 'inicio');
+  assert.equal(isAppShellViewport(1024), true);
+  assert.equal(isAppShellViewport(1025), false);
+  assert.equal(isPhoneViewport(430), true);
+  assert.equal(isPhoneViewport(820), false);
+  for (const file of ['index.html', 'produtos.html', 'carrinho.html']) {
+    const html = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+    assert.match(html, /id="appBottomNav"/);
+    assert.match(html, /id="appMoreSheet"/);
+    assert.match(html, /Painel Administrativo/);
+    assert.match(html, /viewport-fit=cover/);
   }
 });

@@ -291,7 +291,7 @@ a{ color:inherit; text-decoration:none; }
 .catalog-cta-txt p{ color:var(--muted); margin:10px 0 16px; max-width:34em; }
 
 /* ===================== BRAND STORY ("Nosso jeito de fazer") ===================== */
-.brand-story{ padding:72px var(--pad) 0; }
+.brand-story{ padding:clamp(36px, 6vw, 56px) var(--pad) 0; }
 .brand-story-txt{ max-width:640px; margin:0 auto; text-align:center; }
 .brand-story-txt h2{ font-family:var(--serif); font-weight:600; color:var(--heading); font-size:var(--fs-h2); line-height:1.15; }
 .brand-story-txt .section-sub{ margin:12px auto 0; }
@@ -327,7 +327,7 @@ a{ color:inherit; text-decoration:none; }
 }
 
 /* ===================== HOW IT WORKS ("Como funciona") ===================== */
-.how-it-works{ padding:80px var(--pad) 0; }
+.how-it-works{ padding:clamp(36px, 6vw, 56px) var(--pad) 0; }
 .steps{
   list-style:none; display:grid; grid-template-columns:repeat(4,1fr); gap:24px; counter-reset:step;
 }
@@ -444,10 +444,10 @@ a{ color:inherit; text-decoration:none; }
   .home-page .hero-sub{ max-width:52ch; }
 }
 
-/* ===================== TABLET (640–899) ===================== */
-@media (max-width:899px){
-  :root{ --header-h: 64px; }
-  .site-header{ display:flex; align-items:center; height:auto; padding:6px var(--pad); }
+/* ===================== TABLET (640–1024) — APP SHELL HEADER ===================== */
+@media (max-width:1024px){
+  :root{ --header-h: 60px; }
+  .site-header{ display:flex; align-items:center; height:auto; min-height:60px; padding:calc(6px + env(safe-area-inset-top, 0px)) var(--pad) 6px; }
   .brand{ width:48px; height:48px; }
   .header-actions{ margin-left:auto; }
   .hero{ background-image:none; }
@@ -1002,4 +1002,132 @@ a{ color:inherit; text-decoration:none; }
 }
 @media (max-width:360px){
   .media-gallery{ grid-template-columns:1fr; }
+}
+
+/* ===================== APP SHELL — SMARTPHONE / TABLET ===================== */
+.app-bottom-nav,
+.app-more-sheet { display: none; }
+
+html { min-height: 100dvh; }
+body { min-height: 100dvh; }
+
+.slot-photo {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: var(--r-card);
+}
+
+@media (max-width: 1024px) {
+  .icon-btn { display: inline-flex; }
+  .page { width: 100%; }
+  .home-page .hero {
+    min-height: 0;
+    padding: clamp(16px, 3vw, 24px) var(--pad) clamp(18px, 3vw, 28px);
+  }
+  .home-page .hero-photo { height: min(240px, 42vw); margin-top: 16px; }
+  .section, .moments, .feature, .catalog-cta {
+    padding-top: clamp(28px, 5vw, 48px);
+    padding-bottom: clamp(28px, 5vw, 48px);
+  }
+  .product-dialog {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: min(92dvh, 100dvh);
+    border-radius: 20px 20px 0 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .moments .cards,
+  .products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-page .card { flex-direction: column; }
+  .home-page .card-img { flex: none; aspect-ratio: 4/3; }
+}
+
+@media (max-width: 767px) {
+  .app-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 80;
+    min-height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 253, 252, 0.96);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+  }
+  .app-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 44px;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+  .app-nav-item svg { width: 22px; height: 22px; }
+  .app-nav-item.is-active { color: var(--primary); }
+  .app-more-sheet {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    background: rgba(46, 32, 29, 0.28);
+  }
+  .app-more-sheet[hidden] { display: none; }
+  .app-more-card {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    gap: 4px;
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+  }
+  .app-more-card a {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .page, main, .site-footer {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+  .site-footer { margin-bottom: 0; }
+  .form-encomenda input,
+  .form-encomenda select,
+  .form-encomenda textarea {
+    font-size: 16px;
+    min-height: 44px;
+    width: 100%;
+  }
+  .form-encomenda .btn,
+  .cart-summary-actions .btn { width: 100%; }
+  .cart-summary {
+    position: sticky;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  .dialog-close { position: sticky; top: 8px; float: right; }
+}
+
+@media (min-width: 1025px) {
+  .app-bottom-nav,
+  .app-more-sheet { display: none !important; }
 }

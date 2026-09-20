@@ -6,6 +6,7 @@ import {
   getPublicSiteContent,
   publicConfigMap,
   validateSiteConfigPatch,
+  visibleImagesForSlot,
 } from './site-content.js';
 
 test('public config map keeps only safe keys', () => {
@@ -97,4 +98,143 @@ test('admin content CRUD validates section and image URL', async () => {
     () => executeContentAction(queryable, { acao: 'salvar_conteudo', dados: { secao: 'X', tipo_conteudo: 'CHAMADA' } }),
     AdminError,
   );
+});
+
+test('substituir principal nao cria segunda imagem visual', async () => {
+  const images = [{
+    id_conteudo_imagem: 'img-1',
+    id_conteudo_site: 'c1',
+    url_imagem: 'assets/old.jpg',
+    texto_alternativo: 'Antiga',
+    ordem_exibicao: 0,
+    principal: true,
+    ativo: true,
+  }];
+  const queryable = {
+    async query(sql, params = []) {
+      const text = String(sql);
+      if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+      if (text.includes('op:list_imagens_conteudo')) return { rows: images.slice() };
+      if (text.includes('op:clear_principal_conteudo')) {
+        for (const row of images) row.principal = false;
+        return { rows: [] };
+      }
+      if (text.includes('op:update_conteudo_imagem_principal')) {
+        const row = images.find((item) => item.id_conteudo_imagem === params[0]);
+        row.url_imagem = params[1];
+        row.texto_alternativo = params[2];
+        row.principal = true;
+        row.ativo = true;
+        return { rows: [row] };
+      }
+      if (text.includes('op:insert_conteudo_imagem')) {
+        images.push({
+          id_conteudo_imagem: params[0],
+          id_conteudo_site: params[1],
+          url_imagem: params[2],
+          principal: true,
+          ativo: true,
+        });
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+  };
+  const result = await executeContentAction(queryable, {
+    acao: 'substituir_imagem_principal',
+    dados: { id_conteudo_site: 'c1', url_imagem: 'assets/new.jpg', texto_alternativo: 'Nova' },
+  });
+  assert.equal(result.imagem.substituida, true);
+  assert.equal(images.length, 1);
+  assert.equal(images[0].principal, true);
+  assert.equal(images[0].url_imagem, 'assets/new.jpg');
+});
+
+test('adicionar galeria continua criando imagem adicional', async () => {
+  const images = [{
+    id_conteudo_imagem: 'img-1',
+    id_conteudo_site: 'c1',
+    url_imagem: 'assets/main.jpg',
+    principal: true,
+    ativo: true,
+  }];
+  const queryable = {
+    async query(sql, params = []) {
+      if (String(sql).includes('op:insert_conteudo_imagem_galeria')) {
+        images.push({
+          id_conteudo_imagem: params[0],
+          id_conteudo_site: params[1],
+          url_imagem: params[2],
+          principal: false,
+          ativo: true,
+        });
+      }
+      return { rows: [] };
+    },
+  };
+  await executeContentAction(queryable, {
+    acao: 'adicionar_galeria',
+    dados: { id_conteudo_site: 'c1', url_imagem: 'assets/extra.jpg' },
+  });
+  assert.equal(images.length, 2);
+  assert.equal(images.filter((item) => item.principal === true).length, 1);
+  assert.equal(images.filter((item) => item.principal !== true).length, 1);
+});
+
+test('imagem antiga deixa de ser principal se nova for inserida', async () => {
+  const images = [{
+    id_conteudo_imagem: 'img-old',
+    id_conteudo_site: 'c1',
+    url_imagem: 'assets/old.jpg',
+    principal: true,
+    ativo: true,
+  }];
+  const queryable = {
+    async query(sql, params = []) {
+      const text = String(sql);
+      if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+      if (text.includes('op:list_imagens_conteudo')) return { rows: images.map((row) => ({ ...row })) };
+      if (text.includes('op:clear_principal_conteudo')) {
+        for (const row of images) row.principal = false;
+        return { rows: [] };
+      }
+      if (text.includes('op:insert_conteudo_imagem_principal')) {
+        images.push({
+          id_conteudo_imagem: params[0],
+          id_conteudo_site: params[1],
+          url_imagem: params[2],
+          principal: true,
+          ativo: true,
+        });
+        return { rows: [] };
+      }
+      if (text.includes('op:update_conteudo_imagem_principal')) {
+        const row = images.find((item) => item.id_conteudo_imagem === params[0]);
+        row.url_imagem = params[1];
+        row.principal = true;
+        return { rows: [row] };
+      }
+      return { rows: [] };
+    },
+  };
+  await executeContentAction(queryable, {
+    acao: 'substituir_imagem_principal',
+    dados: { id_conteudo_site: 'c1', url_imagem: 'assets/new.jpg' },
+  });
+  assert.equal(images.filter((item) => item.principal === true).length, 1);
+  assert.equal(images.find((item) => item.principal === true).url_imagem, 'assets/new.jpg');
+});
+
+test('publico retorna uma principal e nao mistura galeria', () => {
+  const row = { id_conteudo_site: 'c1', tipo_conteudo: 'CARD' };
+  const images = [
+    { id_conteudo_imagem: 'a', id_conteudo_site: 'c1', url_imagem: 'assets/main.jpg', principal: true, ativo: true, ordem_exibicao: 0 },
+    { id_conteudo_imagem: 'b', id_conteudo_site: 'c1', url_imagem: 'assets/extra.jpg', principal: false, ativo: true, ordem_exibicao: 1 },
+  ];
+  const publicSlot = visibleImagesForSlot(row, images, { publicView: true });
+  assert.equal(publicSlot.imagens.length, 1);
+  assert.equal(publicSlot.imagens[0].url_imagem, 'assets/main.jpg');
+  const gallery = visibleImagesForSlot({ id_conteudo_site: 'c1', tipo_conteudo: 'GALERIA' }, images, { publicView: true });
+  assert.equal(gallery.imagens.length, 1);
+  assert.equal(gallery.imagens[0].url_imagem, 'assets/extra.jpg');
 });

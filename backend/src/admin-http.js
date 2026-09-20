@@ -276,6 +276,7 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
         nome_usuario: user.nome_usuario,
         email_usuario: user.email_usuario,
         perfil_usuario: user.perfil_usuario,
+        protegido: user.protegido === true,
       },
     });
   } catch (error) {
@@ -327,7 +328,14 @@ export async function handleAdminCatalog(request, response, deps = {}) {
 
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
-      sendJson(response, 200, await getAdminCatalog(pool));
+      sendJson(response, 200, {
+        ...(await getAdminCatalog(pool)),
+        sessao: {
+          id_usuario_admin: session.id_usuario_admin || null,
+          email: session.email || null,
+          perfil: session.perfil || null,
+        },
+      });
       return;
     }
 
@@ -528,7 +536,7 @@ export async function handleAdminUsuarios(request, response, deps = {}) {
     const acao = body.acao;
     let result;
     if (acao === 'criar') {
-      result = { usuario: await createUsuario(pool, body.dados || body) };
+      result = { usuario: await createUsuario(pool, body.dados || body, session) };
       await recordAudit(pool, {
         id_usuario_admin: session.id_usuario_admin,
         acao: AUDIT_ACTIONS.CRIAR_USUARIO,
@@ -548,15 +556,9 @@ export async function handleAdminUsuarios(request, response, deps = {}) {
         identificador_requisicao: reqId,
       });
     } else if (acao === 'redefinir_senha') {
-      result = await resetUsuarioSenha(pool, body.id, body.senha || body.dados?.senha);
-      await recordAudit(pool, {
-        id_usuario_admin: session.id_usuario_admin,
-        acao: AUDIT_ACTIONS.REDEFINIR_SENHA,
-        entidade: 'usuario_admin',
-        id_registro: body.id,
-        sucesso: true,
-        identificador_requisicao: reqId,
-      });
+      result = await resetUsuarioSenha(pool, body.id, body.senha || body.dados?.senha, session);
+    } else if (acao === 'excluir' || acao === 'deletar' || acao === 'delete') {
+      throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
     } else {
       throw new AdminError(400, 'validation_error', 'Ação de usuário inválida.');
     }

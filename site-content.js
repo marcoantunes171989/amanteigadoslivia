@@ -39,7 +39,10 @@
   }
 
   function firstImage(block) {
-    return (block?.imagens || []).find((item) => item.ativo !== false)?.url_imagem || null;
+    return block?.imagem_principal?.url_imagem
+      || (block?.imagens || []).find((item) => item.principal === true)?.url_imagem
+      || (block?.imagens || []).find((item) => item.ativo !== false)?.url_imagem
+      || null;
   }
 
   function setText(selector, value) {
@@ -63,9 +66,13 @@
   }
 
   function renderGallery(target, block, { lazy = true } = {}) {
-    if (!target || !block) return;
+    if (!target) return;
+    if (!block || block.tipo_conteudo !== 'GALERIA') {
+      target.replaceChildren();
+      return;
+    }
     target.replaceChildren();
-    const images = (block.imagens || []).filter((item) => item.ativo !== false);
+    const images = (block.galeria || []).filter((item) => item.ativo !== false && item.principal !== true);
     images.forEach((image, index) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -112,7 +119,7 @@
         if (label) label.textContent = `${hero.texto_botao} `;
       }
     }
-    setSrc('.hero-photo', heroImg, hero?.imagens?.[0]?.texto_alternativo);
+    setSrc('.hero-photo', heroImg, hero?.imagem_principal?.texto_alternativo || hero?.imagens?.[0]?.texto_alternativo);
     if (descubra) {
       setText('.catalog-cta-txt h2', descubra.titulo);
       setText('.catalog-cta-txt p', descubra.descricao);
@@ -122,7 +129,7 @@
         if (label) label.textContent = `${descubra.texto_botao} `;
       }
     }
-    setSrc('.catalog-cta-photo img', descubraImg, descubra?.imagens?.[0]?.texto_alternativo);
+    setSrc('.catalog-cta-photo img', descubraImg, descubra?.imagem_principal?.texto_alternativo || descubra?.imagens?.[0]?.texto_alternativo);
 
     ['Encomendas', 'Festas', 'Personalizados'].forEach((name) => {
       const card = (payload.secoes || []).find((item) => item.secao === 'HOME' && item.tipo_conteudo === 'CARD' && item.titulo === name);
@@ -155,7 +162,7 @@
       setText('#festas-momentos h2', chamada.titulo);
       const p = document.querySelector('#festas-momentos .feature-txt > p:not(.eyebrow)');
       if (p && chamada.descricao) p.textContent = chamada.descricao;
-      setSrc('#festas-momentos .feature-photo img', firstImage(chamada), chamada.imagens?.[0]?.texto_alternativo);
+      setSrc('#festas-momentos .feature-photo img', firstImage(chamada), chamada.imagem_principal?.texto_alternativo || chamada.imagens?.[0]?.texto_alternativo);
     }
     const cards = (payload.secoes || []).filter((item) => item.secao === 'FESTAS' && item.tipo_conteudo === 'CARD');
     const detail = document.getElementById('festaDetail');
@@ -198,7 +205,17 @@
         detail.append(a);
       }
     }
-    renderGallery(gallery, card);
+    if (gallery) {
+      gallery.replaceChildren();
+      const src = firstImage(card);
+      if (src) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = card.imagem_principal?.texto_alternativo || card.titulo || '';
+        img.className = 'slot-photo';
+        gallery.append(img);
+      }
+    }
   }
 
   function applyPersonalizados(payload) {

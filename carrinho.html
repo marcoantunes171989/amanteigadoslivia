@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Carrinho | Amanteigados Lívia</title>
   <meta name="description" content="Veja os itens do seu carrinho na Amanteigados Lívia, ajuste quantidades e confira o subtotal." />
 
@@ -149,6 +149,36 @@
         </div>
       </div>
     </footer>
+
+    <nav class="app-bottom-nav" id="appBottomNav" aria-label="Navegação do aplicativo">
+      <a href="/" class="app-nav-item" data-nav="inicio">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 11l8-7 8 7v9H4v-9Z"/></svg>
+        <span>Início</span>
+      </a>
+      <a href="/produtos" class="app-nav-item" data-nav="cardapio">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z"/></svg>
+        <span>Cardápio</span>
+      </a>
+      <a href="/#encomendas" class="app-nav-item" data-nav="encomendas">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h16v12H4V7Zm4-3h8v3H8V4Z"/></svg>
+        <span>Encomendas</span>
+      </a>
+      <a href="/carrinho" class="app-nav-item" data-nav="carrinho">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM3 4h2l.4 2H21l-1.6 7.2A2 2 0 0 1 17.5 15H9.2L7 6H3z"/></svg>
+        <span>Carrinho</span>
+      </a>
+      <button type="button" class="app-nav-item" id="appMoreToggle" data-nav="mais" aria-expanded="false" aria-controls="appMoreSheet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+        <span>Mais</span>
+      </button>
+    </nav>
+    <div class="app-more-sheet" id="appMoreSheet" hidden>
+      <div class="app-more-card" role="dialog" aria-label="Mais opções">
+        <a href="/#festas-momentos">Festas</a>
+        <a href="/#personalizados-historia">Personalizados</a>
+        <a href="/admin">Painel Administrativo</a>
+      </div>
+    </div>
 
   </div>
 
