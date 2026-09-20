@@ -116,35 +116,48 @@ export function mapCatalogRows({
 }
 
 export async function getCatalogPayload(queryable) {
-  const categoriesResult = await queryable.query(`
-      SELECT id_categoria, nome_categoria, slug_categoria, ordem_exibicao, ativo
-      FROM app.tab_categoria
-      WHERE ativo = true
-      ORDER BY ordem_exibicao ASC, nome_categoria ASC
-    `);
-  const productsResult = await queryable.query(`
-      SELECT id_produto, id_categoria, nome_produto, slug_produto, descricao_produto,
-             destaque, ativo, ordem_exibicao
-      FROM app.tab_produto
-      WHERE ativo = true
-      ORDER BY ordem_exibicao ASC, nome_produto ASC
-    `);
-  const imagesResult = await queryable.query(`
-      SELECT id_imagem, id_produto, url_imagem, texto_alternativo, ordem_exibicao, principal
-      FROM app.tab_produto_imagem
-      ORDER BY ordem_exibicao ASC
-    `);
-  const pricesResult = await queryable.query(`
-      SELECT id_preco, id_produto, valor_centavos, codigo_moeda, promocional,
-             inicio_vigencia, fim_vigencia, ativo, data_criacao
-      FROM app.tab_produto_preco
+  const result = await queryable.query(`
+      SELECT
+        COALESCE((
+          SELECT json_agg(to_jsonb(c) ORDER BY c.ordem_exibicao, c.nome_categoria)
+          FROM (
+            SELECT id_categoria, nome_categoria, slug_categoria, ordem_exibicao, ativo
+            FROM app.tab_categoria
+            WHERE ativo = true
+          ) c
+        ), '[]'::json) AS categories,
+        COALESCE((
+          SELECT json_agg(to_jsonb(p) ORDER BY p.ordem_exibicao, p.nome_produto)
+          FROM (
+            SELECT id_produto, id_categoria, nome_produto, slug_produto, descricao_produto,
+                   destaque, ativo, ordem_exibicao
+            FROM app.tab_produto
+            WHERE ativo = true
+          ) p
+        ), '[]'::json) AS products,
+        COALESCE((
+          SELECT json_agg(to_jsonb(i) ORDER BY i.ordem_exibicao)
+          FROM (
+            SELECT id_imagem, id_produto, url_imagem, texto_alternativo, ordem_exibicao, principal
+            FROM app.tab_produto_imagem
+          ) i
+        ), '[]'::json) AS images,
+        COALESCE((
+          SELECT json_agg(to_jsonb(pr))
+          FROM (
+            SELECT id_preco, id_produto, valor_centavos, codigo_moeda, promocional,
+                   inicio_vigencia, fim_vigencia, ativo, data_criacao
+            FROM app.tab_produto_preco
+          ) pr
+        ), '[]'::json) AS prices
     `);
 
+  const row = result.rows[0] || {};
   const payload = mapCatalogRows({
-    categories: categoriesResult.rows,
-    products: productsResult.rows,
-    images: imagesResult.rows,
-    prices: pricesResult.rows,
+    categories: row.categories || [],
+    products: row.products || [],
+    images: row.images || [],
+    prices: row.prices || [],
     now: new Date(),
   });
 

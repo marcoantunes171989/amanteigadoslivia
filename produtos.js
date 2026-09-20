@@ -250,6 +250,7 @@ function showCartToast(message) {
 // já na inicialização — independente de a página ter o catálogo completo.
 window.AmanteigadosCart.loadCart();
 updateCartBadges();
+window.addEventListener('amanteigados:carrinho-atualizado', updateCartBadges);
 
 // Página pode não ter todos os elementos (defensivo) — sai cedo se o
 // contêiner principal do catálogo não existir.
@@ -779,12 +780,26 @@ if (els.grid) {
 
   // ===================== INICIALIZAÇÃO =====================
   async function bootCatalog() {
+    const skeleton = document.getElementById('productsSkeleton');
+    const cached = window.AmanteigadosCatalog.hydrateFromCache?.();
+    if (cached) {
+      if (skeleton) skeleton.hidden = true;
+      syncFromUrl();
+      renderCategories();
+      renderCatalog();
+    } else if (skeleton) {
+      skeleton.hidden = false;
+    }
     try {
       await window.AmanteigadosCatalog.loadFromApi();
     } catch {
-      showUnavailableState();
-      return;
+      if (!cached) {
+        if (skeleton) skeleton.hidden = true;
+        showUnavailableState();
+        return;
+      }
     }
+    if (skeleton) skeleton.hidden = true;
     if (els.demoNotice) {
       els.demoNotice.hidden = getCatalogModeValue() !== 'demo';
     }

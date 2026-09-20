@@ -9,8 +9,6 @@ import {
   'use strict';
 
   const Catalog = window.AmanteigadosCatalog;
-  if (!Catalog) return;
-
   const gate = createRefreshGate({ minIntervalMs: 280 });
   let lastRevision = null;
   let fallbackTimer = null;
@@ -22,6 +20,7 @@ import {
   };
 
   function pricesSnapshot() {
+    if (!Catalog) return [];
     return (Catalog.getProducts() || []).map((product) => ({
       id: product.id,
       price: Catalog.getEffectivePrice(product),
@@ -52,6 +51,10 @@ import {
   }
 
   async function refreshCatalog(source) {
+    if (!Catalog) {
+      await window.AmanteigadosSite?.loadFromApi?.().catch(() => {});
+      return;
+    }
     return gate.run(async () => {
       const previous = pricesSnapshot();
       const before = catalogItemsSignature(Catalog.getProducts());
@@ -107,6 +110,13 @@ import {
         devLog('broadcast received', config.channel, config.event);
         refreshCatalog('realtime').catch(() => {});
       });
+      if (config.site_event) {
+        channel.on('broadcast', { event: config.site_event }, () => {
+          window.AmanteigadosSync.mechanism = 'REALTIME';
+          devLog('broadcast received', config.channel, config.site_event);
+          window.AmanteigadosSite?.loadFromApi?.().catch(() => {});
+        });
+      }
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('TIMED_OUT')), 4000);
         channel.subscribe((status) => {
@@ -131,6 +141,7 @@ import {
   }
 
   async function start() {
+    window.AmanteigadosSite?.loadFromApi?.().catch(() => {});
     const payload = await pollRevision();
     const realtime = payload?.realtime;
     if (realtime?.url && realtime?.anon_key && realtime?.channel && realtime?.event) {
@@ -139,6 +150,7 @@ import {
     }
     fallbackTimer = setInterval(() => {
       pollRevision().catch(() => {});
+      window.AmanteigadosSite?.loadFromApi?.().catch(() => {});
     }, 10000);
   }
 

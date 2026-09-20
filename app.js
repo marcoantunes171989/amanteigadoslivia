@@ -41,6 +41,15 @@ if (toggle && nav) {
   });
 }
 
+const header = document.querySelector('.site-header');
+if (header) {
+  const onScroll = () => {
+    header.classList.toggle('is-compact', window.scrollY > 24);
+  };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+}
+
 // Active link highlight on scroll (ids batem com os hrefs do menu:
 // Cardápio é uma rota própria, /produtos, e não participa do scroll-spy)
 const sections = ['inicio', 'encomendas', 'festas-momentos', 'personalizados-historia']

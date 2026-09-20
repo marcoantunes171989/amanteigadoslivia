@@ -50,10 +50,11 @@ async function getSupabaseAdmin() {
   });
 }
 
-export async function createSignedImageUpload({ nome_arquivo, tipo_mime, tamanho_bytes }) {
+export async function createSignedImageUpload({ nome_arquivo, tipo_mime, tamanho_bytes, pasta } = {}) {
   const meta = validateImageUploadMeta({ nome_arquivo, tipo_mime, tamanho_bytes });
   const supabase = await getSupabaseAdmin();
-  const pathName = `produtos/${randomUUID()}.${meta.extension}`;
+  const folder = pasta === 'site' ? 'site' : 'produtos';
+  const pathName = `${folder}/${randomUUID()}.${meta.extension}`;
 
     const { data: buckets, error: listError } = await supabase.storage.listBuckets();
     if (listError) {

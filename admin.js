@@ -16,7 +16,13 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     overview: document.getElementById('overviewView'),
     categories: document.getElementById('categoriesView'),
     products: document.getElementById('productsView'),
+    branding: document.getElementById('brandingView'),
+    homeContent: document.getElementById('homeContentView'),
+    encomendasContent: document.getElementById('encomendasContentView'),
+    festasContent: document.getElementById('festasContentView'),
+    personalizadosContent: document.getElementById('personalizadosContentView'),
     sales: document.getElementById('salesView'),
+    requests: document.getElementById('requestsView'),
     reports: document.getElementById('reportsView'),
     publications: document.getElementById('publicationsView'),
     audit: document.getElementById('auditView'),
@@ -27,7 +33,13 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     overview: ['Painel', 'Visão Geral', 'Acompanhe o painel da loja em homologação.'],
     categories: ['Catálogo', 'Categorias', 'Organize as categorias ativas do cardápio.'],
     products: ['Catálogo', 'Produtos', 'Gerencie nomes, preços, imagens e disponibilidade.'],
+    branding: ['Conteúdo', 'Branding', 'Logos e WhatsApp comercial do site.'],
+    homeContent: ['Conteúdo', 'Página Inicial', 'Hero, destaques e chamadas da home.'],
+    encomendasContent: ['Conteúdo', 'Encomendas', 'Chamada, galeria e textos da seção.'],
+    festasContent: ['Conteúdo', 'Festas', 'Aniversário, presente, celebrações, eventos e lembranças.'],
+    personalizadosContent: ['Conteúdo', 'Personalizados', 'Descrição, CTA e galeria de trabalhos.'],
     sales: ['Operação', 'Vendas', 'Acompanhe pedidos e o status de cada venda.'],
+    requests: ['Operação', 'Solicitações', 'Pedidos de encomenda, festas e personalizados.'],
     reports: ['Análise', 'Relatórios', 'Acompanhe o desempenho do negócio.'],
     publications: ['Gestão', 'Publicações', 'Homologação ativa. Produção permanece bloqueada.'],
     audit: ['Gestão', 'Auditoria', 'Consulte o histórico de ações administrativas.'],
@@ -39,6 +51,9 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     catalog: { resumo: {}, categorias: [], produtos: [] },
     reports: null,
     vendas: [],
+    solicitacoes: [],
+    requestStatus: 'NOVA',
+    conteudo: { configuracoes: [], conteudos: [] },
     usuarios: [],
     auditoria: [],
     publicacoes: null,
@@ -286,6 +301,17 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     state.publicacoes = await request('/api/admin/publicacoes');
   }
 
+  async function loadContent() {
+    state.conteudo = await request('/api/admin/conteudo');
+  }
+
+  async function loadRequests() {
+    const params = new URLSearchParams();
+    if (state.requestStatus) params.set('status_solicitacao', state.requestStatus);
+    const payload = await request(`/api/admin/solicitacoes?${params}`);
+    state.solicitacoes = payload.solicitacoes || [];
+  }
+
   async function refreshView() {
     try {
       if (state.view === 'overview') {
@@ -298,6 +324,12 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       } else if (state.view === 'sales') {
         await loadSales();
         renderSales();
+      } else if (['branding', 'homeContent', 'encomendasContent', 'festasContent', 'personalizadosContent'].includes(state.view)) {
+        await loadContent();
+        renderContentView();
+      } else if (state.view === 'requests') {
+        await loadRequests();
+        renderRequests();
       } else if (state.view === 'reports') {
         await loadReports();
         renderReports();
@@ -446,6 +478,177 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
       el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openProductForm(product) }),
       el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: product.ativo ? 'Desativar' : 'Ativar', onClick: () => mutate('produto', product.ativo ? 'desativar' : 'ativar', product.id_produto) }),
     ]);
+  }
+
+  function configValue(chave) {
+    return (state.conteudo.configuracoes || []).find((item) => item.chave_configuracao === chave)?.valor_texto || '';
+  }
+
+  function contentsFor(secao, tipo) {
+    return (state.conteudo.conteudos || []).filter((item) => item.secao === secao && (!tipo || item.tipo_conteudo === tipo));
+  }
+
+  function contentCard(item) {
+    return el('article', { className: 'card' }, [
+      el('strong', { text: item.titulo || item.tipo_conteudo }),
+      el('span', { className: 'muted', text: `${item.secao} · ${item.tipo_conteudo}` }),
+      item.descricao ? el('p', { text: item.descricao }) : null,
+      (item.imagens || []).length ? el('div', { className: 'thumbs' }, item.imagens.slice(0, 4).map((image) => thumb(image.url_imagem, image.texto_alternativo))) : null,
+      el('div', { className: 'actions' }, [
+        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openContentForm(item) }),
+        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Imagem', onClick: () => openGalleryForm(item) }),
+      ]),
+    ]);
+  }
+
+  function renderContentView() {
+    const view = state.view;
+    const target = views[view];
+    if (!target) return;
+    if (view === 'branding') {
+      target.replaceChildren(
+        el('div', { className: 'cards' }, [
+          brandingEditor('logo_topo_url', 'Logo do topo', configValue('logo_topo_url')),
+          brandingEditor('logo_rodape_url', 'Logo do rodapé', configValue('logo_rodape_url')),
+          brandingEditor('whatsapp_telefone', 'WhatsApp comercial', configValue('whatsapp_telefone'), false),
+        ]),
+      );
+      return;
+    }
+    const secao = view === 'homeContent' ? 'HOME' : view === 'encomendasContent' ? 'ENCOMENDAS' : view === 'festasContent' ? 'FESTAS' : 'PERSONALIZADOS';
+    const items = contentsFor(secao);
+    const homeImages = view === 'homeContent'
+      ? [
+        brandingEditor('hero_imagem_url', 'Imagem do hero', configValue('hero_imagem_url')),
+        brandingEditor('descubra_imagem_url', 'Imagem de “Descubra nossos amanteigados”', configValue('descubra_imagem_url')),
+      ]
+      : [];
+    target.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('button', { className: 'btn btn-primary', type: 'button', text: 'Novo bloco', onClick: () => openContentForm({ secao, tipo_conteudo: secao === 'FESTAS' ? 'CARD' : 'CHAMADA' }) }),
+      ]),
+      el('div', { className: 'cards' }, homeImages.concat(items.length ? items.map(contentCard) : [emptyState('Nenhum conteúdo nesta seção.')])),
+    );
+  }
+
+  function brandingEditor(chave, label, value, isImage = true) {
+    return el('article', { className: 'card' }, [
+      el('strong', { text: label }),
+      isImage && value ? el('img', { className: 'thumb', src: value, alt: label }) : null,
+      field(chave, isImage ? 'URL da imagem' : 'Telefone com DDI', el('input', { id: chave, name: chave, value, type: 'text' })),
+      isImage ? el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', onChange: async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        state.pendingFile = file;
+        try {
+          const url = await uploadSelectedImage('site');
+          state.pendingFile = null;
+          await saveConfig(chave, url);
+        } catch (error) {
+          toast(error.message || 'Falha no upload.', false);
+        }
+      } }) : null,
+      el('button', { className: 'btn btn-primary', type: 'button', text: 'Salvar', onClick: async () => {
+        await saveConfig(chave, document.getElementById(chave).value);
+      } }),
+    ]);
+  }
+
+  async function saveConfig(chave, valor) {
+    await request('/api/admin/conteudo', {
+      method: 'POST',
+      body: JSON.stringify({
+        acao: chave.includes('logo') ? 'alterar_branding' : chave.endsWith('_url') ? 'alterar_branding' : 'salvar_configuracao',
+        dados: { chave_configuracao: chave, valor_texto: valor },
+      }),
+    });
+    toast('Configuração salva.');
+    await refreshView();
+  }
+
+  function openContentForm(item = {}) {
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: item.id_conteudo_site ? 'Editar conteúdo' : 'Novo conteúdo' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      field('secao', 'Seção', el('select', { id: 'secao' }, ['HOME', 'ENCOMENDAS', 'FESTAS', 'PERSONALIZADOS'].map((value) => el('option', { value, text: value, selected: (item.secao || '') === value })))),
+      field('tipo_conteudo', 'Tipo', el('select', { id: 'tipo_conteudo' }, ['CHAMADA', 'DESTAQUE', 'GALERIA', 'CARD'].map((value) => el('option', { value, text: value, selected: (item.tipo_conteudo || '') === value })))),
+      field('titulo', 'Título', input('titulo', { value: item.titulo || '' })),
+      field('subtitulo', 'Subtítulo', input('subtitulo', { value: item.subtitulo || '' })),
+      field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', text: item.descricao || '' })),
+      field('texto_botao', 'Texto do botão', input('texto_botao', { value: item.texto_botao || '' })),
+      field('url_destino', 'Destino / chave', input('url_destino', { value: item.url_destino || '' })),
+      field('ordem_exibicao', 'Ordem', input('ordem_exibicao', { type: 'number', value: String(item.ordem_exibicao ?? 0) })),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
+      ]),
+    ]));
+    resourceForm.dataset.kind = 'conteudo';
+    resourceForm.dataset.id = item.id_conteudo_site || '';
+    formDialog.showModal();
+  }
+
+  function openGalleryForm(item) {
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Imagem da galeria' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      field('url_imagem', 'URL da imagem', input('url_imagem', { value: item.imagens?.[0]?.url_imagem || '' })),
+      field('arquivo_imagem', 'Upload local', el('input', { id: 'arquivo_imagem', type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
+      field('texto_alternativo', 'Texto alternativo', input('texto_alternativo', { value: item.imagens?.[0]?.texto_alternativo || '' })),
+      field('ordem_exibicao', 'Ordem', input('ordem_exibicao', { type: 'number', value: '0' })),
+      el('label', {}, [el('input', { id: 'principal', type: 'checkbox', checked: true }), el('span', { text: ' Imagem principal' })]),
+      el('img', { id: 'imagePreview', className: 'thumb hidden', alt: '' }),
+      el('input', { type: 'hidden', id: 'origem_imagem', value: 'url' }),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar imagem' }),
+      ]),
+    ]));
+    resourceForm.dataset.kind = 'galeria';
+    resourceForm.dataset.id = item.id_conteudo_site;
+    state.pendingFile = null;
+    bindImagePreview();
+    formDialog.showModal();
+  }
+
+  function renderRequests() {
+    const statuses = ['NOVA', 'EM_ATENDIMENTO', 'CONCLUIDA', 'CANCELADA'];
+    views.requests.replaceChildren(
+      el('div', { className: 'filters' }, statuses.map((status) => el('button', {
+        className: `chip${state.requestStatus === status ? ' is-active' : ''}`,
+        type: 'button',
+        text: status.replace('_', ' '),
+        onClick: () => { state.requestStatus = status; refreshView(); },
+      }))),
+      el('div', { className: 'table-wrap' }, [
+        state.solicitacoes.length
+          ? simpleTable(['Data', 'Cliente', 'Telefone', 'Tipo', 'Data do evento', 'Resumo', 'Status'], state.solicitacoes.map((item) => [
+            formatDate(item.data_criacao),
+            item.nome_cliente,
+            item.telefone_cliente,
+            item.tipo_solicitacao,
+            item.data_evento || '—',
+            String(item.descricao_pedido || '').slice(0, 48),
+            item.status_solicitacao,
+          ]))
+          : emptyState('Nenhuma solicitação neste filtro.'),
+      ]),
+      el('div', { className: 'cards' }, state.solicitacoes.map((item) => el('article', { className: 'card' }, [
+        el('strong', { text: item.nome_cliente }),
+        el('span', { className: 'muted', text: `${item.tipo_solicitacao} · ${item.telefone_cliente}` }),
+        el('p', { text: item.descricao_pedido }),
+        el('div', { className: 'actions' }, statuses.map((status) => el('button', {
+          className: 'btn btn-ghost btn-small',
+          type: 'button',
+          text: status.replace('_', ' '),
+          onClick: async () => {
+            await request('/api/admin/solicitacoes', { method: 'POST', body: JSON.stringify({ id_solicitacao_encomenda: item.id_solicitacao_encomenda, status_solicitacao: status }) });
+            toast('Status atualizado.');
+            refreshView();
+          },
+        }))),
+      ]))),
+    );
   }
 
   function renderSales() {
@@ -910,12 +1113,12 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
     }
   }
 
-  async function uploadSelectedImage() {
+  async function uploadSelectedImage(pasta) {
     const file = state.pendingFile;
-    if (!file) return resourceForm.url_imagem.value.trim();
+    if (!file) return resourceForm.url_imagem?.value?.trim() || '';
     const signed = await request('/api/admin/imagens/upload-url', {
       method: 'POST',
-      body: JSON.stringify({ nome_arquivo: file.name, tipo_mime: file.type, tamanho_bytes: file.size }),
+      body: JSON.stringify({ nome_arquivo: file.name, tipo_mime: file.type, tamanho_bytes: file.size, pasta }),
     });
     const put = await fetch(signed.signed_upload_url, {
       method: 'PUT',
@@ -1000,6 +1203,45 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
           }),
         });
         toast('Publicação agendada.');
+        await refreshView();
+      } else if (kind === 'conteudo') {
+        await request('/api/admin/conteudo', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: 'salvar_conteudo',
+            dados: {
+              id_conteudo_site: resourceForm.dataset.id || undefined,
+              secao: document.getElementById('secao').value,
+              tipo_conteudo: document.getElementById('tipo_conteudo').value,
+              titulo: document.getElementById('titulo').value,
+              subtitulo: document.getElementById('subtitulo').value,
+              descricao: document.getElementById('descricao').value,
+              texto_botao: document.getElementById('texto_botao').value,
+              url_destino: document.getElementById('url_destino').value,
+              ordem_exibicao: Number(document.getElementById('ordem_exibicao').value || 0),
+              ativo: true,
+            },
+          }),
+        });
+        toast('Conteúdo salvo.');
+        await refreshView();
+      } else if (kind === 'galeria') {
+        const url = await uploadSelectedImage('site');
+        await request('/api/admin/conteudo', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: 'alterar_galeria',
+            dados: {
+              id_conteudo_site: resourceForm.dataset.id,
+              url_imagem: url,
+              texto_alternativo: document.getElementById('texto_alternativo').value,
+              ordem_exibicao: Number(document.getElementById('ordem_exibicao').value || 0),
+              principal: document.getElementById('principal')?.checked === true,
+              ativo: true,
+            },
+          }),
+        });
+        toast('Galeria atualizada.');
         await refreshView();
       }
       formDialog.close();

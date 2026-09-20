@@ -181,6 +181,12 @@
     pricingEl.className = 'cart-item-pricing';
     appendPriceMarkup(pricingEl, product, effectivePrice);
     body.appendChild(pricingEl);
+    if (item.priceChanged) {
+      const warn = document.createElement('p');
+      warn.className = 'cart-price-updated';
+      warn.textContent = 'O preço deste item foi atualizado.';
+      body.appendChild(warn);
+    }
 
     article.appendChild(body);
 
@@ -335,17 +341,30 @@
       if (!response.ok) {
         throw new Error(data?.message || 'Não foi possível registrar o pedido.');
       }
+      const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const lines = ['Olá! Gostaria de fazer este pedido:', ''];
+      items.forEach((item) => {
+        const name = item.product?.name || item.name || 'Produto';
+        lines.push(`${item.quantity}x ${name} — ${Catalog.formatPrice(item.subtotal)}`);
+      });
+      lines.push('', `Total: ${Catalog.formatPrice(total)}`);
+      if (payload.nome_cliente) lines.push('', `Nome: ${payload.nome_cliente}`);
+      if (payload.telefone_cliente) lines.push(`Telefone: ${payload.telefone_cliente}`);
+      const phone = window.AmanteigadosWhatsApp?.phone || window.AmanteigadosSite?.get?.()?.configuracao?.whatsapp_telefone;
+      if (phone) {
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener');
+      }
       if (els.checkoutMessage) {
         els.checkoutMessage.hidden = false;
         els.checkoutMessage.textContent = data?.duplicated
-          ? 'Este pedido já havia sido registrado.'
-          : 'Pedido registrado. Entraremos em contato para confirmar.';
+          ? 'Este pedido já havia sido registrado. O WhatsApp foi aberto novamente.'
+          : 'Pedido registrado. Continue pelo WhatsApp se desejar.';
       }
       announce('Pedido registrado.');
     } catch (error) {
       if (els.checkoutMessage) {
         els.checkoutMessage.hidden = false;
-        els.checkoutMessage.textContent = error.message || 'Não foi possível registrar o pedido.';
+        els.checkoutMessage.textContent = error.message || 'Não foi possível registrar o pedido. Seu carrinho foi mantido.';
       }
     } finally {
       els.checkoutBtn.disabled = false;
@@ -355,15 +374,19 @@
   // ===================== INICIALIZAÇÃO =====================
   Cart.loadCart();
   updateCartBadges();
+  Catalog.hydrateFromCache?.();
+  renderCart();
 
   async function bootCart() {
     try {
       await Catalog.loadFromApi();
     } catch {
-      if (els.unavailableState) els.unavailableState.hidden = false;
-      if (els.emptyState) els.emptyState.hidden = true;
-      if (els.layout) els.layout.hidden = true;
-      return;
+      if (!Catalog.getProducts()?.length && !Cart.getCartItems().length) {
+        if (els.unavailableState) els.unavailableState.hidden = false;
+        if (els.emptyState) els.emptyState.hidden = true;
+        if (els.layout) els.layout.hidden = true;
+        return;
+      }
     }
     if (els.demoNotice) {
       els.demoNotice.hidden = Catalog.getMode() !== 'demo';
@@ -375,6 +398,9 @@
 
   window.addEventListener('amanteigados:catalogo-atualizado', () => {
     renderCart();
+    updateCartBadges();
+  });
+  window.addEventListener('amanteigados:carrinho-atualizado', () => {
     updateCartBadges();
   });
 })();

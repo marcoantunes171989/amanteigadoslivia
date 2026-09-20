@@ -3,10 +3,12 @@ import {
   handleAdminAlteracoes,
   handleAdminAuditoria,
   handleAdminCatalog,
+  handleAdminConteudo,
   handleAdminLogin,
   handleAdminLogout,
   handleAdminPublicacoes,
   handleAdminRelatorios,
+  handleAdminSolicitacoes,
   handleAdminUploadUrl,
   handleAdminUsuarios,
   handleAdminVendas,
@@ -23,6 +25,8 @@ export const ADMIN_ROUTES = {
   'alteracoes-agendadas': handleAdminAlteracoes,
   publicacoes: handleAdminPublicacoes,
   'imagens/upload-url': handleAdminUploadUrl,
+  conteudo: handleAdminConteudo,
+  solicitacoes: handleAdminSolicitacoes,
 };
 
 function firstQueryValue(value) {

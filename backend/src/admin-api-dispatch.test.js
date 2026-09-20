@@ -5,10 +5,12 @@ import {
   handleAdminAlteracoes,
   handleAdminAuditoria,
   handleAdminCatalog,
+  handleAdminConteudo,
   handleAdminLogin,
   handleAdminLogout,
   handleAdminPublicacoes,
   handleAdminRelatorios,
+  handleAdminSolicitacoes,
   handleAdminUploadUrl,
   handleAdminUsuarios,
   handleAdminVendas,
@@ -89,15 +91,19 @@ test('admin router exposes a static map of public URLs', () => {
   assert.equal(ADMIN_ROUTES['alteracoes-agendadas'], handleAdminAlteracoes);
   assert.equal(ADMIN_ROUTES.publicacoes, handleAdminPublicacoes);
   assert.equal(ADMIN_ROUTES['imagens/upload-url'], handleAdminUploadUrl);
+  assert.equal(ADMIN_ROUTES.conteudo, handleAdminConteudo);
+  assert.equal(ADMIN_ROUTES.solicitacoes, handleAdminSolicitacoes);
   assert.deepEqual(Object.keys(ADMIN_ROUTES).sort(), [
     'alteracoes-agendadas',
     'auditoria',
     'catalogo',
+    'conteudo',
     'imagens/upload-url',
     'login',
     'logout',
     'publicacoes',
     'relatorios',
+    'solicitacoes',
     'usuarios',
     'vendas',
   ]);
@@ -187,6 +193,8 @@ test('protected admin routes still require a session', async () => {
     '/api/admin/alteracoes-agendadas',
     '/api/admin/publicacoes',
     '/api/admin/imagens/upload-url',
+    '/api/admin/conteudo',
+    '/api/admin/solicitacoes',
   ]) {
     const response = mockResponse();
     await handler({ method: 'GET', url, headers: {} }, response);

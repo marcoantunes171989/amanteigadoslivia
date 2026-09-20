@@ -24,6 +24,7 @@
       <input id="adminPassword" name="senha" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn btn-primary" id="loginButton">Entrar</button>
       <p id="loginError" class="form-error" role="alert" hidden></p>
+      <a class="login-back" href="/">← Voltar para o site</a>
     </form>
   </div>
 
@@ -54,10 +55,35 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l3 7H4l3-7Zm-3 9h16v7H4v-7Z" fill="currentColor"/></svg>
           <span>Produtos</span>
         </button>
+        <p class="nav-label">Conteúdo</p>
+        <button type="button" class="nav-btn" data-view="branding" data-tooltip="Branding">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
+          <span>Branding</span>
+        </button>
+        <button type="button" class="nav-btn" data-view="homeContent" data-tooltip="Página Inicial">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4v-9Z" fill="currentColor"/></svg>
+          <span>Página Inicial</span>
+        </button>
+        <button type="button" class="nav-btn" data-view="encomendasContent" data-tooltip="Encomendas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4V7Zm4-3h8v3H8V4Z" fill="currentColor"/></svg>
+          <span>Encomendas</span>
+        </button>
+        <button type="button" class="nav-btn" data-view="festasContent" data-tooltip="Festas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 6 6 6 10a6 6 0 1 1-12 0c0-4 3-6 6-10Z" fill="currentColor"/></svg>
+          <span>Festas</span>
+        </button>
+        <button type="button" class="nav-btn" data-view="personalizadosContent" data-tooltip="Personalizados">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 9 9H3l5 4-2 8 6-4 6 4-2-8 5-4h-6Z" fill="currentColor"/></svg>
+          <span>Personalizados</span>
+        </button>
         <p class="nav-label">Operação</p>
         <button type="button" class="nav-btn" data-view="sales" data-tooltip="Vendas">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM3 3h3l2.4 10.4A2 2 0 0 0 10.3 15H18a2 2 0 0 0 1.9-1.4L22 7H7" fill="currentColor"/></svg>
           <span>Vendas</span>
+        </button>
+        <button type="button" class="nav-btn" data-view="requests" data-tooltip="Solicitações">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v4H5V4Zm0 6h14v10H5V10Z" fill="currentColor"/></svg>
+          <span>Solicitações</span>
         </button>
         <p class="nav-label">Análise</p>
         <button type="button" class="nav-btn" data-view="reports" data-tooltip="Relatórios">
@@ -105,7 +131,13 @@
       <section id="overviewView" class="view-panel"></section>
       <section id="categoriesView" class="view-panel hidden"></section>
       <section id="productsView" class="view-panel hidden"></section>
+      <section id="brandingView" class="view-panel hidden"></section>
+      <section id="homeContentView" class="view-panel hidden"></section>
+      <section id="encomendasContentView" class="view-panel hidden"></section>
+      <section id="festasContentView" class="view-panel hidden"></section>
+      <section id="personalizadosContentView" class="view-panel hidden"></section>
       <section id="salesView" class="view-panel hidden"></section>
+      <section id="requestsView" class="view-panel hidden"></section>
       <section id="reportsView" class="view-panel hidden"></section>
       <section id="publicationsView" class="view-panel hidden"></section>
       <section id="auditView" class="view-panel hidden"></section>

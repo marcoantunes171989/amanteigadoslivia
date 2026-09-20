@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { COOKIE_NAME, signSession } from './admin-auth.js';
-import { handleAdminCatalog, handleAdminLogin, handleAdminLogout } from './admin-http.js';
+import { handleAdminCatalog, handleAdminLogin, handleAdminLogout, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
 import { hashPassword } from './password.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
@@ -176,4 +176,65 @@ test('admin catalog GET succeeds with a signed session', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.resumo.categorias, 0);
   assert.equal(response.body.resumo.produtos, 0);
+});
+
+test('public catalog rewrite serves only public site content', async () => {
+  const response = mockResponse();
+  await handlePublicCatalog({
+    method: 'GET',
+    url: '/api/catalogo?recurso=conteudo-site',
+    query: { recurso: 'conteudo-site' },
+    headers: {},
+  }, response, {
+    getPool() {
+      return {
+        async query(sql) {
+          if (String(sql).includes('json_agg')) {
+            return {
+              rows: [{
+                configuracoes: [{ chave_configuracao: 'logo_topo_url', valor_texto: 'assets/logo.jpg', ativo: true }],
+                conteudos: [],
+                imagens: [],
+              }],
+            };
+          }
+          return { rows: [{ revisao: new Date('2026-01-01T00:00:00Z') }] };
+        },
+      };
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.branding.logo_topo_url, 'assets/logo.jpg');
+  assert.equal(response.body.solicitacoes, undefined);
+  assert.equal(response.body.usuarios, undefined);
+});
+
+test('public encomenda rewrite validates and stores a new request', async () => {
+  const inserted = [];
+  const response = mockResponse();
+  await handlePublicVenda({
+    method: 'POST',
+    url: '/api/vendas?recurso=encomendas',
+    query: { recurso: 'encomendas' },
+    headers: {},
+    body: {
+      nome_cliente: 'Ana',
+      telefone_cliente: '11999990000',
+      tipo_solicitacao: 'ENCOMENDA',
+      descricao_pedido: 'Caixa de clássicos',
+    },
+  }, response, {
+    getPool() {
+      return {
+        async query(sql, params) {
+          inserted.push({ sql: String(sql), params });
+          return { rows: [] };
+        },
+      };
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.solicitacao.status_solicitacao, 'NOVA');
+  assert.match(inserted[0].sql, /tab_solicitacao_encomenda/);
 });

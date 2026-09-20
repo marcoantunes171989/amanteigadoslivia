@@ -212,6 +212,16 @@ test('venda is idempotent and totals are recalculated server-side', async () => 
       const text = String(sql);
       if (text.includes('BEGIN') || text.includes('COMMIT') || text.includes('ROLLBACK')) return { rows: [] };
       if (text.includes('get_venda_chave')) return { rows: vendas.filter((row) => row.chave_idempotencia === params[0]) };
+      if (text.includes('json_agg')) {
+        return {
+          rows: [{
+            categories: [{ id_categoria: 'c1', nome_categoria: 'Teste', slug_categoria: 'teste', ordem_exibicao: 0, ativo: true }],
+            products: [{ id_produto: product.id, id_categoria: 'c1', nome_produto: product.name, slug_produto: 'teste-v2', descricao_produto: null, destaque: false, ativo: true, ordem_exibicao: 0 }],
+            images: [],
+            prices: [{ id_preco: 'pr1', id_produto: product.id, valor_centavos: 1000, promocional: false, inicio_vigencia: null, fim_vigencia: null, ativo: true, data_criacao: new Date() }],
+          }],
+        };
+      }
       if (text.includes('FROM app.tab_categoria')) return { rows: [{ id_categoria: 'c1', nome_categoria: 'Teste', slug_categoria: 'teste', ordem_exibicao: 0, ativo: true }] };
       if (text.includes('FROM app.tab_produto') && text.includes('WHERE ativo')) {
         return { rows: [{ id_produto: product.id, id_categoria: 'c1', nome_produto: product.name, slug_produto: 'teste-v2', descricao_produto: null, destaque: false, ativo: true, ordem_exibicao: 0 }] };

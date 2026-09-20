@@ -15,5 +15,11 @@ atual (`catalog-demo-data.js`).
 - Executor: Runtime APP (`amanteigados_homolog_app` em HOMOLOG)
 - Não altera `0001_create_migration_ledger` nem `0002_criar_nucleo_catalogo`
 
-Contagens esperadas após a primeira aplicação: 4 categorias, 8 produtos,
-8 imagens, 9 preços (incluindo 1 preço promocional do Mesclado).
+## 0002_conteudo_site_inicial.sql
+
+Carga inicial do conteúdo institucional da Home, Encomendas, Festas e
+Personalizados, usando os assets atuais do site.
+
+- Idempotente: `INSERT ... ON CONFLICT (PK) DO NOTHING`
+- Executor: Runtime APP (`amanteigados_homolog_app` em HOMOLOG)
+- Não altera migrations estruturais

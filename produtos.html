@@ -67,7 +67,7 @@
         <a href="/#encomendas">Encomendas</a>
         <a href="/#festas-momentos">Festas</a>
         <a href="/#personalizados-historia">Personalizados</a>
-        <a href="/admin" class="nav-admin">Painel Administrativo</a>
+        <a href="/admin">Painel Administrativo</a>
       </nav>
     </header>
 
@@ -111,6 +111,12 @@
         <p class="results-status" id="resultsStatus" role="status" aria-live="polite"></p>
 
         <div class="products-grid" id="productsGrid" hidden></div>
+        <div class="products-skeleton" id="productsSkeleton" hidden>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
 
         <div class="catalog-state" id="stateNoData" hidden>
           <h3>Nosso cardápio está sendo atualizado</h3>
@@ -218,6 +224,7 @@
   <p id="cartLiveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
   <script src="app.js"></script>
+  <script src="site-content.js"></script>
   <script src="catalog-core.js"></script>
   <script src="cart.js"></script>
   <script src="produtos.js"></script>

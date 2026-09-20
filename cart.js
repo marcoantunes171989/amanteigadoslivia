@@ -1,306 +1,243 @@
-// ===================== CART SERVICE (FASE 4A.1) =====================
-// Serviço de estado do carrinho demonstrativo — SEM DOM, sem UI. Nunca
-// contém: document, createElement, querySelector, getElementById,
-// innerHTML, textContent, replaceChildren, event listener de UI, toast,
-// badge, alert, confirm (a futura carrinho.js fará window.confirm() antes
-// de chamar clearCart() — este arquivo nunca confirma nada sozinho).
-//
-// Consome exclusivamente window.AmanteigadosCatalog (catalog-core.js) —
-// nunca reimplementa getEffectivePrice/isValidPrice/formatPrice/regras de
-// quantidade. Contrato completo em docs/cart-spec.md.
-//
-// Carregar depois de catalog-demo-data.js e catalog-core.js, antes de
-// produtos.js (ver produtos.html). Ainda sem consumidor visual nesta fase
-// (Fase 4A.2 criará carrinho.js e o botão "Adicionar ao carrinho").
 (function () {
   'use strict';
 
-  const Catalog = window.AmanteigadosCatalog;
-
   const CART_VERSION = 1;
-  const STORAGE_KEY = 'amanteigadosLivia.demoCart.v1';
+  const STORAGE_KEY = 'amanteigados_carrinho_v1';
+  const LEGACY_KEY = 'amanteigadosLivia.demoCart.v1';
 
-  // Estado em memória — fonte de verdade da página atual quando o
-  // sessionStorage está indisponível ou falha em qualquer operação.
   let memoryCart = { version: CART_VERSION, items: [] };
-
-  // Modo degradado (Fase 4A.1.1): uma vez que QUALQUER operação de
-  // storage (getItem/setItem/removeItem) lança, o serviço para de
-  // confiar em sessionStorage pelo resto da página — nunca volta a
-  // consultá-lo. Sem isso, uma leitura futura bem-sucedida (mas de um
-  // valor antigo/vazio, já que a escrita anterior falhou) sobrescreveria
-  // memoryCart e apagaria o estado correto que só existia em memória.
-  // Nunca acessa sessionStorage no carregamento do script — só reage a
-  // uma falha real de operação.
   let storageDisabled = false;
 
   function emptyCart() {
     return { version: CART_VERSION, items: [] };
   }
 
-  // Nunca expõe a referência interna de memoryCart/seus itens — sempre
-  // devolve uma estrutura nova, com itens novos (Fase 4A.1.1, correção 3).
-  function cloneStoredCart(cart) {
+  function cloneCart(cart) {
     return {
       version: CART_VERSION,
-      items: cart.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      items: (cart.items || []).map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        name: item.name || null,
+        image: item.image || null,
+        unitPrice: item.unitPrice ?? null,
+      })),
     };
   }
 
-  function isStructurallyValidQuantity(quantity) {
-    return (
-      typeof quantity === 'number' &&
-      Number.isFinite(quantity) &&
-      Number.isInteger(quantity) &&
-      quantity > 0
-    );
+  function isValidId(productId) {
+    if (typeof productId === 'string') return productId.trim() !== '';
+    if (typeof productId === 'number') return Number.isFinite(productId);
+    return false;
   }
 
-  // ---- Storage — acesso sempre defensivo (seção 37 do prompt: getItem,
-  // setItem e removeItem podem todos lançar) ----
-  // Uma vez degradado, nenhuma das três funções abaixo volta a tocar
-  // sessionStorage — evita reler um valor antigo/vazio depois de uma
-  // escrita que falhou silenciosamente (ver storageDisabled acima).
-  function readStorage() {
-    if (storageDisabled) return undefined;
-    try {
-      return sessionStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      storageDisabled = true;
-      return undefined; // indisponível — undefined distingue de "ausente" (null)
-    }
+  function isValidQty(quantity) {
+    return Number.isInteger(quantity) && quantity > 0;
   }
 
-  function writeStorage(cart) {
-    if (storageDisabled) return;
-    const persisted = {
-      version: CART_VERSION,
-      items: cart.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
-    };
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
-    } catch (e) {
-      // Falha ao persistir (storage indisponível/cota excedida): a
-      // memória continua sendo a fonte de verdade desta página — nunca
-      // mais tentamos sessionStorage pelo resto da execução.
-      storageDisabled = true;
-    }
-  }
-
-  function clearStorageKey() {
-    if (storageDisabled) return;
-    try {
-      sessionStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      // Sem storage disponível — nada a limpar; memória segue válida.
-      storageDisabled = true;
-    }
-  }
-
-  // ---- Sanitização — VALIDA e REMOVE, nunca normaliza estado do storage
-  // (docs/cart-spec.md, seção 13) ----
-  function sanitizeCart(rawCart) {
-    if (
-      !rawCart ||
-      typeof rawCart !== 'object' ||
-      rawCart.version !== CART_VERSION ||
-      !Array.isArray(rawCart.items)
-    ) {
-      return emptyCart();
-    }
-
-    // Duplicidade de productId no storage não confiável: mantém apenas a
-    // PRIMEIRA ocorrência VÁLIDA de cada productId; nunca soma quantidades
-    // de linhas duplicadas (seção 42 do prompt).
-    const acceptedIds = new Set();
+  function migrate(raw) {
+    if (!raw || typeof raw !== 'object' || !Array.isArray(raw.items)) return emptyCart();
+    const seen = new Set();
     const items = [];
-
-    for (const raw of rawCart.items) {
-      if (!raw || typeof raw !== 'object') continue;
-      const productId = raw.productId;
-      const quantity = raw.quantity;
-
-      if (!Catalog.isValidProductId(productId)) continue;
-      if (!isStructurallyValidQuantity(quantity)) continue;
-
-      const product = Catalog.getProductById(productId);
-      if (!Catalog.isUsableProduct(product)) continue;
-      if (!Catalog.isQuantityOnGrid(product, quantity)) continue;
-
-      if (acceptedIds.has(productId)) continue; // ocorrência subsequente — descartada
-      acceptedIds.add(productId);
-      items.push({ productId, quantity });
+    for (const rawItem of raw.items) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const productId = rawItem.productId ?? rawItem.id_produto ?? rawItem.id;
+      const quantity = rawItem.quantity ?? rawItem.quantidade;
+      if (!isValidId(productId) || !isValidQty(quantity) || seen.has(productId)) continue;
+      seen.add(productId);
+      items.push({
+        productId,
+        quantity,
+        name: typeof rawItem.name === 'string' ? rawItem.name : null,
+        image: typeof rawItem.image === 'string' ? rawItem.image : null,
+        unitPrice: Number.isFinite(rawItem.unitPrice) ? rawItem.unitPrice : null,
+      });
     }
-
     return { version: CART_VERSION, items };
   }
 
-  // ---- Load / Save ----
-  // Ambas retornam sempre uma cópia (cloneStoredCart) — nunca a referência
-  // interna de memoryCart. Mutar o objeto retornado nunca afeta o serviço.
+  function readStore(store, key) {
+    if (storageDisabled || !store) return undefined;
+    try { return store.getItem(key); } catch { storageDisabled = true; return undefined; }
+  }
+
+  function writeStore(store, key, value) {
+    if (storageDisabled || !store) return;
+    try { store.setItem(key, JSON.stringify(value)); } catch { storageDisabled = true; }
+  }
+
+  function removeStore(store, key) {
+    if (storageDisabled || !store) return;
+    try { store.removeItem(key); } catch { storageDisabled = true; }
+  }
+
+  function updateBadges() {
+    const count = memoryCart.items.reduce((sum, item) => sum + item.quantity, 0);
+    document.querySelectorAll('.js-cart-count').forEach((badge) => {
+      badge.hidden = count <= 0;
+      badge.textContent = String(count);
+    });
+    document.querySelectorAll('.cart-shortcut').forEach((el) => {
+      el.setAttribute('aria-label', count === 1 ? 'Carrinho, 1 item' : `Carrinho, ${count} itens`);
+    });
+  }
+
+  function persist(cart) {
+    memoryCart = cloneCart(cart);
+    writeStore(window.localStorage, STORAGE_KEY, memoryCart);
+    emit();
+    return cloneCart(memoryCart);
+  }
+
   function loadCart() {
-    const raw = readStorage();
-
-    if (raw === undefined) {
-      // Storage indisponível/degradado — opera inteiramente em memória,
-      // sem tentar sessionStorage de novo.
-      memoryCart = sanitizeCart(memoryCart);
-      return cloneStoredCart(memoryCart);
+    const current = readStore(window.localStorage, STORAGE_KEY);
+    if (typeof current === 'string' && current) {
+      try {
+        memoryCart = migrate(JSON.parse(current));
+        return cloneCart(memoryCart);
+      } catch {
+        removeStore(window.localStorage, STORAGE_KEY);
+      }
     }
-    if (raw === null) {
-      memoryCart = emptyCart();
-      return cloneStoredCart(memoryCart);
+    const legacy = readStore(window.sessionStorage, LEGACY_KEY);
+    if (typeof legacy === 'string' && legacy) {
+      try {
+        memoryCart = migrate(JSON.parse(legacy));
+        persist(memoryCart);
+        removeStore(window.sessionStorage, LEGACY_KEY);
+        return cloneCart(memoryCart);
+      } catch {
+        removeStore(window.sessionStorage, LEGACY_KEY);
+      }
     }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      // JSON corrompido — carrinho vazio, 0 exceção propagada. Limpa a
-      // chave corrompida best-effort.
-      clearStorageKey();
-      memoryCart = emptyCart();
-      return cloneStoredCart(memoryCart);
-    }
-
-    const sanitized = sanitizeCart(parsed);
-    const rawItemCount = Array.isArray(parsed?.items) ? parsed.items.length : 0;
-    if (sanitized.items.length !== rawItemCount) {
-      // Sanitização removeu algo (item inválido/fora da grade/duplicado) —
-      // repersiste a versão limpa best-effort para não reprocessar o
-      // mesmo lixo na próxima leitura.
-      writeStorage(sanitized);
-    }
-
-    memoryCart = sanitized;
-    return cloneStoredCart(memoryCart);
+    memoryCart = migrate(memoryCart);
+    return cloneCart(memoryCart);
   }
 
-  function saveCart(cart) {
-    const sanitized = sanitizeCart(cart);
-    memoryCart = sanitized;
-    writeStorage(sanitized);
-    return cloneStoredCart(memoryCart);
+  function catalog() {
+    return window.AmanteigadosCatalog || null;
   }
 
-  // ---- Leitura enriquecida (nunca persistida) ----
+  function snapshot(productId) {
+    const Catalog = catalog();
+    const product = Catalog?.getProductById?.(productId) || null;
+    if (!product) return null;
+    const unitPrice = Catalog.getEffectivePrice?.(product);
+    return {
+      name: product.name || null,
+      image: product.image || null,
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+      product,
+    };
+  }
+
   function getCartItems() {
-    const cart = sanitizeCart(memoryCart);
-    return cart.items.map((it) => {
-      const product = Catalog.getProductById(it.productId);
-      const effectivePrice = Catalog.getEffectivePrice(product);
+    return loadCart().items.map((item) => {
+      const snap = snapshot(item.productId);
+      const currentPrice = snap?.unitPrice;
+      const unitPrice = Number.isFinite(currentPrice) ? currentPrice : (item.unitPrice ?? 0);
       return {
-        productId: it.productId,
-        quantity: it.quantity,
-        product,
-        effectivePrice,
-        subtotal: effectivePrice * it.quantity,
+        productId: item.productId,
+        quantity: item.quantity,
+        name: snap?.name || item.name || 'Produto',
+        image: snap?.image || item.image || null,
+        unitPrice,
+        effectivePrice: unitPrice,
+        subtotal: unitPrice * item.quantity,
+        priceChanged: Number.isFinite(item.unitPrice) && Number.isFinite(currentPrice) && item.unitPrice !== currentPrice,
+        product: snap?.product || {
+          id: item.productId,
+          name: item.name || 'Produto',
+          image: item.image,
+          price: item.unitPrice,
+          demo: false,
+        },
       };
     });
   }
 
-  function getCartCount() {
-    return getCartItems().reduce((sum, it) => sum + it.quantity, 0);
-  }
-
-  function getCartSubtotal() {
-    return getCartItems().reduce((sum, it) => sum + it.subtotal, 0);
-  }
-
-  // Estrutura de retorno auxiliar para addItem/updateItem/removeItem/
-  // clearCart — nunca persistida, só devolvida para um futuro consumidor
-  // de UI decidir o que renderizar sem precisar de uma segunda chamada.
-  function buildPublicCart() {
+  function publicCart() {
     const items = getCartItems();
-    return {
-      items,
-      count: items.reduce((sum, it) => sum + it.quantity, 0),
-      subtotal: items.reduce((sum, it) => sum + it.subtotal, 0),
-    };
+    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+    return { items, count: items.reduce((sum, item) => sum + item.quantity, 0), total, subtotal: total };
   }
 
-  // ---- Mutações ----
   function addItem(productId, quantity) {
-    const product = Catalog.getProductById(productId);
-    if (!Catalog.isUsableProduct(product)) {
+    if (!isValidId(productId)) return { ok: false, reason: 'invalid-product' };
+    if (!isValidQty(quantity)) return { ok: false, reason: 'invalid-quantity' };
+    const Catalog = catalog();
+    const snap = snapshot(productId);
+    if (Catalog?.isUsableProduct && snap?.product && !Catalog.isUsableProduct(snap.product)) {
       return { ok: false, reason: 'invalid-product' };
     }
-    if (!isStructurallyValidQuantity(quantity)) {
-      return { ok: false, reason: 'invalid-quantity' };
-    }
-
-    const cart = sanitizeCart(loadCart());
-    const existing = cart.items.find((it) => it.productId === productId);
-
+    const cart = loadCart();
+    const existing = cart.items.find((item) => item.productId === productId);
     if (existing) {
-      const rawTotal = existing.quantity + quantity;
-      const normalized = Catalog.normalizeQuantityToGrid(product, rawTotal);
-      if (normalized === null) {
-        return { ok: false, reason: 'invalid-quantity' };
+      existing.quantity += quantity;
+      if (snap) {
+        existing.name = snap.name;
+        existing.image = snap.image;
+        existing.unitPrice = snap.unitPrice;
       }
-      existing.quantity = normalized;
     } else {
-      const normalized = Catalog.normalizeQuantityToGrid(product, quantity);
-      if (normalized === null) {
-        return { ok: false, reason: 'invalid-quantity' };
-      }
-      cart.items.push({ productId, quantity: normalized });
+      cart.items.push({
+        productId,
+        quantity,
+        name: snap?.name || null,
+        image: snap?.image || null,
+        unitPrice: snap?.unitPrice ?? null,
+      });
     }
-
-    saveCart(cart);
-    return { ok: true, cart: buildPublicCart() };
+    persist(cart);
+    return { ok: true, cart: publicCart() };
   }
 
   function updateItem(productId, quantity) {
-    const product = Catalog.getProductById(productId);
-    if (!Catalog.isUsableProduct(product)) {
-      return { ok: false, reason: 'invalid-product' };
-    }
-    if (!isStructurallyValidQuantity(quantity)) {
-      return { ok: false, reason: 'invalid-quantity' };
-    }
-
-    const cart = sanitizeCart(loadCart());
-    const existing = cart.items.find((it) => it.productId === productId);
-    if (!existing) {
-      return { ok: false, reason: 'item-not-found' };
-    }
-
-    const normalized = Catalog.normalizeQuantityToGrid(product, quantity);
-    if (normalized === null) {
-      return { ok: false, reason: 'invalid-quantity' };
-    }
-    existing.quantity = normalized;
-
-    saveCart(cart);
-    return { ok: true, cart: buildPublicCart() };
+    if (!isValidQty(quantity)) return { ok: false, reason: 'invalid-quantity' };
+    const cart = loadCart();
+    const existing = cart.items.find((item) => item.productId === productId);
+    if (!existing) return { ok: false, reason: 'item-not-found' };
+    existing.quantity = quantity;
+    persist(cart);
+    return { ok: true, cart: publicCart() };
   }
 
   function removeItem(productId) {
-    const cart = sanitizeCart(loadCart());
-    cart.items = cart.items.filter((it) => it.productId !== productId);
-    saveCart(cart);
-    return { ok: true, cart: buildPublicCart() };
+    const cart = loadCart();
+    cart.items = cart.items.filter((item) => item.productId !== productId);
+    persist(cart);
+    return { ok: true, cart: publicCart() };
   }
 
-  // Sem window.confirm aqui — a futura carrinho.js confirma antes de chamar.
   function clearCart() {
-    saveCart(emptyCart());
-    return { ok: true, cart: buildPublicCart() };
+    persist(emptyCart());
+    return { ok: true, cart: publicCart() };
   }
 
-  const AmanteigadosCart = {
+  function emit() {
+    if (typeof window === 'undefined') return;
+    updateBadges();
+    window.dispatchEvent(new CustomEvent('amanteigados:carrinho-atualizado', { detail: publicCart() }));
+  }
+
+  const api = {
     loadCart,
-    saveCart,
-    sanitizeCart,
     getCartItems,
     addItem,
     updateItem,
+    updateQuantity: updateItem,
     removeItem,
     clearCart,
-    getCartCount,
-    getCartSubtotal,
+    clear: clearCart,
+    getCartCount() { return publicCart().count; },
+    getCount() { return publicCart().count; },
+    getCartSubtotal() { return publicCart().total; },
+    getTotal() { return publicCart().total; },
+    getItems: getCartItems,
   };
 
-  window.AmanteigadosCart = Object.freeze(AmanteigadosCart);
+  window.AmanteigadosCart = Object.freeze(api);
+  window.CartStore = window.AmanteigadosCart;
+  loadCart();
+  updateBadges();
 })();

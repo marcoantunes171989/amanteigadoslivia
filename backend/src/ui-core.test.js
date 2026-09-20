@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   SIDEBAR_STORAGE_KEY,
@@ -74,4 +75,14 @@ test('realtime broadcast payload targets catalogo-homolog', () => {
     realtimeBroadcastUrl('https://example.supabase.co/'),
     'https://example.supabase.co/realtime/v1/api/broadcast',
   );
+});
+
+test('public header menu is uniform and includes all expected links', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const nav = html.match(/<nav class="nav"[\s\S]*?<\/nav>/)?.[0] || '';
+  for (const label of ['Início', 'Cardápio', 'Encomendas', 'Festas', 'Personalizados', 'Painel Administrativo']) {
+    assert.match(nav, new RegExp(label));
+  }
+  assert.match(nav, /href="\/admin"/);
+  assert.doesNotMatch(nav, /btn-primary|order-btn|admin-link/);
 });

@@ -14,6 +14,14 @@
     {
       "source": "/api/interno/:job",
       "destination": "/api/interno-router?job=:job"
+    },
+    {
+      "source": "/api/conteudo-site",
+      "destination": "/api/catalogo?recurso=conteudo-site"
+    },
+    {
+      "source": "/api/encomendas",
+      "destination": "/api/vendas?recurso=encomendas"
     }
   ]
 }

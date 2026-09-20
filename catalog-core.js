@@ -42,6 +42,48 @@
   let CATALOG_SOURCE = emptyCatalogSource();
   loadCatalogSource();
 
+  const CATALOG_CACHE_KEY = 'amanteigados_catalogo_live_v1';
+
+  function readLiveCache() {
+    try {
+      const raw = window.localStorage.getItem(CATALOG_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed?.payload?.mode !== 'live' || !Array.isArray(parsed.payload.products)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLiveCache(data) {
+    if (!data || data.mode !== 'live') return;
+    try {
+      window.localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({
+        payload: {
+          mode: 'live',
+          categories: data.categories,
+          products: data.products,
+          revisao_catalogo: data.revisao_catalogo || null,
+        },
+        timestamp: Date.now(),
+        revision: data.revisao_catalogo || null,
+      }));
+    } catch {
+      // cache visual é best-effort
+    }
+  }
+
+  function hydrateFromCache() {
+    const cached = readLiveCache();
+    if (!cached?.payload) return null;
+    applyCatalogSource(cached.payload);
+    if (typeof window !== 'undefined') {
+      window.CATALOG_DATA = cached.payload;
+    }
+    return cached;
+  }
+
   async function loadFromApi() {
     const response = await fetch('/api/catalogo', {
       method: 'GET',
@@ -49,17 +91,18 @@
       cache: 'no-store',
     });
     if (!response.ok) {
-      applyCatalogSource(null);
+      if (!CATALOG_SOURCE.products.length) applyCatalogSource(null);
       throw new Error('catalog_unavailable');
     }
     let data;
     try {
       data = await response.json();
     } catch {
-      applyCatalogSource(null);
+      if (!CATALOG_SOURCE.products.length) applyCatalogSource(null);
       throw new Error('catalog_unavailable');
     }
     applyCatalogSource(data);
+    writeLiveCache(data);
     if (typeof window !== 'undefined') {
       window.CATALOG_DATA = data;
       window.dispatchEvent(new CustomEvent('amanteigados:catalogo-atualizado', { detail: CATALOG_SOURCE }));
@@ -225,6 +268,7 @@
 
   const AmanteigadosCatalog = {
     loadFromApi,
+    hydrateFromCache,
     getMode,
     getCategories,
     getProducts,

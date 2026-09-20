@@ -12,14 +12,16 @@ import { executeAdminAction, getAdminCatalog } from './admin-catalog.js';
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
 import { getPublicationStatus, createPublicacao, processDuePublications, validatePromotionDryRun } from './admin-publish.js';
-import { assertLoginRateLimit } from './admin-rate-limit.js';
+import { assertLoginRateLimit, assertPublicFormRateLimit } from './admin-rate-limit.js';
 import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
 import { cancelScheduledChange, listScheduledChanges, parseSaoPauloDateTime, processDueScheduledChanges, scheduleChange } from './admin-schedule.js';
 import { createSignedImageUpload } from './admin-storage.js';
 import { createUsuario, findUsuarioByEmail, listUsuarios, resetUsuarioSenha, touchUltimoLogin, updateUsuario } from './admin-users.js';
 import { getCatalogPayload } from './catalog.js';
-import { broadcastCatalogUpdated, getCatalogRevision } from './catalog-revision.js';
+import { broadcastCatalogUpdated, broadcastSiteUpdated, getCatalogRevision } from './catalog-revision.js';
+import { executeContentAction, getAdminSiteContent, getPublicSiteContent } from './site-content.js';
+import { createSolicitacaoEncomenda, listSolicitacoesEncomenda, updateSolicitacaoStatus } from './encomendas.js';
 import { verifyPassword } from './password.js';
 
 const GENERIC_LOGIN_ERROR = 'E-mail ou senha inválidos.';
@@ -634,7 +636,127 @@ export async function handleAdminUploadUrl(request, response, deps = {}) {
   });
 }
 
-export async function handlePublicVenda(request, response, { getPool, logDatabaseError } = {}) {
+async function notifySiteChanged(pool) {
+  try {
+    const revision = await getCatalogRevision(pool);
+    await broadcastSiteUpdated(revision.revisao);
+  } catch {
+    // best-effort
+  }
+}
+
+function contentAuditAction(acao) {
+  const key = String(acao || '').toLowerCase();
+  if (key === 'alterar_branding') return AUDIT_ACTIONS.ALTERAR_BRANDING;
+  if (key === 'alterar_galeria' || key === 'salvar_imagem') return AUDIT_ACTIONS.ALTERAR_GALERIA;
+  if (key === 'salvar_configuracao') return AUDIT_ACTIONS.ALTERAR_CONFIGURACAO_SITE;
+  return AUDIT_ACTIONS.EDITAR_CONTEUDO_SITE;
+}
+
+export async function handleAdminConteudo(request, response, deps = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
+    if (request.method === 'GET') {
+      sendJson(response, 200, await getAdminSiteContent(pool));
+      return;
+    }
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'method_not_allowed' });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const result = await executeContentAction(pool, body);
+    await recordAudit(pool, {
+      id_usuario_admin: session.id_usuario_admin,
+      acao: contentAuditAction(body.acao),
+      entidade: 'conteudo_site',
+      id_registro: result.conteudo?.id_conteudo_site || result.imagem?.id_conteudo_imagem || result.configuracao?.id_configuracao_site || null,
+      sucesso: true,
+      descricao_evento: 'Conteúdo institucional atualizado.',
+      identificador_requisicao: reqId,
+    });
+    await notifySiteChanged(pool);
+    sendJson(response, 200, { ok: true, ...result });
+  });
+}
+
+export async function handleAdminSolicitacoes(request, response, deps = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
+    if (request.method === 'GET') {
+      const url = new URL(request.url || 'http://localhost/api/admin/solicitacoes', 'http://localhost');
+      const solicitacoes = await listSolicitacoesEncomenda(pool, Object.fromEntries(url.searchParams.entries()));
+      sendJson(response, 200, { solicitacoes });
+      return;
+    }
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'method_not_allowed' });
+      return;
+    }
+    const body = await readJsonBody(request);
+    const solicitacao = await updateSolicitacaoStatus(pool, body.id_solicitacao_encomenda || body.id, body.status_solicitacao || body.status);
+    await recordAudit(pool, {
+      id_usuario_admin: session.id_usuario_admin,
+      acao: AUDIT_ACTIONS.ALTERAR_SOLICITACAO,
+      entidade: 'solicitacao_encomenda',
+      id_registro: solicitacao.id_solicitacao_encomenda,
+      sucesso: true,
+      descricao_evento: `Status ${solicitacao.status_solicitacao}.`,
+      identificador_requisicao: reqId,
+    });
+    sendJson(response, 200, { ok: true, solicitacao });
+  });
+}
+
+export async function handlePublicSiteContent(request, response, { getPool, logDatabaseError } = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  if (request.method !== 'GET') {
+    sendJson(response, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  try {
+    sendJson(response, 200, await getPublicSiteContent(requirePool(getPool)));
+  } catch (error) {
+    if (typeof logDatabaseError === 'function') {
+      logDatabaseError('[conteudo-site] request failed', error);
+    }
+    sendJson(response, 503, { error: 'content_unavailable' });
+  }
+}
+
+export async function handlePublicEncomenda(request, response, { getPool, logDatabaseError } = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  if (request.method !== 'POST') {
+    sendJson(response, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  try {
+    assertPublicFormRateLimit(request);
+    const body = await readJsonBody(request);
+    const solicitacao = await createSolicitacaoEncomenda(requirePool(getPool), body);
+    sendJson(response, 200, { ok: true, solicitacao });
+  } catch (error) {
+    if (!(error instanceof AdminError) && typeof logDatabaseError === 'function') {
+      logDatabaseError('[encomendas] request failed', error);
+    }
+    sendError(response, error);
+  }
+}
+
+function requestResource(request) {
+  const queryValue = request?.query?.recurso || request?.query?.slug;
+  if (typeof queryValue === 'string' && queryValue) return queryValue;
+  const url = String(request?.url || '');
+  if (url.includes('conteudo-site')) return 'conteudo-site';
+  if (url.includes('/encomendas')) return 'encomendas';
+  return '';
+}
+
+export async function handlePublicVenda(request, response, deps = {}) {
+  if (requestResource(request) === 'encomendas') {
+    await handlePublicEncomenda(request, response, deps);
+    return;
+  }
   response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'POST') {
     sendJson(response, 405, { error: 'method_not_allowed' });
@@ -642,11 +764,11 @@ export async function handlePublicVenda(request, response, { getPool, logDatabas
   }
   try {
     const body = await readJsonBody(request);
-    const result = await captureVenda(requirePool(getPool), body);
+    const result = await captureVenda(requirePool(deps.getPool), body);
     sendJson(response, 200, { ok: true, ...result });
   } catch (error) {
-    if (!(error instanceof AdminError) && typeof logDatabaseError === 'function') {
-      logDatabaseError('[vendas] request failed', error);
+    if (!(error instanceof AdminError) && typeof deps.logDatabaseError === 'function') {
+      deps.logDatabaseError('[vendas] request failed', error);
     }
     sendError(response, error);
   }
@@ -670,19 +792,23 @@ export async function handleCatalogRevision(request, response, { getPool, logDat
   }
 }
 
-export async function handlePublicCatalog(request, response, { getPool, logDatabaseError } = {}) {
+export async function handlePublicCatalog(request, response, deps = {}) {
+  if (requestResource(request) === 'conteudo-site') {
+    await handlePublicSiteContent(request, response, deps);
+    return;
+  }
   response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'GET') {
     sendJson(response, 405, { error: 'method_not_allowed' });
     return;
   }
   try {
-    const pool = requirePool(getPool);
+    const pool = requirePool(deps.getPool);
     await applyDueJobsIfNeeded(pool);
     sendJson(response, 200, await getCatalogPayload(pool));
   } catch (error) {
-    if (typeof logDatabaseError === 'function') {
-      logDatabaseError('[catalog-api] database request failed', error);
+    if (typeof deps.logDatabaseError === 'function') {
+      deps.logDatabaseError('[catalog-api] database request failed', error);
     }
     sendJson(response, 503, { error: 'catalog_unavailable' });
   }

@@ -62,3 +62,33 @@ test('maps Portuguese catalog rows to the current frontend shape', () => {
   assert.equal(payload.products[0].image, 'assets/demo-products/mesclado.svg');
   assert.equal(payload.products[0].featured, true);
 });
+
+test('catalog payload uses one data query before revision', async () => {
+  const calls = [];
+  const queryable = {
+    async query(sql) {
+      calls.push(String(sql));
+      if (String(sql).includes('json_agg')) {
+        return {
+          rows: [{
+            categories: [{
+              id_categoria: '0c1a5510-c1a5-4000-8000-000000000001',
+              nome_categoria: 'Clássicos',
+              slug_categoria: 'classicos',
+              ordem_exibicao: 10,
+              ativo: true,
+            }],
+            products: [],
+            images: [],
+            prices: [],
+          }],
+        };
+      }
+      return { rows: [{ revisao: new Date('2026-01-01T00:00:00Z'), proxima_atualizacao: null }] };
+    },
+  };
+  const { getCatalogPayload } = await import('./catalog.js');
+  const payload = await getCatalogPayload(queryable);
+  assert.equal(payload.categories.length, 1);
+  assert.equal(calls.filter((sql) => sql.includes('json_agg')).length, 1);
+});
