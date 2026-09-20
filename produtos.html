@@ -41,6 +41,8 @@
       <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
       <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
       <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
+      <symbol id="i-instagram" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-whatsapp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3.5 20l1.2-4.1A8.5 8.5 0 1 1 20.5 11.5Z"/><path d="M8.7 7.8c.2-.4.5-.4.8-.4h.5c.2 0 .4.1.5.4l.8 1.9c.1.3 0 .5-.2.7l-.6.7c-.2.2-.2.4-.1.6.6 1.2 1.5 2.1 2.7 2.7.2.1.4.1.6-.1l.8-1c.2-.2.4-.3.7-.2l1.8.9c.3.1.4.3.4.6 0 .6-.3 1.4-.8 1.8-.5.5-1.3.8-2.1.7-1.5-.2-3.7-1.1-5.6-3-1.8-1.8-2.7-4-2.9-5.4-.1-.4.3-.8.7-.9Z"/></symbol>
     </defs>
   </svg>
 
@@ -49,7 +51,7 @@
     <!-- ===================== HEADER (alinhado com a Home) ===================== -->
     <header class="site-header">
       <a href="/" class="brand" aria-label="Amanteigados Lívia — Início">
-        <img src="assets/logo.jpg" alt="" width="104" height="104" />
+        <img src="assets/logo.jpg" alt="Amanteigados Lívia" width="66" height="66" decoding="async" fetchpriority="high" />
       </a>
 
       <div class="header-actions">
@@ -165,10 +167,11 @@
 
     <!-- ===================== FOOTER ===================== -->
     <footer class="site-footer">
-      <div class="footer-brand">
-        <img src="assets/footer-brand.png" alt="Amanteigados Lívia — Feitos com amor" width="190" height="52" />
+      <div class="footer-brand-col">
+        <div class="footer-brand">
+          <img src="assets/footer-brand.png" alt="Amanteigados Lívia — Feitos com Amor" width="945" height="709" decoding="async" />
+        </div>
       </div>
-      <p class="footer-tag">Amanteigados feitos com amor para adoçar<br>seus melhores momentos.</p>
       <nav class="footer-nav-simple" aria-label="Navegação do rodapé">
         <a href="/">Início</a>
         <a href="/produtos">Cardápio</a>
@@ -177,6 +180,17 @@
         <a href="/#personalizados-historia">Personalizados</a>
         <a href="/admin">Painel</a>
       </nav>
+      <div class="footer-social">
+        <div class="fs-group">
+          <span>Siga-nos</span>
+          <a href="https://www.instagram.com/amanteigadoslivia/" target="_blank" rel="noopener" class="fs-link ig" aria-label="Instagram"><svg class="ico"><use href="#i-instagram"/></svg></a>
+        </div>
+        <span class="fs-sep"></span>
+        <div class="fs-group">
+          <span>Fale conosco</span>
+          <a href="https://wa.me/5500000000000" target="_blank" rel="noopener" class="fs-link wa" aria-label="WhatsApp"><svg class="ico"><use href="#i-whatsapp"/></svg></a>
+        </div>
+      </div>
     </footer>
 
   </div>

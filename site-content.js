@@ -30,9 +30,11 @@
     const footer = payload?.branding?.logo_rodape_url || payload?.configuracao?.logo_rodape_url;
     document.querySelectorAll('.brand img, .sidebar-brand img, .login-card img').forEach((img) => {
       if (logo) img.src = logo;
+      img.alt = 'Amanteigados Lívia';
     });
     document.querySelectorAll('.footer-brand img, .footer-brand-col img').forEach((img) => {
       if (footer) img.src = footer;
+      img.alt = 'Amanteigados Lívia — Feitos com Amor';
     });
   }
 

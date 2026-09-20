@@ -86,3 +86,13 @@ test('public header menu is uniform and includes all expected links', () => {
   assert.match(nav, /href="\/admin"/);
   assert.doesNotMatch(nav, /btn-primary|order-btn|admin-link/);
 });
+
+test('public header and footer use official branding alt text', () => {
+  for (const file of ['index.html', 'produtos.html', 'carrinho.html']) {
+    const html = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+    assert.match(html, /class="brand"[\s\S]*alt="Amanteigados Lívia"/);
+    assert.match(html, /class="footer-brand"[\s\S]*alt="Amanteigados Lívia — Feitos com Amor"/);
+    assert.match(html, /href="https:\/\/www\.instagram\.com\/amanteigadoslivia\/"/);
+    assert.match(html, /href="https:\/\/wa\.me\//);
+  }
+});

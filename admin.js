@@ -541,7 +541,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
         if (!file) return;
         state.pendingFile = file;
         try {
-          const url = await uploadSelectedImage('site');
+          const url = await uploadSelectedImage(chave === 'logo_topo_url' || chave === 'logo_rodape_url' ? 'site/branding' : 'site');
           state.pendingFile = null;
           await saveConfig(chave, url);
         } catch (error) {

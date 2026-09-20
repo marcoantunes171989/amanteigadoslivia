@@ -10,6 +10,22 @@ const EXTENSION_BY_MIME = {
   'image/webp': 'webp',
 };
 
+export function resolveImageStoragePath({ pasta, nome_arquivo, extension } = {}) {
+  const original = String(nome_arquivo || '').trim().toLowerCase();
+  const ext = String(extension || 'jpg');
+  if (pasta === 'site/branding') {
+    if (original === 'logo-topo.jpeg' || original === 'logo-topo.jpg') {
+      return 'site/branding/logo-topo.jpeg';
+    }
+    if (original === 'logo-rodape.jpeg' || original === 'logo-rodape.jpg') {
+      return 'site/branding/logo-rodape.jpeg';
+    }
+    return `site/branding/${randomUUID()}.${ext}`;
+  }
+  const folder = pasta === 'site' ? 'site' : 'produtos';
+  return `${folder}/${randomUUID()}.${ext}`;
+}
+
 export function validateImageUploadMeta({ nome_arquivo, tipo_mime, tamanho_bytes }) {
   const mime = String(tipo_mime || '').toLowerCase();
   if (!ALLOWED_IMAGE_MIME.includes(mime)) {
@@ -53,28 +69,31 @@ async function getSupabaseAdmin() {
 export async function createSignedImageUpload({ nome_arquivo, tipo_mime, tamanho_bytes, pasta } = {}) {
   const meta = validateImageUploadMeta({ nome_arquivo, tipo_mime, tamanho_bytes });
   const supabase = await getSupabaseAdmin();
-  const folder = pasta === 'site' ? 'site' : 'produtos';
-  const pathName = `${folder}/${randomUUID()}.${meta.extension}`;
+  const pathName = resolveImageStoragePath({
+    pasta,
+    nome_arquivo,
+    extension: meta.extension,
+  });
 
-    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-    if (listError) {
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+  if (listError) {
+    throw new AdminError(503, 'storage_unavailable', 'Não foi possível preparar o armazenamento de imagens.');
+  }
+  const exists = (buckets || []).some((bucket) => bucket.name === 'produto-imagens');
+  if (!exists) {
+    const { error: bucketError } = await supabase.storage.createBucket('produto-imagens', {
+      public: true,
+      fileSizeLimit: MAX_IMAGE_BYTES,
+      allowedMimeTypes: [...ALLOWED_IMAGE_MIME],
+    });
+    if (bucketError && !/exist|duplicate|already/i.test(String(bucketError.message || ''))) {
       throw new AdminError(503, 'storage_unavailable', 'Não foi possível preparar o armazenamento de imagens.');
     }
-    const exists = (buckets || []).some((bucket) => bucket.name === 'produto-imagens');
-    if (!exists) {
-      const { error: bucketError } = await supabase.storage.createBucket('produto-imagens', {
-        public: true,
-        fileSizeLimit: MAX_IMAGE_BYTES,
-        allowedMimeTypes: [...ALLOWED_IMAGE_MIME],
-      });
-      if (bucketError && !/exist|duplicate|already/i.test(String(bucketError.message || ''))) {
-        throw new AdminError(503, 'storage_unavailable', 'Não foi possível preparar o armazenamento de imagens.');
-      }
-    }
+  }
 
   const { data, error } = await supabase.storage
     .from('produto-imagens')
-    .createSignedUploadUrl(pathName);
+    .createSignedUploadUrl(pathName, { upsert: true });
   if (error || !data?.signedUrl) {
     throw new AdminError(503, 'storage_unavailable', 'Não foi possível preparar o envio da imagem.');
   }
