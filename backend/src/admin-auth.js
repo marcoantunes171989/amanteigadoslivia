@@ -27,44 +27,76 @@ export function passwordsMatch(provided, expected) {
   return timingSafeEqualText(provided, expected);
 }
 
-export function signSession(secret, now = Date.now()) {
+function encodePayload(data) {
+  return Buffer.from(JSON.stringify(data), 'utf8').toString('base64url');
+}
+
+export function signSession(secret, claimsOrNow, maybeNow) {
   if (!secret) {
     throw new Error('session_secret_missing');
   }
-  const payload = Buffer.from(JSON.stringify({
-    v: 1,
+
+  let claims = {};
+  let now = Date.now();
+  if (typeof claimsOrNow === 'number') {
+    now = claimsOrNow;
+  } else if (claimsOrNow && typeof claimsOrNow === 'object') {
+    claims = claimsOrNow;
+    if (typeof maybeNow === 'number') {
+      now = maybeNow;
+    }
+  }
+
+  const payload = encodePayload({
+    v: 2,
+    id_usuario_admin: claims.id_usuario_admin || null,
+    email: claims.email || null,
+    perfil: claims.perfil || 'ADMIN',
     exp: now + SESSION_TTL_SECONDS * 1000,
-  }), 'utf8').toString('base64url');
+  });
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
 
-export function verifySession(token, secret, now = Date.now()) {
+export function readSession(token, secret, now = Date.now()) {
   if (!token || !secret || typeof token !== 'string' || typeof secret !== 'string') {
-    return false;
+    return null;
   }
 
   const separator = token.lastIndexOf('.');
   if (separator <= 0 || separator === token.length - 1) {
-    return false;
+    return null;
   }
 
   const payload = token.slice(0, separator);
   const signature = token.slice(separator + 1);
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   if (!timingSafeEqualText(signature, expected)) {
-    return false;
+    return null;
   }
 
   try {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (data?.v !== 1 || typeof data.exp !== 'number') {
-      return false;
+    if ((data?.v !== 1 && data?.v !== 2) || typeof data.exp !== 'number') {
+      return null;
     }
-    return now < data.exp;
+    if (now >= data.exp) {
+      return null;
+    }
+    return {
+      v: data.v,
+      id_usuario_admin: data.id_usuario_admin || null,
+      email: data.email || null,
+      perfil: data.perfil || 'ADMIN',
+      exp: data.exp,
+    };
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function verifySession(token, secret, now = Date.now()) {
+  return Boolean(readSession(token, secret, now));
 }
 
 export function readCookie(request, name) {

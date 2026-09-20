@@ -775,5 +775,11 @@ if (els.grid) {
     renderCatalog();
   }
 
+  window.addEventListener('amanteigados:catalogo-atualizado', () => {
+    if (els.demoNotice) els.demoNotice.hidden = getCatalogModeValue() !== 'demo';
+    renderCategories();
+    renderCatalog();
+  });
+
   bootCatalog();
 }

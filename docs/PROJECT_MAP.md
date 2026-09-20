@@ -7,12 +7,11 @@
 > `docs/cart-spec.md` e `docs/catalog-spec.md` (especificações de
 > produto/frontend) sem duplicá-los.
 
-**Fase ativa: FAST-TRACK ADMIN HML** — painel administrativo em
-`/admin` no HOMOLOG, conectado ao mesmo Supabase do catálogo público.
-HML catálogo público funcional (`GET /api/catalogo` HTTP 200). O painel
-altera `app.tab_categoria`, `app.tab_produto`, `app.tab_produto_imagem`
-e `app.tab_produto_preco`; `/api/catalogo` e `/produtos` refletem a
-mudança sem novo deploy. PROD permanece bloqueado.
+**Fase ativa: FAST-TRACK ADMIN HML V2** — painel administrativo completo
+em `/admin` no HOMOLOG, no mesmo Supabase do catálogo público. Login por
+e-mail/senha, auditoria, vendas, relatórios, imagens, alterações
+agendadas, realtime e motor de publicação HML→PROD com
+`PROMOCAO_PROD_HABILITADA=false`. PROD permanece bloqueado.
 
 ---
 
@@ -37,21 +36,25 @@ mudança sem novo deploy. PROD permanece bloqueado.
 | 5.0D.6G | Framework de migrations PostgreSQL (`backend/database/migrations/`, ledger `app.schema_migrations`, spec `docs/database/MIGRATION_FRAMEWORK_SPEC.md`) | Concluída — **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**; `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro; `applied_by_login` = `amanteigados_dev_migrator`; `applied_as_role` = `amanteigados_dev_owner`; `database_name` = `amanteigados_dev`; APP com zero privilege efetivo no ledger; Migrator com zero ACL direta; PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV (histórica/imutável; ajuste futuro só por forward-fix) |
 | 5.0D.6H | Business migrations / catalog model | 0002 versionada (`0002_criar_nucleo_catalogo`); nomenclatura PT (`app.tab_*`); release `0001_catalogo_inicial`; API `GET /api/catalogo`; HOMOLOG é o destino oficial; PROD bloqueado |
 | FAST-TRACK HML | Primeiro ambiente funcional HOMOLOG | Concluída — Vercel `homologacao` + Supabase `amanteigados-livia-homolog`; catálogo público ao vivo; PROD não publicado |
-| FAST-TRACK ADMIN HML | Painel administrativo `/admin` no HOMOLOG | Em execução — mesmo banco do catálogo público; login por senha server-side; PROD bloqueado |
+| FAST-TRACK ADMIN HML V2 | Painel administrativo completo no HOMOLOG | Em execução — e-mail/senha, auditoria, vendas, relatórios, storage, realtime, publicação bloqueada; PROD bloqueado |
 
 ## 2. Fase ativa
 
-**FAST-TRACK ADMIN HML** — administrar categorias, produtos, preços e
-imagens no HOMOLOG sem editar JS e sem novo deploy a cada alteração.
+**FAST-TRACK ADMIN HML V2** — painel administrativo completo no HOMOLOG,
+no mesmo Supabase do catálogo público, antes de qualquer promoção para
+PROD.
 
 - DEV = laboratório
-- HOMOLOG = validação oficial (catálogo público + painel admin)
+- HOMOLOG = validação oficial (catálogo público + painel admin V2)
 - PROD = cliente/público (não publicar nesta fase)
 
 O painel `/admin` e `GET /api/catalogo` compartilham o mesmo Supabase
-`amanteigados-livia-homolog`. Autenticação administrativa usa
-`ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET` (Vercel, server-side).
-PROD permanece bloqueado.
+`amanteigados-livia-homolog` (`ywlzswyepcawcgkllwlu`, database
+`postgres`, schema `app`). Login operacional: e-mail + senha em
+`app.tab_usuario_admin` (scrypt + HMAC). `ADMIN_PASSWORD` permanece só
+como fallback de bootstrap, não como tela normal.
+`PROMOCAO_PROD_HABILITADA=false`: dry-run e agendamento existem; nenhuma
+escrita em PROD.
 
 Fluxo: `DEV → GitHub → Vercel HOMOLOG → Supabase HOMOLOG → teste/aprovação → Vercel PROD + Supabase PROD`.
 
@@ -61,13 +64,16 @@ Artefatos:
   `35eaf497f9dbb0bd6844120f150930df404b8526ff1907e5d4c1810a1aebb6b4`;
   não usar `37e7111e394696af181ee2e71a962dc8a35b1a9342f5a38f1a138a6bbdac2297`
   nem `c745487eb9aa1af4d20add5a1f6a6600ed12780382303ed621794941626f4161`)
-- `backend/database/releases/0001_catalogo_inicial.sql`
+- `backend/database/migrations/0003_expandir_painel_administrativo.sql`
+  (SHA256 `3b1db35ab9644b351668e4adc16a1ef167b4c70088f07add46d653ca76c4960a`)
+- `docs/admin/ADMIN_V2_SPEC.md`
 - `GET /api/catalogo` (`api/catalogo.js` na Vercel; Express em `backend/src/app.js`)
-- Painel `/admin` (`admin.html`, `admin.js`, `admin.css`) + `/api/admin/login`, `/api/admin/logout`, `/api/admin/catalogo`
-- Frontend `/produtos` e `/carrinho` consomem a API; sem fallback fake
+- Painel `/admin` V2 + APIs `/api/admin/*`, `/api/vendas`, `/api/interno/*`
+- Frontend `/produtos` (Realtime + fallback de revisão) e `/carrinho`
+  (captura `POST /api/vendas`); sem fallback fake
 
 A 0001 permanece imutável (`bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`).
-A 0002 **não** é reexecutável. PROD permanece bloqueado.
+A 0002 e a 0003 **não** são reexecutáveis. PROD permanece bloqueado.
 
 ## 3. Próximos gates
 
@@ -115,7 +121,7 @@ A 0002 **não** é reexecutável. PROD permanece bloqueado.
 | Ambiente | Banco | Estado atual |
 |---|---|---|
 | DEV | PostgreSQL local | Roles owner/migrator/app existentes; pool `max=5`; `/health` e `/ready` implementados; schema `app` **existe** (bootstrap 5.0D.6C executado e auditado; owner `amanteigados_dev_owner`); `search_path` por database **executado e auditado** (5.0D.6D, `app, pg_catalog` para as três roles); `DEFAULT PRIVILEGES` de `owner_role` (FUNCTIONS, escopo global ao database) **executado e auditado** (5.0D.6E); grants de runtime para `app_role` **CONCLUÍDOS/AUDITADOS** (5.0D.6F): USAGE=true, CREATE=false, DB CREATE=false, TABLES futuras SELECT/INSERT/UPDATE/DELETE, SEQUENCES futuras USAGE, sem grant option, sem EXECUTE automático em FUNCTIONS, APP sem membership/SET ROLE Owner/Migrator; `003` **não** deve ser reexecutado em DEV; 5.0D.6G MIGRATION FRAMEWORK **CONCLUÍDO / EXECUTADO / AUDITADO EM DEV**: `0001_create_migration_ledger` aplicada (checksum `bb018fc0c74c17d8ee072fb0c0711d60ead28ce587c47e2bc1bc7dd0664991c0`); `app.schema_migrations` existe, owner `amanteigados_dev_owner`, exatamente 1 registro (`applied_by_login` = `amanteigados_dev_migrator`, `applied_as_role` = `amanteigados_dev_owner`, `database_name` = `amanteigados_dev`); APP com zero privilege efetivo no ledger; Migrator/PUBLIC com zero ACL direta; default privileges 5.0D.6F intactos; `search_path` intacto; DB CREATE=false nas 3 roles; memberships intactas; schema `app` somente `schema_migrations` como relation; routines = 0; sequences = 0; 0001 **não** deve ser reexecutada em DEV; 5.0D.6H BUSINESS MIGRATIONS / CATALOG MODEL - DRAFT (0002 `0002_criar_nucleo_catalogo` **DRAFT / NÃO executada**); HOMOLOG (`amanteigados-livia-homolog`) destino oficial de validação; PROD (`amanteigados-livia-prod`) bloqueado até aprovação humana |
-| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial de validação. Catálogo público funcional (`app.tab_*` + `GET /api/catalogo`). Painel admin `/admin` lê e escreve as mesmas tabelas. PROD bloqueado |
+| HOMOLOG | Supabase `amanteigados-livia-homolog` (Session Pooler 5432, TLS) | Destino oficial. Database `postgres`, schema `app`. Catálogo + painel V2 (usuários, auditoria, vendas, agendamentos, publicação bloqueada). Storage `produto-imagens`. Realtime `catalogo-homolog`. PROD bloqueado |
 | PROD | Supabase `amanteigados-livia-prod` | Bloqueado até aprovação humana. Nomes de role equivalentes previstos, **não criados nesta fase**; 0002 **não executada** |
 
 ### Política DEV-first
@@ -157,11 +163,11 @@ equivalente). Ver `docs/database/SCHEMA_SECURITY_SPEC.md`, seção
 
 | Área | Status | Observação |
 |---|---|---|
-| Frontend | Estável | Landing + `/produtos` + `/carrinho`; catálogo via `GET /api/catalogo`; painel `/admin` separado |
-| Backend | HOMOLOG catalog + admin API | Express e funções Vercel; `GET /api/catalogo`; `/api/admin/login`, `/api/admin/logout`, `/api/admin/catalogo`; sessão HMAC; `DATABASE_URL` server-side |
-| Database | Núcleo de catálogo em HOMOLOG | `app.tab_categoria`, `app.tab_produto`, `app.tab_produto_imagem`, `app.tab_produto_preco`; PROD bloqueado |
-| Admin (painel administrativo) | HML criado | `/admin` autentica e administra o mesmo banco do catálogo público; alteração aparece em `/produtos` sem deploy |
-| Releases (painel "Ambientes & Releases") | Não iniciado | Requisitos documentados nesta fase em `SCHEMA_SECURITY_SPEC.md`, seção "Painel Ambientes & Releases" |
+| Frontend | Estável | Landing + `/produtos` (Realtime/fallback) + `/carrinho` (captura de venda); painel `/admin` V2 |
+| Backend | HOMOLOG catalog + admin V2 API | Express e funções Vercel; catálogo público; login e-mail/senha; vendas; relatórios; storage signed URL; jobs internos; pool `max=1` |
+| Database | Painel V2 em HOMOLOG | Ledger 0001+0002+0003; tabelas `app.tab_*` de catálogo, usuário, auditoria, agendamento, venda e publicação. Fonte oficial = Supabase HML |
+| Admin (painel administrativo) | HML V2 | Sidebar, dashboard, catálogo, vendas, relatórios, publicações (PROD bloqueado), auditoria, usuários |
+| Releases (HML → PROD) | Motor pronto / PROD bloqueado | `PROMOCAO_PROD_HABILITADA=false`; dry-run e agendamento sem escrita em PROD |
 
 ## 6. Percentuais atuais
 

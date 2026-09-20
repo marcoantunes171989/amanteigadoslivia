@@ -1,3 +1,5 @@
+import { getCatalogRevision } from './catalog-revision.js';
+
 function centsToAmount(centavos) {
   if (centavos === null || centavos === undefined) return null;
   const asNumber = typeof centavos === 'bigint' ? Number(centavos) : Number(centavos);
@@ -63,46 +65,53 @@ export function mapCatalogRows({
     pricesByProduct.set(key, list);
   }
 
+  const mappedCategories = categories.map((category) => ({
+    id: String(category.id_categoria),
+    slug: category.slug_categoria,
+    name: category.nome_categoria,
+    active: category.ativo === true,
+    order: category.ordem_exibicao ?? 0,
+  }));
+
+  const mappedProducts = products.map((product) => {
+    const productId = String(product.id_produto);
+    const image = pickPrimaryImage(imagesByProduct.get(productId) || []);
+    const productPrices = pricesByProduct.get(productId) || [];
+    const regular = pickCurrentPrice(productPrices, false, now);
+    const promotional = pickCurrentPrice(productPrices, true, now);
+    const description = product.descricao_produto || null;
+
+    return {
+      id: productId,
+      slug: product.slug_produto,
+      name: product.nome_produto,
+      categoryId: String(product.id_categoria),
+      shortDescription: description,
+      description,
+      price: centsToAmount(regular?.valor_centavos),
+      promotionalPrice: centsToAmount(promotional?.valor_centavos),
+      image: image?.url_imagem || null,
+      featured: product.destaque === true,
+      active: product.ativo === true,
+      order: product.ordem_exibicao ?? 0,
+      unit: null,
+      weight: null,
+      customizable: false,
+      minQuantity: 1,
+      quantityStep: 1,
+      maxQuantity: null,
+      productionTime: null,
+      demo: false,
+    };
+  });
+
+  const publicCategories = mappedCategories.filter((item) => item.active);
+  const publicCategoryIds = new Set(publicCategories.map((item) => item.id));
+
   return {
     mode: 'live',
-    categories: categories.map((category) => ({
-      id: String(category.id_categoria),
-      slug: category.slug_categoria,
-      name: category.nome_categoria,
-      active: category.ativo === true,
-      order: category.ordem_exibicao ?? 0,
-    })),
-    products: products.map((product) => {
-      const productId = String(product.id_produto);
-      const image = pickPrimaryImage(imagesByProduct.get(productId) || []);
-      const productPrices = pricesByProduct.get(productId) || [];
-      const regular = pickCurrentPrice(productPrices, false, now);
-      const promotional = pickCurrentPrice(productPrices, true, now);
-      const description = product.descricao_produto || null;
-
-      return {
-        id: productId,
-        slug: product.slug_produto,
-        name: product.nome_produto,
-        categoryId: String(product.id_categoria),
-        shortDescription: description,
-        description,
-        price: centsToAmount(regular?.valor_centavos),
-        promotionalPrice: centsToAmount(promotional?.valor_centavos),
-        image: image?.url_imagem || null,
-        featured: product.destaque === true,
-        active: product.ativo === true,
-        order: product.ordem_exibicao ?? 0,
-        unit: null,
-        weight: null,
-        customizable: false,
-        minQuantity: 1,
-        quantityStep: 1,
-        maxQuantity: null,
-        productionTime: null,
-        demo: false,
-      };
-    }),
+    categories: publicCategories,
+    products: mappedProducts.filter((item) => item.active && publicCategoryIds.has(item.categoryId)),
   };
 }
 
@@ -110,12 +119,14 @@ export async function getCatalogPayload(queryable) {
   const categoriesResult = await queryable.query(`
       SELECT id_categoria, nome_categoria, slug_categoria, ordem_exibicao, ativo
       FROM app.tab_categoria
+      WHERE ativo = true
       ORDER BY ordem_exibicao ASC, nome_categoria ASC
     `);
   const productsResult = await queryable.query(`
       SELECT id_produto, id_categoria, nome_produto, slug_produto, descricao_produto,
              destaque, ativo, ordem_exibicao
       FROM app.tab_produto
+      WHERE ativo = true
       ORDER BY ordem_exibicao ASC, nome_produto ASC
     `);
   const imagesResult = await queryable.query(`
@@ -129,11 +140,24 @@ export async function getCatalogPayload(queryable) {
       FROM app.tab_produto_preco
     `);
 
-  return mapCatalogRows({
+  const payload = mapCatalogRows({
     categories: categoriesResult.rows,
     products: productsResult.rows,
     images: imagesResult.rows,
     prices: pricesResult.rows,
     now: new Date(),
   });
+
+  try {
+    const revision = await getCatalogRevision(queryable);
+    payload.revisao_catalogo = revision.revisao;
+    payload.proxima_atualizacao = revision.proxima_atualizacao;
+    payload.realtime = revision.realtime;
+  } catch {
+    payload.revisao_catalogo = String(Date.now());
+    payload.proxima_atualizacao = null;
+    payload.realtime = null;
+  }
+
+  return payload;
 }

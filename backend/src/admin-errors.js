@@ -30,7 +30,14 @@ export function mapDatabaseError(error) {
   }
 
   if (error?.code === '23505') {
-    return new AdminError(409, 'conflict', 'Já existe um registro com este slug.');
+    const constraint = String(error?.constraint || error?.detail || '');
+    if (/email/i.test(constraint)) {
+      return new AdminError(409, 'conflict', 'Já existe um usuário com este e-mail.');
+    }
+    if (/idempotencia/i.test(constraint)) {
+      return new AdminError(409, 'conflict', 'Pedido já registrado.');
+    }
+    return new AdminError(409, 'conflict', 'Já existe um registro com estes dados.');
   }
   if (error?.code === '23503') {
     return new AdminError(400, 'validation_error', 'Registro relacionado inválido.');

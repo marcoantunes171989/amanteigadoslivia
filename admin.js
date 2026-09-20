@@ -7,21 +7,50 @@
   const loginError = document.getElementById('loginError');
   const loginButton = document.getElementById('loginButton');
   const logoutButton = document.getElementById('logoutButton');
-  const overviewView = document.getElementById('overviewView');
-  const categoriesView = document.getElementById('categoriesView');
-  const productsView = document.getElementById('productsView');
-  const viewTitle = document.getElementById('viewTitle');
-  const viewEyebrow = document.getElementById('viewEyebrow');
-  const statusMessage = document.getElementById('statusMessage');
+  const menuToggle = document.getElementById('menuToggle');
+  const adminSidebar = document.getElementById('adminSidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const toastRegion = document.getElementById('toastRegion');
   const formDialog = document.getElementById('formDialog');
   const resourceForm = document.getElementById('resourceForm');
+  const views = {
+    overview: document.getElementById('overviewView'),
+    categories: document.getElementById('categoriesView'),
+    products: document.getElementById('productsView'),
+    sales: document.getElementById('salesView'),
+    reports: document.getElementById('reportsView'),
+    publications: document.getElementById('publicationsView'),
+    audit: document.getElementById('auditView'),
+    users: document.getElementById('usersView'),
+  };
+
+  const TITLES = {
+    overview: ['Painel', 'Visão Geral'],
+    categories: ['Catálogo', 'Categorias'],
+    products: ['Catálogo', 'Produtos'],
+    sales: ['Operação', 'Vendas'],
+    reports: ['Operação', 'Relatórios'],
+    publications: ['Ambientes', 'Publicações'],
+    audit: ['Segurança', 'Auditoria'],
+    users: ['Segurança', 'Usuários'],
+  };
 
   const state = {
     view: 'overview',
     catalog: { resumo: {}, categorias: [], produtos: [] },
+    reports: null,
+    vendas: [],
+    usuarios: [],
+    auditoria: [],
+    publicacoes: null,
     productQuery: '',
     productFilter: 'todos',
+    salesPeriod: 'hoje',
+    salesStatus: 'todos',
+    reportTab: 'visao',
+    reportPeriod: '30d',
     slugManual: false,
+    pendingFile: null,
   };
 
   function el(tag, props = {}, children = []) {
@@ -40,10 +69,19 @@
     return node;
   }
 
-  function showStatus(message, success = false) {
-    statusMessage.hidden = !message;
-    statusMessage.textContent = message || '';
-    statusMessage.classList.toggle('is-success', success);
+  function toast(message, success = true) {
+    const node = el('div', { className: `toast${success ? ' is-success' : ' is-error'}`, text: message });
+    toastRegion.append(node);
+    setTimeout(() => node.remove(), 4200);
+  }
+
+  function money(centavos) {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((Number(centavos) || 0) / 100);
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
   }
 
   function slugFromName(name) {
@@ -68,9 +106,7 @@
   }
 
   function thumb(url, alt) {
-    if (isSafeImageUrl(url)) {
-      return el('img', { className: 'thumb', src: url, alt: alt || '' });
-    }
+    if (isSafeImageUrl(url)) return el('img', { className: 'thumb', src: url, alt: alt || '' });
     return el('div', { className: 'thumb placeholder', text: 'Sem imagem' });
   }
 
@@ -85,25 +121,26 @@
       },
       ...options,
     });
+    const contentType = response.headers.get('content-type') || '';
     let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
+    if (contentType.includes('application/json')) {
+      try { payload = await response.json(); } catch { payload = null; }
+    } else {
+      payload = await response.text();
     }
     if (!response.ok) {
       const error = new Error(payload?.message || payload?.error || 'request_failed');
       error.status = response.status;
       error.code = payload?.error || 'request_failed';
+      error.payload = payload;
       throw error;
     }
     return payload;
   }
 
-  async function loadCatalog() {
-    const payload = await request('/api/admin/catalogo');
-    state.catalog = payload;
-    render();
+  function closeDrawer() {
+    adminSidebar.classList.remove('is-open');
+    sidebarBackdrop.classList.add('hidden');
   }
 
   function setView(view) {
@@ -111,35 +148,19 @@
     document.querySelectorAll('.nav-btn').forEach((button) => {
       button.classList.toggle('is-active', button.dataset.view === view);
     });
-    overviewView.classList.toggle('hidden', view !== 'overview');
-    categoriesView.classList.toggle('hidden', view !== 'categories');
-    productsView.classList.toggle('hidden', view !== 'products');
-    const titles = {
-      overview: ['Painel', 'Visão Geral'],
-      categories: ['Catálogo', 'Categorias'],
-      products: ['Catálogo', 'Produtos'],
-    };
-    viewEyebrow.textContent = titles[view][0];
-    viewTitle.textContent = titles[view][1];
+    Object.entries(views).forEach(([name, node]) => {
+      node.classList.toggle('hidden', name !== view);
+    });
+    const titles = TITLES[view];
+    document.getElementById('viewEyebrow').textContent = titles[0];
+    document.getElementById('viewTitle').textContent = titles[1];
+    document.getElementById('viewBreadcrumb').textContent = `Início / ${titles[0]} / ${titles[1]}`;
+    closeDrawer();
+    refreshView();
   }
 
   function badge(active) {
-    return el('span', {
-      className: active ? 'badge badge-ok' : 'badge badge-off',
-      text: active ? 'Ativo' : 'Inativo',
-    });
-  }
-
-  function renderOverview() {
-    const resumo = state.catalog.resumo || {};
-    overviewView.replaceChildren(
-      el('div', { className: 'cards' }, [
-        metric('Categorias', resumo.categorias),
-        metric('Produtos', resumo.produtos),
-        metric('Produtos ativos', resumo.produtos_ativos),
-        metric('Produtos em destaque', resumo.produtos_destaque),
-      ]),
-    );
+    return el('span', { className: active ? 'badge badge-ok' : 'badge badge-off', text: active ? 'Ativo' : 'Inativo' });
   }
 
   function metric(label, value) {
@@ -149,70 +170,155 @@
     ]);
   }
 
-  function renderCategories() {
-    const rows = state.catalog.categorias || [];
-    const table = el('table', {}, [
-      el('thead', {}, [
-        el('tr', {}, [
-          el('th', { text: 'Nome' }),
-          el('th', { text: 'Slug' }),
-          el('th', { text: 'Descrição' }),
-          el('th', { text: 'Ordem' }),
-          el('th', { text: 'Ativo' }),
-          el('th', { text: 'Ações' }),
+  function emptyState(text) {
+    return el('p', { className: 'empty', text });
+  }
+
+  function chart(rows, key) {
+    const max = Math.max(1, ...rows.map((row) => Number(row[key] || 0)));
+    if (!rows.length) return emptyState('Sem vendas registradas no periodo');
+    return el('div', { className: 'chart' }, rows.map((row) => el('div', {
+      className: `chart-bar${key.includes('faturamento') ? ' is-alt' : ''}`,
+      title: `${row.dia}: ${row[key]}`,
+      style: `height:${Math.max(8, (Number(row[key] || 0) / max) * 132)}px`,
+    })));
+  }
+
+  async function loadCatalog() {
+    state.catalog = await request('/api/admin/catalogo');
+  }
+
+  async function loadReports() {
+    state.reports = await request(`/api/admin/relatorios?periodo=${encodeURIComponent(state.reportPeriod)}`);
+  }
+
+  async function loadSales() {
+    const payload = await request(`/api/admin/vendas?periodo=${encodeURIComponent(state.salesPeriod)}&status=${encodeURIComponent(state.salesStatus)}`);
+    state.vendas = payload.vendas || [];
+  }
+
+  async function loadUsers() {
+    const payload = await request('/api/admin/usuarios');
+    state.usuarios = payload.usuarios || [];
+  }
+
+  async function loadAudit() {
+    const payload = await request('/api/admin/auditoria');
+    state.auditoria = payload.eventos || [];
+  }
+
+  async function loadPublications() {
+    state.publicacoes = await request('/api/admin/publicacoes');
+  }
+
+  async function refreshView() {
+    try {
+      if (state.view === 'overview') {
+        await Promise.all([loadCatalog(), loadReports()]);
+        renderOverview();
+      } else if (state.view === 'categories' || state.view === 'products') {
+        await loadCatalog();
+        renderCategories();
+        renderProducts();
+      } else if (state.view === 'sales') {
+        await loadSales();
+        renderSales();
+      } else if (state.view === 'reports') {
+        await loadReports();
+        renderReports();
+      } else if (state.view === 'publications') {
+        await loadPublications();
+        renderPublications();
+      } else if (state.view === 'audit') {
+        await loadAudit();
+        renderAudit();
+      } else if (state.view === 'users') {
+        await loadUsers();
+        renderUsers();
+      }
+    } catch (error) {
+      if (error.status === 401) {
+        showLogin();
+        return;
+      }
+      toast(error.message || 'Não foi possível carregar os dados.', false);
+    }
+  }
+
+  function renderOverview() {
+    const dash = state.reports?.dashboard || {};
+    const hoje = dash.hoje || {};
+    views.overview.replaceChildren(
+      el('div', { className: 'kpi-grid' }, [
+        metric('Produtos ativos', dash.produtos_ativos),
+        metric('Categorias ativas', dash.categorias_ativas),
+        metric('Produtos em destaque', dash.destaques),
+        metric('Promoções ativas', dash.promocoes_ativas),
+        metric('Pedidos hoje', hoje.pedidos),
+        metric('Vendas confirmadas hoje', hoje.vendas_confirmadas),
+        metric('Faturamento hoje', money(hoje.faturamento_centavos)),
+        metric('Ticket médio hoje', money(hoje.ticket_medio_centavos)),
+      ]),
+      el('div', { className: 'cards', style: 'margin-top:16px' }, [
+        metric('Pedidos 7 dias', dash.dias_7?.pedidos),
+        metric('Faturamento 7 dias', money(dash.dias_7?.faturamento_centavos)),
+        metric('Pedidos 30 dias', dash.dias_30?.pedidos),
+        metric('Faturamento 30 dias', money(dash.dias_30?.faturamento_centavos)),
+      ]),
+      el('div', { className: 'env-grid', style: 'margin-top:16px' }, [
+        el('article', { className: 'card' }, [
+          el('span', { text: 'Vendas por dia' }),
+          chart(state.reports?.vendas?.por_dia || [], 'pedidos'),
+        ]),
+        el('article', { className: 'card' }, [
+          el('span', { text: 'Faturamento por dia' }),
+          chart(state.reports?.vendas?.por_dia || [], 'faturamento_centavos'),
         ]),
       ]),
-      el('tbody', {}, rows.map((category) => el('tr', {}, [
-        el('td', { text: category.nome_categoria }),
-        el('td', { text: category.slug_categoria }),
-        el('td', { text: category.descricao_categoria || '—' }),
-        el('td', { text: String(category.ordem_exibicao ?? 0) }),
-        el('td', {}, [badge(category.ativo)]),
-        el('td', {}, [categoryActions(category)]),
-      ]))),
-    ]);
-
-    const cards = el('div', { className: 'category-cards' }, rows.map((category) => (
-      el('article', { className: 'mobile-card' }, [
-        el('strong', { text: category.nome_categoria }),
-        el('span', { text: category.slug_categoria }),
-        el('span', { text: category.descricao_categoria || 'Sem descrição' }),
-        badge(category.ativo),
-        categoryActions(category),
-      ])
-    )));
-
-    categoriesView.replaceChildren(
-      el('div', { className: 'toolbar' }, [
-        el('p', { text: `${rows.length} categoria(s)` }),
-        el('button', {
-          className: 'btn btn-primary',
-          type: 'button',
-          text: '+ Nova categoria',
-          onClick: () => openCategoryForm(),
-        }),
-      ]),
-      el('div', { className: 'table-wrap' }, [
-        rows.length ? table : el('p', { className: 'empty', text: 'Nenhuma categoria cadastrada.' }),
-        rows.length ? cards : null,
+      el('article', { className: 'card', style: 'margin-top:16px' }, [
+        el('span', { text: 'Produtos mais vendidos' }),
+        (state.reports?.produtos || []).length
+          ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Qtd', 'Receita'], (state.reports.produtos || []).slice(0, 8).map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
+          : emptyState('Sem vendas registradas no periodo'),
       ]),
     );
   }
 
+  function simpleTable(headers, rows) {
+    return el('table', {}, [
+      el('thead', {}, [el('tr', {}, headers.map((h) => el('th', { text: h })))]),
+      el('tbody', {}, rows.map((row) => el('tr', {}, row.map((cell) => el('td', { text: String(cell ?? '—') }))))),
+    ]);
+  }
+
+  function renderCategories() {
+    const rows = state.catalog.categorias || [];
+    views.categories.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('p', { text: `${rows.length} categoria(s)` }),
+        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Nova categoria', onClick: () => openCategoryForm() }),
+      ]),
+      el('div', { className: 'table-wrap' }, [
+        rows.length ? simpleTable(['Nome', 'Slug', 'Ordem', 'Ativo'], rows.map((item) => [item.nome_categoria, item.slug_categoria, item.ordem_exibicao, item.ativo ? 'Ativo' : 'Inativo'])) : emptyState('Nenhuma categoria cadastrada.'),
+        rows.length ? el('div', { className: 'category-cards' }, rows.map((category) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: category.nome_categoria }),
+          badge(category.ativo),
+          categoryActions(category),
+        ]))) : null,
+      ]),
+    );
+    if (rows.length) {
+      const tbody = views.categories.querySelector('tbody');
+      [...tbody.children].forEach((tr, index) => {
+        tr.lastChild.replaceWith(el('td', {}, [categoryActions(rows[index])]));
+      });
+    }
+  }
+
   function categoryActions(category) {
     return el('div', { className: 'actions' }, [
-      el('button', {
-        className: 'btn btn-ghost btn-small',
-        type: 'button',
-        text: 'Editar',
-        onClick: () => openCategoryForm(category),
-      }),
-      el('button', {
-        className: 'btn btn-ghost btn-small',
-        type: 'button',
-        text: category.ativo ? 'Desativar' : 'Ativar',
-        onClick: () => { mutate('categoria', category.ativo ? 'desativar' : 'ativar', category.id_categoria).catch(() => {}); },
-      }),
+      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openCategoryForm(category) }),
+      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: category.ativo ? 'Desativar' : 'Ativar', onClick: () => mutate('categoria', category.ativo ? 'desativar' : 'ativar', category.id_categoria) }),
     ]);
   }
 
@@ -229,147 +335,289 @@
 
   function renderProducts() {
     const rows = filteredProducts();
-    const table = el('table', {}, [
-      el('thead', {}, [
-        el('tr', {}, [
-          el('th', { text: 'Imagem' }),
-          el('th', { text: 'Produto' }),
-          el('th', { text: 'Categoria' }),
-          el('th', { text: 'Preço' }),
-          el('th', { text: 'Promoção' }),
-          el('th', { text: 'Destaque' }),
-          el('th', { text: 'Status' }),
-          el('th', { text: 'Ações' }),
-        ]),
-      ]),
-      el('tbody', {}, rows.map((product) => el('tr', {}, [
-        el('td', {}, [thumb(product.url_imagem_principal, product.nome_produto)]),
-        el('td', {}, [
-          el('div', { className: 'product-cell' }, [
-            el('div', {}, [
-              el('strong', { text: product.nome_produto }),
-              el('div', { className: 'hint', text: product.slug_produto }),
-            ]),
-          ]),
-        ]),
-        el('td', { text: product.nome_categoria || '—' }),
-        el('td', { text: product.preco_normal ? `R$ ${product.preco_normal}` : '—' }),
-        el('td', { text: product.promocao_ativa ? `R$ ${product.preco_promocional}` : '—' }),
-        el('td', {}, [
-          el('span', {
-            className: product.destaque ? 'badge badge-warn' : 'badge badge-off',
-            text: product.destaque ? 'Sim' : 'Não',
-          }),
-        ]),
-        el('td', {}, [badge(product.ativo)]),
-        el('td', {}, [productActions(product)]),
-      ]))),
-    ]);
-
-    const cards = el('div', { className: 'product-cards' }, rows.map((product) => (
-      el('article', { className: 'mobile-card' }, [
-        el('div', { className: 'product-cell' }, [
-          thumb(product.url_imagem_principal, product.nome_produto),
-          el('div', {}, [
-            el('strong', { text: product.nome_produto }),
-            el('div', { className: 'hint', text: product.nome_categoria || 'Sem categoria' }),
-          ]),
-        ]),
-        el('div', { text: product.preco_normal ? `Preço: R$ ${product.preco_normal}` : 'Sem preço' }),
-        el('div', { text: product.promocao_ativa ? `Promoção: R$ ${product.preco_promocional}` : 'Sem promoção' }),
-        badge(product.ativo),
-        productActions(product),
-      ])
-    )));
-
-    productsView.replaceChildren(
+    views.products.replaceChildren(
       el('div', { className: 'toolbar' }, [
-        el('input', {
-          className: 'search-input',
-          type: 'search',
-          placeholder: 'Buscar por nome',
-          value: state.productQuery,
-          onInput: (event) => {
-            state.productQuery = event.target.value;
-            renderProducts();
-          },
-        }),
+        el('input', { className: 'search-input', type: 'search', placeholder: 'Buscar por nome', value: state.productQuery, onInput: (event) => { state.productQuery = event.target.value; renderProducts(); } }),
         el('div', { className: 'filters' }, ['todos', 'ativos', 'inativos', 'destaques'].map((filter) => (
-          el('button', {
-            className: `chip${state.productFilter === filter ? ' is-active' : ''}`,
-            type: 'button',
-            text: filter[0].toUpperCase() + filter.slice(1),
-            onClick: () => {
-              state.productFilter = filter;
-              renderProducts();
-            },
-          })
+          el('button', { className: `chip${state.productFilter === filter ? ' is-active' : ''}`, type: 'button', text: filter[0].toUpperCase() + filter.slice(1), onClick: () => { state.productFilter = filter; renderProducts(); } })
         ))),
-        el('button', {
-          className: 'btn btn-primary',
-          type: 'button',
-          text: '+ Novo produto',
-          onClick: () => openProductForm(),
-        }),
+        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo produto', onClick: () => openProductForm() }),
       ]),
       el('div', { className: 'table-wrap' }, [
-        rows.length ? table : el('p', { className: 'empty', text: 'Nenhum produto encontrado.' }),
-        rows.length ? cards : null,
+        rows.length ? el('table', {}, [
+          el('thead', {}, [el('tr', {}, ['Imagem', 'Produto', 'Categoria', 'Preço', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('tbody', {}, rows.map((product) => el('tr', {}, [
+            el('td', {}, [thumb(product.url_imagem_principal, product.nome_produto)]),
+            el('td', { text: product.nome_produto }),
+            el('td', { text: product.nome_categoria || '—' }),
+            el('td', { text: product.preco_normal ? `R$ ${product.preco_normal}` : '—' }),
+            el('td', {}, [badge(product.ativo)]),
+            el('td', {}, [productActions(product)]),
+          ]))),
+        ]) : emptyState('Nenhum produto encontrado.'),
       ]),
     );
   }
 
   function productActions(product) {
     return el('div', { className: 'actions' }, [
-      el('button', {
-        className: 'btn btn-ghost btn-small',
-        type: 'button',
-        text: 'Editar',
-        onClick: () => openProductForm(product),
-      }),
-      el('button', {
-        className: 'btn btn-ghost btn-small',
-        type: 'button',
-        text: product.ativo ? 'Desativar' : 'Ativar',
-        onClick: () => { mutate('produto', product.ativo ? 'desativar' : 'ativar', product.id_produto).catch(() => {}); },
-      }),
+      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openProductForm(product) }),
+      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: product.ativo ? 'Desativar' : 'Ativar', onClick: () => mutate('produto', product.ativo ? 'desativar' : 'ativar', product.id_produto) }),
     ]);
+  }
+
+  function renderSales() {
+    views.sales.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('div', { className: 'filters' }, ['hoje', '7d', '30d'].map((period) => el('button', {
+          className: `chip${state.salesPeriod === period ? ' is-active' : ''}`,
+          type: 'button',
+          text: period === 'hoje' ? 'Hoje' : period === '7d' ? '7 dias' : '30 dias',
+          onClick: () => { state.salesPeriod = period; refreshView(); },
+        }))),
+        el('div', { className: 'filters' }, ['todos', 'PENDENTE', 'CONFIRMADA', 'CANCELADA'].map((status) => el('button', {
+          className: `chip${state.salesStatus === status ? ' is-active' : ''}`,
+          type: 'button',
+          text: status[0] + status.slice(1).toLowerCase(),
+          onClick: () => { state.salesStatus = status; refreshView(); },
+        }))),
+      ]),
+      el('div', { className: 'table-wrap' }, [
+        state.vendas.length ? el('table', {}, [
+          el('thead', {}, [el('tr', {}, ['ID', 'Data', 'Cliente', 'Itens', 'Total', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('tbody', {}, state.vendas.map((venda) => el('tr', {}, [
+            el('td', { text: String(venda.id_venda).slice(0, 8) }),
+            el('td', { text: formatDate(venda.data_venda) }),
+            el('td', { text: venda.nome_cliente || '—' }),
+            el('td', { text: String(venda.quantidade_itens || 0) }),
+            el('td', { text: money(venda.valor_total_centavos) }),
+            el('td', { text: venda.status_venda }),
+            el('td', {}, venda.status_venda === 'PENDENTE' ? [
+              el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
+              el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
+            ] : [el('span', { className: 'muted', text: '—' })]),
+          ]))),
+        ]) : emptyState('Sem vendas registradas no periodo'),
+      ]),
+    );
+  }
+
+  async function changeSale(id, status) {
+    if (!window.confirm(status === 'CONFIRMADA' ? 'Confirmar esta venda?' : 'Cancelar esta venda?')) return;
+    await request('/api/admin/vendas', { method: 'POST', body: JSON.stringify({ id_venda: id, status_venda: status }) });
+    toast('Venda atualizada.');
+    refreshView();
+  }
+
+  function renderReports() {
+    const reports = state.reports || {};
+    const tabs = [
+      ['visao', 'Visão Geral'],
+      ['vendas', 'Vendas'],
+      ['produtos', 'Produtos'],
+      ['catalogo', 'Catálogo'],
+      ['alteracoes', 'Alterações'],
+      ['auditoria', 'Auditoria'],
+    ];
+    views.reports.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('div', { className: 'tabs' }, tabs.map(([id, label]) => el('button', {
+          className: `chip${state.reportTab === id ? ' is-active' : ''}`,
+          type: 'button',
+          text: label,
+          onClick: () => { state.reportTab = id; renderReports(); },
+        }))),
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => {
+          window.location.href = `/api/admin/relatorios?formato=csv&secao=${state.reportTab === 'produtos' ? 'produtos' : state.reportTab === 'auditoria' ? 'auditoria' : 'vendas'}&periodo=${state.reportPeriod}`;
+        } }),
+      ]),
+      reportBody(reports),
+    );
+  }
+
+  function reportBody(reports) {
+    if (state.reportTab === 'visao') {
+      return el('div', { className: 'cards' }, [
+        metric('Pedidos', reports.visao_geral?.pedidos),
+        metric('Vendas confirmadas', reports.visao_geral?.vendas_confirmadas),
+        metric('Faturamento', money(reports.visao_geral?.faturamento_centavos)),
+        metric('Ticket médio', money(reports.visao_geral?.ticket_medio_centavos)),
+      ]);
+    }
+    if (state.reportTab === 'vendas') {
+      return el('article', { className: 'card' }, [chart(reports.vendas?.por_dia || [], 'faturamento_centavos')]);
+    }
+    if (state.reportTab === 'produtos') {
+      return (reports.produtos || []).length
+        ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Quantidade', 'Receita'], reports.produtos.map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
+        : emptyState('Sem vendas registradas no periodo');
+    }
+    if (state.reportTab === 'catalogo') {
+      const c = reports.catalogo || {};
+      return el('div', { className: 'cards' }, [
+        metric('Ativos', c.produtos_ativos),
+        metric('Inativos', c.produtos_inativos),
+        metric('Destaques', c.destaques),
+        metric('Promoções ativas', c.promocoes_ativas),
+        metric('Sem imagem', c.sem_imagem),
+        metric('Sem preço vigente', c.sem_preco_vigente),
+      ]);
+    }
+    if (state.reportTab === 'alteracoes') {
+      const a = reports.alteracoes || {};
+      return el('div', { className: 'cards' }, [
+        metric('Agendadas', a.agendadas),
+        metric('Aplicadas', a.aplicadas),
+        metric('Canceladas', a.canceladas),
+        metric('Com erro', a.erro),
+      ]);
+    }
+    return el('div', { className: 'table-wrap' }, [
+      (reports.auditoria || []).length
+        ? simpleTable(['Data', 'Ação', 'Entidade', 'Sucesso'], reports.auditoria.map((item) => [formatDate(item.data_evento), item.acao, item.entidade || '—', item.sucesso ? 'Sim' : 'Não']))
+        : emptyState('Nenhum evento de auditoria no período.'),
+    ]);
+  }
+
+  function renderPublications() {
+    const data = state.publicacoes || {};
+    views.publications.replaceChildren(
+      el('div', { className: 'env-grid' }, [
+        el('article', { className: 'card' }, [
+          el('span', { text: 'HOMOLOG' }),
+          el('p', { text: `Git SHA: ${data.homolog?.git_sha || '—'}` }),
+          el('p', { text: `Vercel: ${data.homolog?.vercel_status || '—'}` }),
+          el('p', { text: `Database: ${data.homolog?.database_status || '—'}` }),
+          el('p', { text: `Migrations: ${(data.homolog?.migrations || []).join(', ') || '—'}` }),
+          el('p', { text: `Categorias ativas: ${data.homolog?.categorias_ativas ?? 0}` }),
+          el('p', { text: `Produtos ativos: ${data.homolog?.produtos_ativos ?? 0}` }),
+        ]),
+        el('article', { className: 'card' }, [
+          el('span', { text: 'PRODUÇÃO' }),
+          el('strong', { text: data.producao?.status || 'Aguardando configuração de produção' }),
+        ]),
+      ]),
+      el('div', { className: 'toolbar', style: 'margin-top:16px' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Validar promoção', onClick: validatePromo }),
+        el('button', { className: 'btn btn-primary', type: 'button', text: 'Publicar agora', onClick: publishNow }),
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Agendar publicação', onClick: schedulePublish }),
+      ]),
+      el('article', { className: 'card' }, [
+        el('span', { text: 'Timeline' }),
+        el('p', { className: 'muted', text: 'Criada → Validada → Agendada → Em execução → Publicada/Erro/Bloqueada' }),
+        (data.publicacoes || []).length
+          ? simpleTable(['Tipo', 'Status', 'Agendada', 'Erro'], data.publicacoes.map((item) => [item.tipo_publicacao, item.status_publicacao, formatDate(item.data_agendada), item.mensagem_erro || '—']))
+          : emptyState('Nenhuma publicação registrada.'),
+      ]),
+    );
+  }
+
+  async function validatePromo() {
+    const result = await request('/api/admin/publicacoes', { method: 'POST', body: JSON.stringify({ acao: 'validar' }) });
+    toast(result.motivo || result.status, result.status !== 'ERRO');
+  }
+
+  async function publishNow() {
+    if (!window.confirm('Produção ainda não habilitada. Configure e aprove o ambiente antes de publicar.')) return;
+    try {
+      await request('/api/admin/publicacoes', { method: 'POST', body: JSON.stringify({ acao: 'publicar', tipo_publicacao: 'CATALOGO' }) });
+    } catch (error) {
+      toast(error.payload?.message || 'Produção ainda não habilitada.', false);
+    }
+  }
+
+  async function schedulePublish() {
+    const data = window.prompt('Data (AAAA-MM-DD)');
+    const hora = window.prompt('Hora (HH:mm)');
+    if (!data || !hora) return;
+    await request('/api/admin/publicacoes', {
+      method: 'POST',
+      body: JSON.stringify({ acao: 'agendar', tipo_publicacao: 'CATALOGO', data_agendada: `${data}T${hora}:00-03:00`, observacao: 'Agendamento HML' }),
+    });
+    toast('Publicação agendada.');
+    refreshView();
+  }
+
+  function renderAudit() {
+    views.audit.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => { window.location.href = '/api/admin/auditoria?formato=csv'; } }),
+      ]),
+      el('div', { className: 'table-wrap' }, [
+        state.auditoria.length
+          ? simpleTable(['Data', 'Usuário', 'Ação', 'Entidade', 'Registro', 'Resultado', 'Descrição'], state.auditoria.map((item) => [
+            formatDate(item.data_evento),
+            item.email_usuario || '—',
+            item.acao,
+            item.entidade || '—',
+            item.id_registro ? String(item.id_registro).slice(0, 8) : '—',
+            item.sucesso ? 'Sucesso' : 'Falha',
+            item.descricao_evento || '—',
+          ]))
+          : emptyState('Nenhum evento de auditoria.'),
+      ]),
+    );
+  }
+
+  function renderUsers() {
+    views.users.replaceChildren(
+      el('div', { className: 'toolbar' }, [
+        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo usuário', onClick: () => openUserForm() }),
+      ]),
+      el('div', { className: 'table-wrap' }, [
+        state.usuarios.length ? el('table', {}, [
+          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Ativo', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('tbody', {}, state.usuarios.map((user) => el('tr', {}, [
+            el('td', { text: user.nome_usuario }),
+            el('td', { text: user.email_usuario }),
+            el('td', { text: user.perfil_usuario }),
+            el('td', {}, [badge(user.ativo)]),
+            el('td', { text: formatDate(user.data_ultimo_login) }),
+            el('td', {}, [
+              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }),
+            ]),
+          ]))),
+        ]) : emptyState('Nenhum usuário cadastrado.'),
+      ]),
+    );
   }
 
   function field(id, label, control, full = false) {
-    return el('div', { className: full ? 'field full' : 'field' }, [
-      el('label', { htmlFor: id, text: label }),
-      control,
-    ]);
+    return el('div', { className: full ? 'field full' : 'field' }, [el('label', { htmlFor: id, text: label }), control]);
+  }
+  function input(id, attrs = {}) { return el('input', { id, name: id, ...attrs }); }
+  function checkbox(name, label, checked) {
+    return el('label', {}, [el('input', { type: 'checkbox', name, checked }), document.createTextNode(label)]);
   }
 
-  function input(id, attrs = {}) {
-    return el('input', { id, name: id, ...attrs });
+  function scheduleFields() {
+    return el('div', { className: 'form-grid' }, [
+      field('aplicar', 'Aplicar alteração', el('select', { id: 'aplicar', name: 'aplicar' }, [
+        el('option', { value: 'agora', text: 'Agora' }),
+        el('option', { value: 'agendar', text: 'Agendar' }),
+      ])),
+      field('data_agendada', 'Data', input('data_agendada', { type: 'date' })),
+      field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time' })),
+    ]);
   }
 
   function openCategoryForm(category) {
     state.slugManual = Boolean(category?.slug_categoria);
-    resourceForm.replaceChildren(
-      el('div', { className: 'dialog-body' }, [
-        el('div', { className: 'dialog-header' }, [
-          el('h2', { text: category ? 'Editar categoria' : 'Nova categoria' }),
-          el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', value: 'cancel', onClick: () => formDialog.close() }),
-        ]),
-        el('input', { type: 'hidden', name: 'id_categoria', value: category?.id_categoria || '' }),
-        field('nome', 'Nome *', input('nome', { required: true, value: category?.nome_categoria || '' })),
-        field('slug', 'Slug *', input('slug', { required: true, value: category?.slug_categoria || '' })),
-        field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' })),
-        field('ordem', 'Ordem', input('ordem', { type: 'number', min: '0', value: String(category?.ordem_exibicao ?? 0) })),
-        el('div', { className: 'checkboxes' }, [
-          checkbox('ativo', 'Ativo', category ? category.ativo : true),
-        ]),
-        el('p', { id: 'formError', className: 'form-error', hidden: true }),
-        el('div', { className: 'dialog-actions' }, [
-          el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-          el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-        ]),
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: category ? 'Editar categoria' : 'Nova categoria' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      el('input', { type: 'hidden', name: 'id_categoria', value: category?.id_categoria || '' }),
+      field('nome', 'Nome *', input('nome', { required: true, value: category?.nome_categoria || '' })),
+      field('slug', 'Slug *', input('slug', { required: true, value: category?.slug_categoria || '' })),
+      field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' })),
+      field('ordem', 'Ordem', input('ordem', { type: 'number', min: '0', value: String(category?.ordem_exibicao ?? 0) })),
+      checkbox('ativo', 'Ativo', category ? category.ativo : true),
+      category ? scheduleFields() : null,
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
       ]),
-    );
+    ]));
     resourceForm.descricao.value = category?.descricao_categoria || '';
     bindSlugSync(resourceForm.nome, resourceForm.slug);
     resourceForm.dataset.kind = 'categoria';
@@ -378,82 +626,111 @@
 
   function openProductForm(product) {
     state.slugManual = Boolean(product?.slug_produto);
-    const options = (state.catalog.categorias || []).map((category) => (
-      el('option', {
-        value: category.id_categoria,
-        text: category.nome_categoria,
-        selected: product?.id_categoria === category.id_categoria,
-      })
-    ));
-    resourceForm.replaceChildren(
-      el('div', { className: 'dialog-body' }, [
-        el('div', { className: 'dialog-header' }, [
-          el('h2', { text: product ? 'Editar produto' : 'Novo produto' }),
-          el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() }),
-        ]),
-        el('input', { type: 'hidden', name: 'id_produto', value: product?.id_produto || '' }),
-        el('div', { className: 'form-grid' }, [
-          field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [
-            el('option', { value: '', text: 'Selecione' }),
-            ...options,
-          ]), true),
-          field('nome', 'Nome *', input('nome', { required: true, value: product?.nome_produto || '' }), true),
-          field('slug', 'Slug *', input('slug', { required: true, value: product?.slug_produto || '' })),
-          field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
-          field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' }), true),
-          field('preco_normal', 'Preço normal *', input('preco_normal', { required: true, inputmode: 'decimal', placeholder: '24,90', value: product?.preco_normal || '' })),
-          field('preco_promocional', 'Preço promocional', input('preco_promocional', { inputmode: 'decimal', placeholder: '21,90', value: product?.preco_promocional || '' })),
-          field('url_imagem', 'Imagem principal', input('url_imagem', { placeholder: 'https://... ou assets/...', value: product?.url_imagem_principal || '' }), true),
-        ]),
-        el('img', { id: 'imagePreview', className: 'preview hidden', alt: 'Pré-visualização da imagem' }),
-        el('div', { className: 'checkboxes' }, [
-          checkbox('promocao_ativa', 'Promoção ativa', Boolean(product?.promocao_ativa)),
-          checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
-          checkbox('ativo', 'Ativo', product ? product.ativo : true),
-        ]),
-        el('p', { id: 'formError', className: 'form-error', hidden: true }),
-        el('div', { className: 'dialog-actions' }, [
-          el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-          el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-        ]),
+    state.pendingFile = null;
+    const options = (state.catalog.categorias || []).map((category) => el('option', {
+      value: category.id_categoria,
+      text: category.nome_categoria,
+      selected: product?.id_categoria === category.id_categoria,
+    }));
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: product ? 'Editar produto' : 'Novo produto' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      el('input', { type: 'hidden', name: 'id_produto', value: product?.id_produto || '' }),
+      el('div', { className: 'form-grid' }, [
+        field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [el('option', { value: '', text: 'Selecione' }), ...options]), true),
+        field('nome', 'Nome *', input('nome', { required: true, value: product?.nome_produto || '' }), true),
+        field('slug', 'Slug *', input('slug', { required: true, value: product?.slug_produto || '' })),
+        field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
+        field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' }), true),
+        field('preco_normal', 'Preço normal *', input('preco_normal', { required: true, inputmode: 'decimal', placeholder: '24,90', value: product?.preco_normal || '' })),
+        field('preco_promocional', 'Preço promocional', input('preco_promocional', { inputmode: 'decimal', placeholder: '21,90', value: product?.preco_promocional || '' })),
+        field('origem_imagem', 'Imagem', el('select', { id: 'origem_imagem', name: 'origem_imagem' }, [
+          el('option', { value: 'url', text: 'Informar URL' }),
+          el('option', { value: 'arquivo', text: 'Enviar arquivo' }),
+        ]), true),
+        field('url_imagem', 'URL da imagem', input('url_imagem', { placeholder: 'https://... ou assets/...', value: product?.url_imagem_principal || '' }), true),
+        field('arquivo_imagem', 'Selecionar imagem do computador', input('arquivo_imagem', { type: 'file', accept: 'image/jpeg,image/png,image/webp' }), true),
       ]),
-    );
+      el('img', { id: 'imagePreview', className: 'preview hidden', alt: 'Pré-visualização da imagem' }),
+      el('div', { className: 'checkboxes' }, [
+        checkbox('promocao_ativa', 'Promoção ativa', Boolean(product?.promocao_ativa)),
+        checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
+        checkbox('ativo', 'Ativo', product ? product.ativo : true),
+      ]),
+      product ? scheduleFields() : null,
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
+      ]),
+    ]));
     resourceForm.descricao.value = product?.descricao_produto || '';
     bindSlugSync(resourceForm.nome, resourceForm.slug);
-    bindImagePreview(resourceForm.url_imagem, document.getElementById('imagePreview'));
+    bindImagePreview();
     resourceForm.dataset.kind = 'produto';
     formDialog.showModal();
   }
 
-  function checkbox(name, label, checked) {
-    return el('label', {}, [
-      el('input', { type: 'checkbox', name, checked }),
-      document.createTextNode(label),
-    ]);
+  function openUserForm(user) {
+    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [el('h2', { text: user ? 'Editar usuário' : 'Novo usuário' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
+      el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
+      field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
+      field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
+      field('perfil', 'Perfil', el('select', { id: 'perfil', name: 'perfil' }, [
+        el('option', { value: 'ADMIN', text: 'ADMIN', selected: user?.perfil_usuario !== 'GESTOR' }),
+        el('option', { value: 'GESTOR', text: 'GESTOR', selected: user?.perfil_usuario === 'GESTOR' }),
+      ])),
+      field('senha', user ? 'Nova senha (opcional)' : 'Senha *', input('senha', { type: 'password', required: !user, minlength: '8' })),
+      checkbox('ativo', 'Ativo', user ? user.ativo : true),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
+      ]),
+    ]));
+    resourceForm.dataset.kind = 'usuario';
+    formDialog.showModal();
   }
 
   function bindSlugSync(nameInput, slugInput) {
-    nameInput.addEventListener('input', () => {
-      if (!state.slugManual) slugInput.value = slugFromName(nameInput.value);
-    });
-    slugInput.addEventListener('input', () => {
-      state.slugManual = true;
-    });
+    nameInput.addEventListener('input', () => { if (!state.slugManual) slugInput.value = slugFromName(nameInput.value); });
+    slugInput.addEventListener('input', () => { state.slugManual = true; });
   }
 
-  function bindImagePreview(urlInput, preview) {
-    const update = () => {
+  function bindImagePreview() {
+    const urlInput = resourceForm.url_imagem;
+    const fileInput = resourceForm.arquivo_imagem;
+    const preview = document.getElementById('imagePreview');
+    const updateUrl = () => {
       const url = urlInput.value.trim();
       if (isSafeImageUrl(url)) {
         preview.src = url;
         preview.classList.remove('hidden');
-      } else {
+      } else if (!state.pendingFile) {
         preview.removeAttribute('src');
         preview.classList.add('hidden');
       }
     };
-    urlInput.addEventListener('input', update);
-    update();
+    urlInput.addEventListener('input', updateUrl);
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        formError('Tipo de arquivo não permitido. Use JPEG, PNG ou WebP.');
+        fileInput.value = '';
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        formError('A imagem deve ter no máximo 2 MB.');
+        fileInput.value = '';
+        return;
+      }
+      state.pendingFile = file;
+      preview.src = URL.createObjectURL(file);
+      preview.classList.remove('hidden');
+      resourceForm.origem_imagem.value = 'arquivo';
+    });
+    updateUrl();
   }
 
   function formError(message) {
@@ -464,18 +741,31 @@
   }
 
   async function mutate(recurso, acao, id, dados) {
-    showStatus('');
     try {
-      await request('/api/admin/catalogo', {
-        method: 'POST',
-        body: JSON.stringify({ recurso, acao, id, dados }),
-      });
-      await loadCatalog();
-      showStatus('Alteração salva com sucesso.', true);
+      const result = await request('/api/admin/catalogo', { method: 'POST', body: JSON.stringify({ recurso, acao, id, dados }) });
+      if (result.agendada) toast(`Alteração agendada para ${formatDate(result.alteracao?.data_vigencia)}`);
+      else toast('Alteração salva com sucesso.');
+      await refreshView();
     } catch (error) {
-      showStatus(error.message || 'Não foi possível salvar.');
+      toast(error.message || 'Não foi possível salvar.', false);
       throw error;
     }
+  }
+
+  async function uploadSelectedImage() {
+    const file = state.pendingFile;
+    if (!file) return resourceForm.url_imagem.value.trim();
+    const signed = await request('/api/admin/imagens/upload-url', {
+      method: 'POST',
+      body: JSON.stringify({ nome_arquivo: file.name, tipo_mime: file.type, tamanho_bytes: file.size }),
+    });
+    const put = await fetch(signed.signed_upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type, 'x-upsert': 'true' },
+      body: file,
+    });
+    if (!put.ok) throw new Error('Falha no envio da imagem.');
+    return signed.public_url;
   }
 
   resourceForm.addEventListener('submit', async (event) => {
@@ -491,8 +781,12 @@
           descricao: String(data.get('descricao') || ''),
           ordem: data.get('ordem'),
           ativo: resourceForm.ativo.checked,
+          aplicar: data.get('aplicar') || 'agora',
+          data_agendada: data.get('data_agendada'),
+          hora_agendada: data.get('hora_agendada'),
         });
-      } else {
+      } else if (kind === 'produto') {
+        const url = await uploadSelectedImage();
         await mutate('produto', data.get('id_produto') ? 'editar' : 'criar', data.get('id_produto') || undefined, {
           id_categoria: String(data.get('id_categoria') || ''),
           nome: String(data.get('nome') || ''),
@@ -501,23 +795,39 @@
           preco_normal: String(data.get('preco_normal') || ''),
           preco_promocional: String(data.get('preco_promocional') || ''),
           promocao_ativa: resourceForm.promocao_ativa.checked,
-          url_imagem_principal: String(data.get('url_imagem') || ''),
+          url_imagem_principal: url,
           destaque: resourceForm.destaque.checked,
           ativo: resourceForm.ativo.checked,
           ordem: data.get('ordem'),
+          aplicar: data.get('aplicar') || 'agora',
+          data_agendada: data.get('data_agendada'),
+          hora_agendada: data.get('hora_agendada'),
         });
+      } else if (kind === 'usuario') {
+        const id = data.get('id_usuario_admin');
+        const payload = {
+          nome: String(data.get('nome') || ''),
+          email: String(data.get('email') || ''),
+          perfil: String(data.get('perfil') || 'ADMIN'),
+          ativo: resourceForm.ativo.checked,
+          senha: String(data.get('senha') || ''),
+        };
+        if (id) {
+          await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'editar', id, dados: payload }) });
+          if (payload.senha) {
+            await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'redefinir_senha', id, senha: payload.senha }) });
+          }
+        } else {
+          await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'criar', dados: payload }) });
+        }
+        toast('Usuário salvo.');
+        await refreshView();
       }
       formDialog.close();
     } catch (error) {
       formError(error.message || 'Não foi possível salvar.');
     }
   });
-
-  function render() {
-    renderOverview();
-    renderCategories();
-    renderProducts();
-  }
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -526,32 +836,34 @@
     try {
       await request('/api/admin/login', {
         method: 'POST',
-        body: JSON.stringify({ senha: document.getElementById('adminPassword').value }),
+        body: JSON.stringify({
+          email: document.getElementById('adminEmail').value,
+          senha: document.getElementById('adminPassword').value,
+        }),
       });
       loginForm.reset();
       await showApp();
     } catch (error) {
       loginError.hidden = false;
-      loginError.textContent = error.status === 401
-        ? 'Senha inválida. Tente novamente.'
-        : 'Não foi possível entrar. Tente novamente.';
+      loginError.textContent = error.status === 401 ? 'E-mail ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.';
     } finally {
       loginButton.disabled = false;
     }
   });
 
   logoutButton.addEventListener('click', async () => {
-    try {
-      await request('/api/admin/logout', { method: 'POST' });
-    } catch {
-      // still return to login
-    }
+    try { await request('/api/admin/logout', { method: 'POST' }); } catch { /* still return */ }
     showLogin();
   });
 
   document.querySelectorAll('.nav-btn').forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));
   });
+  menuToggle?.addEventListener('click', () => {
+    adminSidebar.classList.add('is-open');
+    sidebarBackdrop.classList.remove('hidden');
+  });
+  sidebarBackdrop?.addEventListener('click', closeDrawer);
 
   function showLogin() {
     appView.classList.add('hidden');
@@ -559,7 +871,6 @@
   }
 
   async function showApp() {
-    await loadCatalog();
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
     setView(state.view);
@@ -567,6 +878,7 @@
 
   async function boot() {
     try {
+      await request('/api/admin/catalogo');
       await showApp();
     } catch (error) {
       showLogin();

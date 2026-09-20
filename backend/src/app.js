@@ -1,6 +1,21 @@
 import express from 'express';
-import { handleAdminCatalog, handleAdminLogin, handleAdminLogout } from './admin-http.js';
-import { getCatalogPayload } from './catalog.js';
+import {
+  handleAdminAlteracoes,
+  handleAdminAuditoria,
+  handleAdminCatalog,
+  handleAdminLogin,
+  handleAdminLogout,
+  handleAdminPublicacoes,
+  handleAdminRelatorios,
+  handleAdminUploadUrl,
+  handleAdminUsuarios,
+  handleAdminVendas,
+  handleCatalogRevision,
+  handleProcessPublications,
+  handleProcessScheduledChanges,
+  handlePublicCatalog,
+  handlePublicVenda,
+} from './admin-http.js';
 import pool from './database.js';
 import { checkReadiness } from './readiness.js';
 
@@ -12,6 +27,17 @@ app.use(express.json({
   limit: '100kb',
 }));
 
+const deps = {
+  getPool: () => pool,
+  logDatabaseError(scope, error) {
+    console.error(scope, {
+      code: error?.code || 'unknown',
+      name: error?.name || 'Error',
+      message: error?.message || 'unknown error',
+    });
+  },
+};
+
 app.get('/health', (_request, response) => {
   response.set('Cache-Control', 'no-store');
   response.status(200).json({
@@ -20,37 +46,21 @@ app.get('/health', (_request, response) => {
   });
 });
 
-app.get('/api/catalogo', async (_request, response) => {
-  response.set('Cache-Control', 'no-store');
-
-  try {
-    const payload = await getCatalogPayload(pool);
-    response.status(200).json(payload);
-  } catch {
-    response.status(503).json({ error: 'catalog_unavailable' });
-  }
-});
-
-app.post('/api/admin/login', async (request, response) => {
-  await handleAdminLogin(request, response);
-});
-
-app.post('/api/admin/logout', async (request, response) => {
-  await handleAdminLogout(request, response);
-});
-
-app.all('/api/admin/catalogo', async (request, response) => {
-  await handleAdminCatalog(request, response, {
-    getPool: () => pool,
-    logDatabaseError(scope, error) {
-      console.error(scope, {
-        code: error?.code || 'unknown',
-        name: error?.name || 'Error',
-        message: error?.message || 'unknown error',
-      });
-    },
-  });
-});
+app.get('/api/catalogo', (request, response) => handlePublicCatalog(request, response, deps));
+app.get('/api/catalogo/revisao', (request, response) => handleCatalogRevision(request, response, deps));
+app.post('/api/vendas', (request, response) => handlePublicVenda(request, response, deps));
+app.post('/api/admin/login', (request, response) => handleAdminLogin(request, response, deps));
+app.post('/api/admin/logout', (request, response) => handleAdminLogout(request, response, deps));
+app.all('/api/admin/catalogo', (request, response) => handleAdminCatalog(request, response, deps));
+app.all('/api/admin/vendas', (request, response) => handleAdminVendas(request, response, deps));
+app.get('/api/admin/relatorios', (request, response) => handleAdminRelatorios(request, response, deps));
+app.get('/api/admin/auditoria', (request, response) => handleAdminAuditoria(request, response, deps));
+app.all('/api/admin/usuarios', (request, response) => handleAdminUsuarios(request, response, deps));
+app.all('/api/admin/alteracoes-agendadas', (request, response) => handleAdminAlteracoes(request, response, deps));
+app.all('/api/admin/publicacoes', (request, response) => handleAdminPublicacoes(request, response, deps));
+app.post('/api/admin/imagens/upload-url', (request, response) => handleAdminUploadUrl(request, response, deps));
+app.post('/api/interno/processar-alteracoes-agendadas', (request, response) => handleProcessScheduledChanges(request, response, deps));
+app.post('/api/interno/processar-publicacoes', (request, response) => handleProcessPublications(request, response, deps));
 
 app.get('/ready', async (_request, response) => {
   const readiness = await checkReadiness();

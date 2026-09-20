@@ -5,5 +5,15 @@
   "installCommand": "npm install",
   "outputDirectory": ".",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "crons": [
+    {
+      "path": "/api/interno/processar-alteracoes-agendadas",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/interno/processar-publicacoes",
+      "schedule": "5 6 * * *"
+    }
+  ]
 }

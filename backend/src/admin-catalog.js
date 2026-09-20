@@ -410,12 +410,10 @@ export function assembleAdminCatalog({ categories, products, images, prices, now
 }
 
 export async function getAdminCatalog(queryable) {
-  const [categories, products, images, prices] = await Promise.all([
-    queryable.query(SQL.listCategorias),
-    queryable.query(SQL.listProdutos),
-    queryable.query(SQL.listImagens),
-    queryable.query(SQL.listPrecos),
-  ]);
+  const categories = await queryable.query(SQL.listCategorias);
+  const products = await queryable.query(SQL.listProdutos);
+  const images = await queryable.query(SQL.listImagens);
+  const prices = await queryable.query(SQL.listPrecos);
 
   return assembleAdminCatalog({
     categories: categories.rows,

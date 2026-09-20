@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { getCatalogPayload } from '../backend/src/catalog.js';
+import { handlePublicCatalog } from '../backend/src/admin-http.js';
 
 const { Pool } = pg;
 
@@ -68,20 +68,5 @@ export function logDatabaseError(scope, error) {
 }
 
 export default async function handler(request, response) {
-  response.setHeader('Cache-Control', 'no-store');
-
-  if (request.method !== 'GET') {
-    response.status(405).json({ error: 'method_not_allowed' });
-    return;
-  }
-
-  try {
-    const payload = await getCatalogPayload(getPool());
-    response.status(200).json(payload);
-  } catch (error) {
-    logDatabaseError('[catalog-api] database request failed', error);
-    response.status(503).json({
-      error: 'catalog_unavailable',
-    });
-  }
+  await handlePublicCatalog(request, response, { getPool, logDatabaseError });
 }

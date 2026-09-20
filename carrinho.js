@@ -19,6 +19,10 @@
     itemsList: document.getElementById('cartItemsList'),
     subtotalValue: document.getElementById('cartSubtotalValue'),
     clearBtn: document.getElementById('clearCartBtn'),
+    checkoutBtn: document.getElementById('checkoutBtn'),
+    checkoutName: document.getElementById('checkoutName'),
+    checkoutPhone: document.getElementById('checkoutPhone'),
+    checkoutMessage: document.getElementById('checkoutMessage'),
     liveRegion: document.getElementById('cartLiveRegion'),
   };
 
@@ -293,6 +297,61 @@
     els.emptyTitle?.focus();
   });
 
+  function cartIdempotencyKey() {
+    const items = Cart.getCartItems().map((item) => `${item.productId}:${item.quantity}`).join('|');
+    const storageKey = 'amanteigadosLivia.orderKey.' + items;
+    try {
+      const existing = sessionStorage.getItem(storageKey);
+      if (existing) return existing;
+      const created = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, created);
+      return created;
+    } catch {
+      return crypto.randomUUID();
+    }
+  }
+
+  els.checkoutBtn?.addEventListener('click', async () => {
+    const items = Cart.getCartItems();
+    if (!items.length) return;
+    els.checkoutBtn.disabled = true;
+    if (els.checkoutMessage) els.checkoutMessage.hidden = true;
+    try {
+      const payload = {
+        chave_idempotencia: cartIdempotencyKey(),
+        nome_cliente: els.checkoutName?.value?.trim() || null,
+        telefone_cliente: els.checkoutPhone?.value?.trim() || null,
+        itens: items.map((item) => ({
+          id_produto: item.productId,
+          quantidade: item.quantity,
+        })),
+      };
+      const response = await fetch('/api/vendas', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || 'Não foi possível registrar o pedido.');
+      }
+      if (els.checkoutMessage) {
+        els.checkoutMessage.hidden = false;
+        els.checkoutMessage.textContent = data?.duplicated
+          ? 'Este pedido já havia sido registrado.'
+          : 'Pedido registrado. Entraremos em contato para confirmar.';
+      }
+      announce('Pedido registrado.');
+    } catch (error) {
+      if (els.checkoutMessage) {
+        els.checkoutMessage.hidden = false;
+        els.checkoutMessage.textContent = error.message || 'Não foi possível registrar o pedido.';
+      }
+    } finally {
+      els.checkoutBtn.disabled = false;
+    }
+  });
+
   // ===================== INICIALIZAÇÃO =====================
   Cart.loadCart();
   updateCartBadges();
@@ -313,4 +372,9 @@
   }
 
   bootCart();
+
+  window.addEventListener('amanteigados:catalogo-atualizado', () => {
+    renderCart();
+    updateCartBadges();
+  });
 })();

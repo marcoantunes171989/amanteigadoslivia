@@ -62,6 +62,7 @@
     applyCatalogSource(data);
     if (typeof window !== 'undefined') {
       window.CATALOG_DATA = data;
+      window.dispatchEvent(new CustomEvent('amanteigados:catalogo-atualizado', { detail: CATALOG_SOURCE }));
     }
     return CATALOG_SOURCE;
   }
