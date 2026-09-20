@@ -135,6 +135,7 @@ a{ color:inherit; text-decoration:none; }
   position:sticky; top:0; z-index:60;
   display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px;
   min-height:var(--header-h);
+  height:var(--header-h);
   padding:6px var(--pad);
   background:rgba(255,253,252,.94);
   border-bottom:1px solid rgba(231,221,211,.55);
@@ -142,17 +143,17 @@ a{ color:inherit; text-decoration:none; }
   transition: min-height .22s ease, padding .22s ease, box-shadow .22s ease;
 }
 .site-header.is-compact{ --header-h: 72px; padding:4px var(--pad); box-shadow:0 1px 8px rgba(74,46,42,.08); }
-.brand{ width:66px; height:66px; flex:0 0 auto; transition:width .22s ease, height .22s ease; }
+.brand{ grid-column:1; grid-row:1; width:66px; height:66px; flex:0 0 auto; transition:width .22s ease, height .22s ease; }
 .site-header.is-compact .brand{ width:58px; height:58px; }
 .nav-backdrop{ display:none; }
 .brand img{ width:100%; height:100%; border-radius:50%; object-fit:contain; background:var(--surface); box-shadow:0 5px 16px rgba(57,38,26,.14); }
-.nav{ grid-column:2; justify-self:center; display:flex; align-items:center; gap:clamp(12px,1.5vw,28px); font-family:var(--sans); font-size:15px; font-weight:500; line-height:1.25; }
+.nav{ grid-column:2; grid-row:1; justify-self:center; display:flex; align-items:center; flex-wrap:nowrap; gap:clamp(12px,1.5vw,28px); font-family:var(--sans); font-size:15px; font-weight:500; line-height:1.25; }
 .nav a{ position:relative; font-family:inherit; font-size:inherit; font-weight:inherit; line-height:inherit; letter-spacing:.01em; white-space:nowrap; color:var(--text); padding:8px 2px; min-height:44px; display:inline-flex; align-items:center; transition:color .18s; }
 .nav a:hover{ color:var(--primary); }
 .nav a.active{ color:var(--primary); }
 .nav a.active::after{ content:""; position:absolute; left:0; right:0; bottom:-3px; height:1.5px; background:var(--primary); border-radius:2px; }
 .nav a:focus-visible{ outline:2px solid var(--primary); outline-offset:3px; border-radius:4px; }
-.header-actions{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; position:relative; z-index:80; }
+.header-actions{ grid-column:3; grid-row:1; justify-self:end; display:flex; align-items:center; gap:10px; position:relative; z-index:80; }
 .order-btn{ height:44px; }
 .order-btn .ico{ font-size:1.2em; }
 .mobile-cardapio{
