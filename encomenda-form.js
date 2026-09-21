@@ -1,6 +1,5 @@
 import {
   buildEncomendaWhatsAppMessage,
-  isMobileWhatsAppClient,
   isSimpleEmail,
   maskBrDateInput,
   maskWhatsAppPtBr,
@@ -9,6 +8,7 @@ import {
   QUANTIDADE_MINIMA_DEFAULT,
 } from './ui-core.js';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from './backend/src/whatsapp.js';
+import { openWhatsAppUrl } from './cart-checkout.js';
 
 (function () {
   const form = document.getElementById('encomendaForm');
@@ -93,16 +93,6 @@ import { buildWhatsAppUrl, normalizeWhatsAppPhone } from './backend/src/whatsapp
     }
     if (!String(descricao.value || '').trim()) errors.descricao = 'Conte-nos o que deseja.';
     return errors;
-  }
-
-  function openWhatsApp(url) {
-    const mobile = isMobileWhatsAppClient(navigator.userAgent);
-    if (mobile) {
-      window.location.assign(url);
-      return;
-    }
-    const popup = window.open(url, '_blank', 'noopener');
-    if (!popup) window.location.assign(url);
   }
 
   function markSent(id) {
@@ -256,7 +246,7 @@ import { buildWhatsAppUrl, normalizeWhatsAppPhone } from './backend/src/whatsapp
       }
       setLive('Solicitação enviada.');
       submit.textContent = 'Solicitação enviada';
-      openWhatsApp(url);
+      openWhatsAppUrl(url, { win: window, userAgent: navigator.userAgent });
     } catch {
       showError('descricao', 'Não foi possível enviar a solicitação agora. Tente novamente.');
       setLive('Não foi possível enviar a solicitação agora. Tente novamente.');

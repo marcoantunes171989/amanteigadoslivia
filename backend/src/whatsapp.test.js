@@ -337,3 +337,52 @@ test('openWhatsAppUrl: mobile navega direto; desktop abre aba e cai para assign 
   assert.equal(openWhatsAppUrl(url, { win: blocked, userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }), 'assign');
   assert.deepEqual(blocked.assigned, [url]);
 });
+
+test('openWhatsAppUrl (encomenda): desktop com popup não navega a aba atual e zera opener', () => {
+  const url = 'https://wa.me/5518988887777?text=oi';
+  const popup = { opener: 'pagina-original' };
+  const calls = { open: [], assign: [] };
+  const win = {
+    location: { assign(u) { calls.assign.push(u); } },
+    open(...args) { calls.open.push(args); return popup; },
+  };
+  assert.equal(openWhatsAppUrl(url, { win, userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }), 'open');
+  assert.deepEqual(calls.open, [[url, '_blank']]); // sem feature 'noopener' (impediria detectar bloqueio)
+  assert.deepEqual(calls.assign, []);
+  assert.equal(popup.opener, null);
+});
+
+test('openWhatsAppUrl (encomenda): popup bloqueado navega uma única vez na aba atual', () => {
+  const url = 'https://wa.me/5518988887777?text=oi';
+  const calls = { open: 0, assign: [] };
+  const win = {
+    location: { assign(u) { calls.assign.push(u); } },
+    open() { calls.open += 1; return null; },
+  };
+  assert.equal(openWhatsAppUrl(url, { win, userAgent: 'Mozilla/5.0 (Macintosh)' }), 'assign');
+  assert.equal(calls.open, 1);
+  assert.deepEqual(calls.assign, [url]);
+});
+
+test('openWhatsAppUrl (encomenda): mobile só faz location.assign, sem window.open', () => {
+  const url = 'https://wa.me/5518988887777?text=oi';
+  const calls = { open: 0, assign: [] };
+  const win = {
+    location: { assign(u) { calls.assign.push(u); } },
+    open() { calls.open += 1; return {}; },
+  };
+  assert.equal(openWhatsAppUrl(url, { win, userAgent: 'Mozilla/5.0 (Linux; Android 14) Mobile' }), 'assign');
+  assert.equal(calls.open, 0);
+  assert.deepEqual(calls.assign, [url]);
+});
+
+test('openWhatsAppUrl: window.open que lança erro cai para location.assign uma vez', () => {
+  const url = 'https://wa.me/5518988887777?text=oi';
+  const assigned = [];
+  const win = {
+    location: { assign(u) { assigned.push(u); } },
+    open() { throw new Error('bloqueado'); },
+  };
+  assert.equal(openWhatsAppUrl(url, { win, userAgent: 'Mozilla/5.0 (Windows NT 10.0)' }), 'assign');
+  assert.deepEqual(assigned, [url]);
+});

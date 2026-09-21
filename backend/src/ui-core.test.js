@@ -349,3 +349,19 @@ test('carrinho.js: checkout único, sem alert(), sem número hardcoded, WhatsApp
   assert.match(css, /\.required-mark\s*\{[^}]*var\(--error\)/);
   assert.match(css, /\.cart-summary\s*\{\s*position:\s*static;/);
 });
+
+test('encomenda-form reutiliza openWhatsAppUrl e não usa window.open com noopener', () => {
+  const js = readFileSync(new URL('../../encomenda-form.js', import.meta.url), 'utf8');
+  assert.ok(js.includes("import { openWhatsAppUrl } from './cart-checkout.js'"));
+  assert.ok(js.includes('openWhatsAppUrl(url, { win: window, userAgent: navigator.userAgent })'));
+  assert.ok(!js.includes('window.open('));
+  assert.doesNotMatch(js, /noopener/);
+});
+
+test('npm run build cobre cart-checkout.js e encomenda-form.js', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  const files = pkg.scripts.build.split(' ');
+  assert.ok(files.includes('cart-checkout.js'));
+  assert.ok(files.includes('encomenda-form.js'));
+  assert.ok(!files.some((file) => /gerar-reset-admin/.test(file)));
+});

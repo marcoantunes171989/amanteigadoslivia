@@ -13,6 +13,10 @@ node_modules/
 .env.*
 !.env.example
 
+# Temporary admin recovery files (must stay outside git)
+admin-recovery-hml.sql
+admin-recovery-hml.status.json
+
 # Logs
 *.log
 logs/
