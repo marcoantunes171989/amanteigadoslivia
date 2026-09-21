@@ -1,13 +1,192 @@
 import { randomUUID } from 'node:crypto';
 import { AdminError } from './admin-errors.js';
+import { isRootSuperAdmin } from './admin-users.js';
 
-export function isProdPromotionEnabled() {
-  return String(process.env.PROMOCAO_PROD_HABILITADA || '').toLowerCase() === 'true';
+export const PROD_PUBLISH_CONFIRMATION = 'PUBLICAR PRODUCAO';
+export const BLOCK_REASON = 'Credenciais/ambiente de produção ainda não habilitados.';
+
+const CHECK = Object.freeze({
+  PASS: 'PASS',
+  WARN: 'WARN',
+  BLOCK: 'BLOCK',
+});
+
+function envFlag(name) {
+  return String(process.env[name] || '').trim();
 }
 
-const BLOCK_REASON = 'Credenciais/ambiente de produção ainda não habilitados.';
+function envEnabled(name) {
+  return envFlag(name).toLowerCase() === 'true';
+}
 
-export async function getPublicationStatus(queryable) {
+function envPresent(name) {
+  return envFlag(name).length > 0;
+}
+
+export function isProdPromotionEnabled() {
+  return envEnabled('PROMOCAO_PROD_HABILITADA');
+}
+
+export function currentHomologSha() {
+  return envFlag('VERCEL_GIT_COMMIT_SHA') || envFlag('GIT_SHA') || null;
+}
+
+export function releaseConfigPresence() {
+  return {
+    promocao_habilitada: isProdPromotionEnabled(),
+    vercel_release_token: envPresent('VERCEL_RELEASE_TOKEN'),
+    vercel_team_id: envPresent('VERCEL_TEAM_ID'),
+    vercel_prod_project_id: envPresent('VERCEL_PROD_PROJECT_ID'),
+    vercel_prod_project_name: envPresent('VERCEL_PROD_PROJECT_NAME'),
+  };
+}
+
+export function isReleaseConfigured(presence = releaseConfigPresence()) {
+  return presence.vercel_release_token
+    && presence.vercel_team_id
+    && (presence.vercel_prod_project_id || presence.vercel_prod_project_name);
+}
+
+function check(id, status, mensagem) {
+  return { id, status, mensagem };
+}
+
+function overallStatus(checks) {
+  if (checks.some((item) => item.status === CHECK.BLOCK)) return 'BLOQUEADA';
+  return 'VALIDADA';
+}
+
+function sessionActor(session = {}) {
+  return {
+    id_usuario_admin: session.id_usuario_admin || null,
+    perfil: session.perfil || session.perfil_usuario || null,
+    protegido: session.protegido === true,
+    nome_usuario: session.nome_usuario || null,
+  };
+}
+
+export function canPromoteProduction(session) {
+  return isRootSuperAdmin(sessionActor(session));
+}
+
+export function evaluatePromotionChecks(options = {}) {
+  const session = sessionActor(options.session);
+  const requireConfirmation = options.requireConfirmation === true;
+  const requestedSha = options.requestedSha ? String(options.requestedSha).trim() : '';
+  const homologSha = currentHomologSha();
+  const presence = releaseConfigPresence();
+  const prodDatabaseReady = options.prodDatabaseReady === true;
+  const prodEnvReady = options.prodEnvReady === true;
+  const checks = [];
+
+  if (session.id_usuario_admin) {
+    checks.push(check('session', CHECK.PASS, 'Sessão administrativa autenticada.'));
+  } else {
+    checks.push(check('session', CHECK.BLOCK, 'Sessão administrativa ausente.'));
+  }
+
+  if (canPromoteProduction(session)) {
+    checks.push(check('perfil', CHECK.PASS, 'Usuário ROOT SUPER_ADMIN protegido autorizado.'));
+  } else if (String(session.perfil || '').toUpperCase() === 'SUPER_ADMIN') {
+    checks.push(check('perfil', CHECK.BLOCK, 'SUPER_ADMIN não protegido não pode promover produção.'));
+  } else if (session.perfil) {
+    checks.push(check('perfil', CHECK.BLOCK, 'Usuário sem permissão para atualizar produção.'));
+  } else {
+    checks.push(check('perfil', CHECK.BLOCK, 'Perfil administrativo desconhecido.'));
+  }
+
+  if (envPresent('VERCEL') || envFlag('VERCEL_ENV')) {
+    checks.push(check('ambiente', CHECK.PASS, 'Ambiente de homologação identificado.'));
+  } else {
+    checks.push(check('ambiente', CHECK.WARN, 'Execução fora da homologação publicada.'));
+  }
+
+  if (presence.promocao_habilitada) {
+    checks.push(check('feature_flag', CHECK.PASS, 'Promoção de produção habilitada.'));
+  } else {
+    checks.push(check('feature_flag', CHECK.BLOCK, 'Promoção de produção desabilitada.'));
+  }
+
+  if (!homologSha) {
+    checks.push(check('git_sha', CHECK.BLOCK, 'SHA de homologação ausente.'));
+  } else if (requireConfirmation && !requestedSha) {
+    checks.push(check('git_sha', CHECK.BLOCK, 'SHA solicitado ausente. Informe o SHA exato da homologação validada.'));
+  } else if (requestedSha && requestedSha !== homologSha) {
+    checks.push(check('git_sha', CHECK.BLOCK, 'SHA divergente da homologação atual. Exija nova validação.'));
+  } else {
+    checks.push(check('git_sha', CHECK.PASS, `SHA de homologação ${homologSha}.`));
+  }
+
+  if (presence.vercel_release_token) {
+    checks.push(check('release_token', CHECK.PASS, 'Token de release configurado.'));
+  } else {
+    checks.push(check('release_token', CHECK.BLOCK, 'Release token ausente.'));
+  }
+
+  if (isReleaseConfigured(presence)) {
+    checks.push(check('release_config', CHECK.PASS, 'Mecanismo de release configurado.'));
+  } else {
+    checks.push(check('release_config', CHECK.BLOCK, 'Projeto Vercel PROD não configurado.'));
+  }
+
+  if (prodEnvReady) {
+    checks.push(check('prod_env', CHECK.PASS, 'Parâmetros de produção evidenciados.'));
+  } else {
+    checks.push(check('prod_env', CHECK.BLOCK, 'Env PROD incompleto.'));
+  }
+
+  if (prodDatabaseReady) {
+    checks.push(check('prod_database', CHECK.PASS, 'Banco PROD evidenciado como preparado.'));
+  } else {
+    checks.push(check('prod_database', CHECK.BLOCK, 'Banco PROD não preparado.'));
+  }
+
+  if (requireConfirmation) {
+    if (String(options.confirmacao || '') === PROD_PUBLISH_CONFIRMATION) {
+      checks.push(check('confirmacao', CHECK.PASS, 'Confirmação textual aceita.'));
+    } else if (options.confirmacao == null || options.confirmacao === '') {
+      checks.push(check('confirmacao', CHECK.BLOCK, 'Confirmação ausente. Digite PUBLICAR PRODUCAO.'));
+    } else {
+      checks.push(check('confirmacao', CHECK.BLOCK, 'Confirmação inválida. Digite PUBLICAR PRODUCAO.'));
+    }
+  }
+
+  const status = overallStatus(checks);
+  const bloqueios = checks.filter((item) => item.status === CHECK.BLOCK).map((item) => item.mensagem);
+  return {
+    status,
+    motivo: status === 'BLOQUEADA' ? (bloqueios[0] || BLOCK_REASON) : null,
+    git_sha: homologSha,
+    checks,
+    bloqueios,
+  };
+}
+
+export function validatePromotionDryRun(options = {}) {
+  return evaluatePromotionChecks({ ...options, requireConfirmation: false });
+}
+
+export function productionReadiness(options = {}) {
+  const evaluation = evaluatePromotionChecks(options);
+  const presence = releaseConfigPresence();
+  const habilitada = presence.promocao_habilitada;
+  const releaseConfigurada = isReleaseConfigured(presence);
+  const pronta = habilitada && releaseConfigurada && evaluation.status === 'VALIDADA';
+  return {
+    status: habilitada && pronta ? 'Online' : 'Produção não habilitada',
+    badge: pronta ? 'ONLINE' : 'BLOQUEADA',
+    habilitada,
+    release_configurada: releaseConfigurada,
+    pronta,
+    git_sha: null,
+    mensagem: pronta
+      ? 'Produção pronta para promoção controlada.'
+      : 'Prepare o ambiente de produção antes de liberar a promoção.',
+    bloqueios: evaluation.bloqueios,
+  };
+}
+
+export async function getPublicationStatus(queryable, options = {}) {
   const [migrations, categorias, produtos, lastCatalog] = await sequentialQueries(queryable, [
     [`SELECT 1`, []],
     [`SELECT count(*) FILTER (WHERE ativo = true)::int AS total FROM app.tab_categoria`, []],
@@ -40,9 +219,10 @@ export async function getPublicationStatus(queryable) {
     `,
   );
 
+  const producao = productionReadiness(options);
   return {
     homolog: {
-      git_sha: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_SHA || null,
+      git_sha: currentHomologSha(),
       vercel_status: process.env.VERCEL ? 'conectado' : 'local',
       database_status: 'conectado',
       migrations: migrationsAplicadas,
@@ -50,9 +230,9 @@ export async function getPublicationStatus(queryable) {
       produtos_ativos: produtos.rows[0]?.total ?? 0,
       ultima_alteracao_catalogo: lastCatalog.rows[0]?.ultima_alteracao || null,
     },
-    producao: {
-      status: 'Aguardando configuração de produção',
-      habilitada: isProdPromotionEnabled(),
+    producao,
+    permissoes: {
+      pode_atualizar_producao: canPromoteProduction(options.session),
     },
     publicacoes: publicacoes.rows,
   };
@@ -66,41 +246,31 @@ async function sequentialQueries(queryable, items) {
   return out;
 }
 
-export function validatePromotionDryRun() {
-  if (!isProdPromotionEnabled()) {
-    return {
-      status: 'BLOQUEADA',
-      motivo: BLOCK_REASON,
-    };
+function parseResumo(value) {
+  if (value && typeof value === 'object') return value;
+  if (typeof value !== 'string' || !value) return {};
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
   }
+}
+
+function publicacaoResumo(dados = {}, extra = {}) {
   return {
-    status: 'VALIDADA',
-    motivo: null,
+    observacao: dados.observacao || null,
+    acao: dados.acao || 'registrar',
+    ...extra,
   };
 }
 
-export async function createPublicacao(queryable, dados = {}, session = {}) {
+async function insertPublicacao(queryable, dados = {}, session = {}, extra = {}) {
   const tipo = String(dados.tipo_publicacao || dados.tipo || 'CATALOGO').toUpperCase();
   if (!['CATALOGO', 'ESTRUTURA', 'COMPLETA'].includes(tipo)) {
     throw new AdminError(400, 'validation_error', 'Tipo de publicação inválido.');
   }
   if (!session.id_usuario_admin) {
     throw new AdminError(400, 'validation_error', 'Usuário é obrigatório.');
-  }
-
-  let status = 'RASCUNHO';
-  let mensagem = null;
-  if (dados.acao === 'validar') {
-    const dryRun = validatePromotionDryRun();
-    status = dryRun.status;
-    mensagem = dryRun.motivo;
-  } else if (dados.acao === 'publicar') {
-    if (!isProdPromotionEnabled()) {
-      throw new AdminError(409, 'production_not_enabled', 'Produção ainda não habilitada. Configure e aprove o ambiente antes de publicar.');
-    }
-  } else if (dados.acao === 'agendar') {
-    status = 'AGENDADA';
-    mensagem = isProdPromotionEnabled() ? null : BLOCK_REASON;
   }
 
   const result = await queryable.query(
@@ -116,14 +286,154 @@ export async function createPublicacao(queryable, dados = {}, session = {}) {
       randomUUID(),
       session.id_usuario_admin,
       tipo,
-      process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_SHA || null,
-      status,
+      extra.git_sha || currentHomologSha(),
+      extra.status || 'RASCUNHO',
       dados.data_agendada || null,
-      JSON.stringify({ observacao: dados.observacao || null, acao: dados.acao || 'registrar' }),
-      mensagem,
+      JSON.stringify(publicacaoResumo(dados, {
+        nome_usuario: session.nome_usuario || null,
+        checks: extra.checks || null,
+        requested_sha: dados.git_sha || null,
+      })),
+      extra.mensagem || null,
     ],
   );
   return result.rows[0];
+}
+
+export async function createPublicacao(queryable, dados = {}, session = {}) {
+  const tipo = String(dados.tipo_publicacao || dados.tipo || 'CATALOGO').toUpperCase();
+  if (!['CATALOGO', 'ESTRUTURA', 'COMPLETA'].includes(tipo)) {
+    throw new AdminError(400, 'validation_error', 'Tipo de publicação inválido.');
+  }
+  if (!session.id_usuario_admin) {
+    throw new AdminError(400, 'validation_error', 'Usuário é obrigatório.');
+  }
+
+  let status = 'RASCUNHO';
+  let mensagem = null;
+  let checks = null;
+  if (dados.acao === 'validar') {
+    const dryRun = validatePromotionDryRun({ session, requestedSha: dados.git_sha });
+    status = dryRun.status;
+    mensagem = dryRun.motivo;
+    checks = dryRun.checks;
+  } else if (dados.acao === 'publicar') {
+    const promotion = await promoteToProduction(queryable, dados, session);
+    return promotion.publicacao;
+  } else if (dados.acao === 'agendar') {
+    status = 'AGENDADA';
+    mensagem = isProdPromotionEnabled() ? null : BLOCK_REASON;
+  }
+
+  return insertPublicacao(queryable, dados, session, { status, mensagem, checks });
+}
+
+async function callVercelProductionRelease({ sha, vercelReleaseClient }) {
+  if (typeof vercelReleaseClient !== 'function') {
+    throw new AdminError(409, 'release_not_configured', 'Orquestração de produção não configurada.');
+  }
+  return vercelReleaseClient({ sha, target: 'production' });
+}
+
+export async function promoteToProduction(queryable, dados = {}, session = {}, deps = {}) {
+  if (!canPromoteProduction(session)) {
+    const evaluation = evaluatePromotionChecks({
+      session,
+      requestedSha: dados.git_sha,
+      confirmacao: dados.confirmacao,
+      requireConfirmation: true,
+      prodDatabaseReady: deps.prodDatabaseReady,
+      prodEnvReady: deps.prodEnvReady,
+    });
+    const publicacao = session.id_usuario_admin
+      ? await insertPublicacao(queryable, dados, session, {
+        status: 'BLOQUEADA',
+        mensagem: evaluation.motivo || 'Usuário sem permissão.',
+        checks: evaluation.checks,
+        git_sha: evaluation.git_sha,
+      }).catch(() => null)
+      : null;
+    return {
+      ok: false,
+      httpStatus: 403,
+      error: 'forbidden',
+      status: 'BLOQUEADA',
+      mensagem: 'Usuário sem permissão para atualizar produção.',
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: false,
+    };
+  }
+
+  const evaluation = evaluatePromotionChecks({
+    session,
+    requestedSha: dados.git_sha,
+    confirmacao: dados.confirmacao,
+    requireConfirmation: true,
+    prodDatabaseReady: deps.prodDatabaseReady,
+    prodEnvReady: deps.prodEnvReady,
+  });
+
+  if (evaluation.status !== 'VALIDADA') {
+    const publicacao = await insertPublicacao(queryable, dados, session, {
+      status: 'BLOQUEADA',
+      mensagem: evaluation.motivo,
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+    }).catch(() => null);
+    return {
+      ok: false,
+      httpStatus: 409,
+      error: evaluation.checks.some((item) => item.id === 'feature_flag' && item.status === CHECK.BLOCK)
+        ? 'production_not_enabled'
+        : 'promotion_blocked',
+      status: 'BLOQUEADA',
+      mensagem: evaluation.motivo,
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: false,
+    };
+  }
+
+  if (typeof deps.vercelReleaseClient !== 'function') {
+    const publicacao = await insertPublicacao(queryable, dados, session, {
+      status: 'BLOQUEADA',
+      mensagem: 'Orquestração de produção não configurada.',
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+    }).catch(() => null);
+    return {
+      ok: false,
+      httpStatus: 409,
+      error: 'release_not_configured',
+      status: 'BLOQUEADA',
+      mensagem: 'Orquestração de produção não configurada.',
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: false,
+    };
+  }
+
+  await callVercelProductionRelease({
+    sha: evaluation.git_sha,
+    vercelReleaseClient: deps.vercelReleaseClient,
+  });
+
+  const publicacao = await insertPublicacao(queryable, dados, session, {
+    status: 'PUBLICADA',
+    mensagem: null,
+    checks: evaluation.checks,
+    git_sha: evaluation.git_sha,
+  });
+
+  return {
+    ok: true,
+    httpStatus: 200,
+    status: 'PUBLICADA',
+    checks: evaluation.checks,
+    publicacao,
+    vercelCalled: true,
+  };
 }
 
 export async function processDuePublications(pool, now = new Date()) {
@@ -160,4 +470,8 @@ export async function processDuePublications(pool, now = new Date()) {
     blocked: due.rows.length,
     note: 'production_not_enabled',
   };
+}
+
+export function parsePublicacaoResumo(row) {
+  return parseResumo(row?.resumo_json);
 }

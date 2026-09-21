@@ -17,6 +17,14 @@ import {
   sessionInitials,
   shouldCloseDialogOnBackdrop,
   truncateEmail,
+  canRequestProductionPromotion,
+  canEnableProductionUpdateButton,
+  collapsedUserMenuExposes,
+  createUserMenuController,
+  isProdPublishConfirmation,
+  publicationBadgeClass,
+  publicationStatusLabel,
+  shortGitSha,
 } from '../../admin-session-ui.js';
 
 test('sessao 200 abre o painel e 401 vai para login', () => {
@@ -81,4 +89,68 @@ test('status amigaveis e fechamento de dialog', () => {
   assert.equal(shouldCloseDialogOnBackdrop(false), true);
   assert.equal(shouldCloseDialogOnBackdrop(true), false);
   assert.equal(DIALOG_CLOSE_LABEL, 'Fechar');
+});
+
+test('menu do usuario inicia fechado, mostra so o nome e faz toggle', () => {
+  const menu = createUserMenuController();
+  const collapsed = collapsedUserMenuExposes();
+  assert.equal(menu.isOpen(), false);
+  assert.equal(collapsed.name, true);
+  assert.equal(collapsed.email, false);
+  assert.equal(collapsed.role, false);
+  assert.equal(collapsed.avatar, false);
+  assert.equal(collapsed.sair, false);
+  assert.equal(collapsed.protegido, false);
+  assert.equal(sessionDisplayName({ nome_usuario: 'Marco Antônio' }), 'Marco Antônio');
+
+  assert.equal(menu.handleTriggerClick(), true);
+  assert.equal(menu.isOpen(), true);
+  assert.equal(menu.handleTriggerClick(), false);
+  assert.equal(menu.isOpen(), false);
+
+  menu.handleTriggerClick();
+  menu.handleDocumentClick({ insideTrigger: false, insideMenu: false });
+  assert.equal(menu.isOpen(), false);
+
+  menu.handleTriggerClick();
+  menu.handleDocumentClick({ insideTrigger: true, insideMenu: false });
+  assert.equal(menu.isOpen(), true);
+  menu.handleDocumentClick({ insideTrigger: false, insideMenu: true });
+  assert.equal(menu.isOpen(), true);
+
+  const escape = menu.handleEscape();
+  assert.equal(menu.isOpen(), false);
+  assert.equal(escape.closed, true);
+  assert.equal(escape.restoreFocus, true);
+
+  menu.handleTriggerClick();
+  let loggedOut = false;
+  menu.handleLogout(() => { loggedOut = true; });
+  assert.equal(menu.isOpen(), false);
+  assert.equal(loggedOut, true);
+
+  menu.handleTriggerClick();
+  menu.handleNavigate();
+  assert.equal(menu.isOpen(), false);
+  menu.handleTriggerClick();
+  menu.handleDrawerOpen();
+  assert.equal(menu.isOpen(), false);
+});
+
+test('somente ROOT SUPER_ADMIN protegido habilita o gate de producao', () => {
+  assert.equal(canRequestProductionPromotion({ perfil: 'ADMIN' }), false);
+  assert.equal(canRequestProductionPromotion({ perfil: 'GESTOR' }), false);
+  assert.equal(canRequestProductionPromotion({ perfil: 'SUPER_ADMIN', protegido: false }), false);
+  assert.equal(canRequestProductionPromotion({ perfil: 'SUPER_ADMIN', protegido: true }), true);
+  assert.equal(canEnableProductionUpdateButton({
+    session: { perfil: 'SUPER_ADMIN', protegido: true },
+    producao: { habilitada: false, release_configurada: false, pronta: false },
+    dryRunStatus: 'BLOQUEADA',
+  }), false);
+  assert.equal(isProdPublishConfirmation('PUBLICAR PRODUCAO'), true);
+  assert.equal(isProdPublishConfirmation('publicar producao'), false);
+  assert.equal(isProdPublishConfirmation(''), false);
+  assert.equal(publicationStatusLabel('EM_EXECUCAO'), 'EM EXECUÇÃO');
+  assert.equal(publicationBadgeClass('BLOQUEADA'), 'badge-off');
+  assert.equal(shortGitSha('89d0a9152a2604d71e5898040fb95b5783e5e3d0'), '89d0a9152a26');
 });

@@ -131,3 +131,92 @@ export function saleStatusBadgeClass(status) {
   if (value === 'CANCELADA') return 'badge-off';
   return 'badge-warn';
 }
+
+export const PROD_PUBLISH_CONFIRMATION = 'PUBLICAR PRODUCAO';
+
+export function isProdPublishConfirmation(value) {
+  return String(value || '') === PROD_PUBLISH_CONFIRMATION;
+}
+
+export function canRequestProductionPromotion(session) {
+  const perfil = String(session?.perfil || session?.perfil_usuario || '').trim().toUpperCase();
+  return perfil === 'SUPER_ADMIN' && session?.protegido === true;
+}
+
+export function canEnableProductionUpdateButton({ session, producao, dryRunStatus } = {}) {
+  return canRequestProductionPromotion(session)
+    && producao?.habilitada === true
+    && producao?.release_configurada === true
+    && producao?.pronta === true
+    && dryRunStatus === 'VALIDADA';
+}
+
+export function collapsedUserMenuExposes() {
+  return {
+    name: true,
+    email: false,
+    role: false,
+    avatar: false,
+    sair: false,
+    protegido: false,
+  };
+}
+
+export function createUserMenuController(initialOpen = false) {
+  let open = initialOpen === true;
+  return {
+    isOpen() {
+      return open;
+    },
+    handleTriggerClick() {
+      open = !open;
+      return open;
+    },
+    handleDocumentClick({ insideTrigger = false, insideMenu = false } = {}) {
+      if (!insideTrigger && !insideMenu) open = false;
+      return open;
+    },
+    handleEscape() {
+      const wasOpen = open;
+      open = false;
+      return { closed: wasOpen, restoreFocus: wasOpen };
+    },
+    handleNavigate() {
+      open = false;
+    },
+    handleDrawerOpen() {
+      open = false;
+    },
+    handleLogout(logoutFn) {
+      open = false;
+      if (typeof logoutFn === 'function') logoutFn();
+    },
+  };
+}
+
+export function shortGitSha(sha) {
+  const value = String(sha || '').trim();
+  if (!value) return '';
+  return value.length > 12 ? value.slice(0, 12) : value;
+}
+
+export function publicationStatusLabel(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'EM_EXECUCAO') return 'EM EXECUÇÃO';
+  return value || '—';
+}
+
+export function publicationBadgeClass(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'PUBLICADA' || value === 'VALIDADA') return 'badge-ok';
+  if (value === 'BLOQUEADA' || value === 'ERRO') return 'badge-off';
+  if (value === 'AGENDADA' || value === 'EM_EXECUCAO' || value === 'EM EXECUÇÃO') return 'badge-warn';
+  return 'badge-root';
+}
+
+export function releaseCheckTone(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'PASS') return 'pass';
+  if (value === 'WARN') return 'warn';
+  return 'block';
+}

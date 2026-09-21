@@ -157,6 +157,19 @@ test('admin header user mount and dialog close contract exist', () => {
   assert.match(css, /--bordo:\s*#7A3E48/);
   assert.match(css, /--serif:\s*"Fraunces"/);
   assert.match(css, /--sans:\s*"Inter"/);
+  assert.match(js, /'aria-haspopup': 'menu'/);
+  assert.match(js, /id: 'adminUserTrigger'/);
+  assert.match(js, /id: 'adminUserMenu'/);
+  assert.match(js, /role: 'menu'/);
+  assert.match(js, /role: 'menuitem'/);
+  assert.doesNotMatch(js, /admin-user-avatar/);
+  assert.doesNotMatch(js, /admin-user-email/);
+  assert.doesNotMatch(js, /admin-user-role/);
+  assert.match(js, /text: 'Sair'/);
+  assert.match(js, /closeUserSheet\(\{ restoreFocus: true \}\)/);
+  assert.match(css, /\.admin-user-sheet\[hidden\]/);
+  assert.match(css, /top:\s*calc\(100% \+ 6px\)/);
+  assert.match(css, /\.admin-user-logout/);
 });
 
 test('encomenda helpers mask phone, parse BR date and validate email', () => {
@@ -224,8 +237,15 @@ test('admin dialogs and full width layout contracts exist', () => {
   assert.doesNotMatch(html, /id="logoutButton"/);
   assert.match(js, /text: 'Sair'/);
   assert.match(js, /Recolher menu/);
+  assert.doesNotMatch(js, /Publicar agora/);
+  assert.match(js, /Atualizar produção/);
+  assert.match(js, /Validar promoção/);
+  assert.match(js, /Agendamento disponível após habilitar produção/);
+  assert.match(js, /HOMOLOGAÇÃO/);
+  assert.match(js, /PRODUÇÃO/);
   assert.match(css, /height:\s*100dvh/);
   assert.match(css, /\.admin-nav \{[\s\S]*overflow-y:\s*auto;/);
+  assert.match(css, /\.release-flow \{/);
 });
 
 test('whatsapp formatted message omits empty optional fields', () => {

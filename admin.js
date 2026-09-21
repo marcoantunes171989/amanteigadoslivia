@@ -2,21 +2,22 @@ import { readSidebarCollapsed, writeSidebarCollapsed, ENCOMENDA_TIPO_LABELS, QUA
 import {
   DATA_LOAD_ERROR_MESSAGE,
   DIALOG_CLOSE_LABEL,
+  PROD_PUBLISH_CONFIRMATION,
   canAccessUsuarios,
+  canEnableProductionUpdateButton,
   creatablePerfisFor,
   decideSessionErrorAction,
   perfilBadgeLabel,
   perfilFormLabel,
+  publicationBadgeClass,
+  publicationStatusLabel,
+  releaseCheckTone,
   requestStatusBadgeClass,
   requestStatusLabel,
   saleStatusBadgeClass,
   saleStatusLabel,
   sessionDisplayName,
-  sessionEmail,
-  sessionFirstName,
-  sessionInitials,
   shouldCloseDialogOnBackdrop,
-  truncateEmail,
 } from './admin-session-ui.js';
 
   const loginView = document.getElementById('loginView');
@@ -60,7 +61,7 @@ import {
     sales: ['Operação', 'Vendas', 'Acompanhe pedidos e o status de cada venda.'],
     requests: ['Operação', 'Solicitações', 'Pedidos de encomenda, festas e personalizados.'],
     reports: ['Análise', 'Relatórios', 'Acompanhe o desempenho do negócio.'],
-    publications: ['Gestão', 'Publicações', 'Homologação ativa. Produção permanece bloqueada.'],
+    publications: ['Gestão', 'Publicações', 'Controle a validação e a promoção das versões homologadas para produção.'],
     audit: ['Gestão', 'Auditoria', 'Consulte o histórico de ações administrativas.'],
     users: ['Gestão', 'Usuários', 'Gerencie acessos do painel.'],
   };
@@ -76,6 +77,7 @@ import {
     usuarios: [],
     auditoria: [],
     publicacoes: null,
+    promotionDryRun: null,
     productQuery: '',
     productFilter: 'todos',
     salesPeriod: 'hoje',
@@ -191,6 +193,57 @@ import {
 
   function bindFormDirty() {
     markFormPristine();
+  }
+
+  function askTypedConfirm({ title, description, confirmPhrase, confirmLabel = 'Confirmar' }) {
+    const dialog = document.getElementById('confirmDialog');
+    const form = document.getElementById('confirmForm');
+    if (!dialog || !form) return Promise.resolve(false);
+    dialog.className = 'admin-dialog is-small';
+    return new Promise((resolve) => {
+      const finish = (value) => {
+        dialog.close();
+        resolve(value);
+      };
+      const typedInput = el('input', {
+        id: 'typedConfirm',
+        name: 'typed_confirm',
+        type: 'text',
+        autocomplete: 'off',
+        spellcheck: 'false',
+        required: true,
+      });
+      const submitBtn = el('button', { className: 'btn btn-primary', type: 'submit', text: confirmLabel, disabled: true });
+      typedInput.addEventListener('input', () => {
+        submitBtn.disabled = typedInput.value !== confirmPhrase;
+      });
+      form.replaceChildren(el('div', { className: 'dialog-body' }, [
+        el('div', { className: 'dialog-header' }, [
+          el('div', { className: 'dialog-heading' }, [
+            el('p', { className: 'eyebrow', text: 'Confirmação de alto risco' }),
+            el('h2', { text: title }),
+            description ? el('p', { className: 'dialog-description', text: description }) : null,
+          ]),
+          closeIconBtn(() => finish(false)),
+        ]),
+        el('div', { className: 'dialog-fields' }, [
+          field('typed_confirm', `Digite ${confirmPhrase}`, typedInput),
+        ]),
+        el('div', { className: 'dialog-actions' }, [
+          el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => finish(false) }),
+          submitBtn,
+        ]),
+      ]));
+      const onSubmit = (event) => {
+        event.preventDefault();
+        if (typedInput.value !== confirmPhrase) return;
+        form.removeEventListener('submit', onSubmit);
+        finish(true);
+      };
+      form.addEventListener('submit', onSubmit);
+      dialog.showModal();
+      typedInput.focus();
+    });
   }
 
   function askConfirm({ title, description, confirmLabel = 'Confirmar', danger = false }) {
@@ -331,11 +384,12 @@ import {
     showLogin();
   }
 
-  function closeUserSheet() {
-    const sheet = document.getElementById('adminUserSheet');
+  function closeUserSheet(options = {}) {
+    const sheet = document.getElementById('adminUserMenu');
     const trigger = document.getElementById('adminUserTrigger');
     if (sheet) sheet.hidden = true;
     trigger?.setAttribute('aria-expanded', 'false');
+    if (options.restoreFocus) trigger?.focus();
   }
 
   function isPhoneAdmin() {
@@ -353,44 +407,46 @@ import {
     }
     mount.hidden = false;
     const name = sessionDisplayName(session);
-    const email = sessionEmail(session);
-    const perfil = session.perfil;
+    const menu = document.getElementById('adminUserMenu');
+    const wasOpen = Boolean(menu && !menu.hidden);
     mount.replaceChildren(
       el('button', {
         type: 'button',
         className: 'admin-user-trigger',
         id: 'adminUserTrigger',
-        'aria-haspopup': 'dialog',
-        'aria-expanded': 'false',
-        'aria-controls': 'adminUserSheet',
+        'aria-haspopup': 'menu',
+        'aria-expanded': wasOpen ? 'true' : 'false',
+        'aria-controls': 'adminUserMenu',
         'aria-label': `Conta de ${name}`,
-        onClick: () => {
-          const sheet = document.getElementById('adminUserSheet');
+        onClick: (event) => {
+          event.stopPropagation();
+          const sheet = document.getElementById('adminUserMenu');
           const trigger = document.getElementById('adminUserTrigger');
-          const open = Boolean(sheet && sheet.hidden);
-          if (sheet) sheet.hidden = !open;
-          trigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+          const willOpen = Boolean(sheet?.hidden);
+          if (sheet) sheet.hidden = !willOpen;
+          trigger?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         },
       }, [
-        el('span', { className: 'admin-user-avatar', text: sessionInitials(name) }),
-        el('span', { className: 'admin-user-meta' }, [
-          el('strong', { className: 'admin-user-name', text: name }),
-          el('span', { className: 'admin-user-compact', text: sessionFirstName(name) }),
-          el('span', { className: 'admin-user-role', text: perfilFormLabel(perfil) }),
-          email ? el('span', { className: 'admin-user-email', text: truncateEmail(email, 24) }) : null,
-          session.protegido ? el('span', { className: 'admin-user-badges' }, [
-            el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }),
-          ]) : null,
-        ]),
-        svgIcon('M6 9l6 6 6-6'),
+        el('span', { className: 'admin-user-name', text: name }),
+        el('span', { className: 'admin-user-chevron', 'aria-hidden': 'true' }, [svgIcon('M6 9l6 6 6-6')]),
       ]),
-      el('div', { className: 'admin-user-sheet', id: 'adminUserSheet', hidden: true, role: 'dialog', 'aria-label': 'Conta logada' }, [
-        el('strong', { text: name }),
-        email ? el('p', { className: 'muted', text: email }) : null,
-        el('p', { className: 'muted', text: perfilFormLabel(perfil) }),
-        session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
-        el('hr', { className: 'sheet-sep' }),
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Sair', onClick: logout }),
+      el('div', {
+        className: 'admin-user-sheet',
+        id: 'adminUserMenu',
+        hidden: !wasOpen,
+        role: 'menu',
+        'aria-label': 'Menu da conta',
+        onClick: (event) => event.stopPropagation(),
+      }, [
+        el('button', {
+          className: 'admin-user-logout',
+          type: 'button',
+          role: 'menuitem',
+          onClick: logout,
+        }, [
+          svgIcon('M15 5h4v14h-4M10 12h9M12 8l4 4-4 4'),
+          el('span', { text: 'Sair' }),
+        ]),
       ]),
     );
   }
@@ -403,6 +459,7 @@ import {
   }
 
   function openDrawer() {
+    closeUserSheet();
     adminSidebar.classList.add('is-open');
     sidebarBackdrop.classList.remove('hidden');
     document.body.classList.add('drawer-locked');
@@ -438,6 +495,7 @@ import {
     if (subtitle) subtitle.textContent = titles[2] || '';
     document.getElementById('viewBreadcrumb').textContent = `Início / ${titles[0]} / ${titles[1]}`;
     closeDrawer();
+    closeUserSheet();
     refreshView();
   }
 
@@ -1282,85 +1340,186 @@ import {
     ]);
   }
 
+  function publicationResumo(item) {
+    const raw = item?.resumo_json;
+    if (raw && typeof raw === 'object') return raw;
+    if (typeof raw === 'string' && raw) {
+      try { return JSON.parse(raw); } catch { return {}; }
+    }
+    return {};
+  }
+
+  function shaCopyRow(sha, label = 'SHA') {
+    const value = String(sha || '').trim();
+    if (!value) return el('p', { text: `${label}: —` });
+    return el('div', { className: 'release-sha-row' }, [
+      el('p', {}, [
+        el('span', { text: `${label}: ` }),
+        el('code', { className: 'release-sha', text: value }),
+      ]),
+      el('button', {
+        className: 'btn btn-ghost btn-small',
+        type: 'button',
+        text: 'Copiar',
+        onClick: async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            toast('SHA copiado.');
+          } catch {
+            toast('Não foi possível copiar o SHA.', false);
+          }
+        },
+      }),
+    ]);
+  }
+
+  function renderReleaseChecks(checks) {
+    if (!Array.isArray(checks) || !checks.length) return null;
+    return el('ul', { className: 'release-checks' }, checks.map((item) => el('li', {
+      className: `release-check is-${releaseCheckTone(item.status)}`,
+    }, [
+      el('span', { className: `badge badge-${releaseCheckTone(item.status) === 'pass' ? 'ok' : releaseCheckTone(item.status) === 'warn' ? 'warn' : 'off'}`, text: item.status }),
+      el('strong', { text: item.id }),
+      el('span', { text: item.mensagem }),
+    ])));
+  }
+
   function renderPublications() {
     const data = state.publicacoes || {};
-    const homologOnline = Boolean(data.homolog?.database_status || data.homolog?.git_sha);
+    const homolog = data.homolog || {};
+    const producao = data.producao || {};
+    const homologOnline = Boolean(homolog.database_status || homolog.git_sha);
+    const prodOnline = producao.pronta === true;
+    const canUpdate = canEnableProductionUpdateButton({
+      session: currentSession(),
+      producao,
+      dryRunStatus: state.promotionDryRun?.status,
+    });
+    const blockedTitle = 'Produção ainda não está habilitada para promoção.';
     views.publications.replaceChildren(
       pageHeading('publications'),
-      el('div', { className: 'env-grid' }, [
-        el('article', { className: 'card' }, [
+      el('div', { className: 'release-flow' }, [
+        el('article', { className: 'card release-card' }, [
           el('div', { className: 'env-status' }, [
             el('span', { className: `status-dot ${homologOnline ? 'is-online' : 'is-offline'}`, 'aria-hidden': 'true' }),
-            el('strong', { text: 'HOMOLOG' }),
-            el('span', { text: homologOnline ? 'Online' : 'Indisponível' }),
+            el('strong', { text: 'HOMOLOGAÇÃO' }),
+            el('span', { className: homologOnline ? 'badge badge-ok' : 'badge badge-off', text: homologOnline ? 'Online' : 'Indisponível' }),
           ]),
-          el('p', { className: 'muted', text: 'Ambiente ativo para testes.' }),
-          el('p', { text: `Git SHA: ${data.homolog?.git_sha || '—'}` }),
-          el('p', { text: `Vercel: ${data.homolog?.vercel_status || '—'}` }),
-          el('p', { text: `Database: ${data.homolog?.database_status || '—'}` }),
-          el('p', { text: `Migrations: ${(data.homolog?.migrations || []).join(', ') || '—'}` }),
-          el('p', { text: `Categorias ativas: ${data.homolog?.categorias_ativas ?? 0}` }),
-          el('p', { text: `Produtos ativos: ${data.homolog?.produtos_ativos ?? 0}` }),
+          el('p', { className: 'release-version', text: `Versão homologada: ${homolog.git_sha || '—'}` }),
+          shaCopyRow(homolog.git_sha),
+          el('p', { text: `Vercel: ${homolog.vercel_status || '—'}` }),
+          el('p', { text: `Database: ${homolog.database_status || '—'}` }),
+          el('p', { text: `Migrations: ${(homolog.migrations || []).join(', ') || '—'}` }),
+          el('p', { text: `Categorias ativas: ${homolog.categorias_ativas ?? 0}` }),
+          el('p', { text: `Produtos ativos: ${homolog.produtos_ativos ?? 0}` }),
+          el('p', { text: `Última alteração: ${formatDate(homolog.ultima_alteracao_catalogo)}` }),
         ]),
-        el('article', { className: 'card' }, [
+        el('div', { className: 'release-arrow', 'aria-hidden': 'true', text: '→' }),
+        el('article', { className: 'card release-card' }, [
           el('div', { className: 'env-status' }, [
-            el('span', { className: 'status-dot is-offline', 'aria-hidden': 'true' }),
+            el('span', { className: `status-dot ${prodOnline ? 'is-online' : 'is-offline'}`, 'aria-hidden': 'true' }),
             el('strong', { text: 'PRODUÇÃO' }),
-            el('span', { text: 'Não configurada' }),
+            el('span', { className: prodOnline ? 'badge badge-ok' : 'badge badge-off', text: producao.badge || 'BLOQUEADA' }),
           ]),
-          el('p', { className: 'muted', text: 'Aguardando configuração. Publicação permanece bloqueada.' }),
-          el('strong', { text: data.producao?.status || 'Aguardando configuração de produção' }),
+          el('p', { text: `Status: ${producao.status || 'Produção não habilitada'}` }),
+          shaCopyRow(producao.git_sha),
+          el('p', { className: 'muted', text: producao.mensagem || 'Prepare o ambiente de produção antes de liberar a promoção.' }),
+          (producao.bloqueios || []).length
+            ? el('ul', { className: 'release-blocks' }, producao.bloqueios.map((item) => el('li', { text: item })))
+            : null,
         ]),
       ]),
-      el('div', { className: 'toolbar', style: 'margin-top:16px' }, [
+      el('div', { className: 'toolbar release-actions' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Validar promoção', onClick: validatePromo }),
-        el('button', { className: 'btn btn-primary', type: 'button', text: 'Publicar agora', disabled: true, title: 'Produção ainda não habilitada' }),
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Agendar publicação', onClick: schedulePublish }),
+        el('button', {
+          className: 'btn btn-primary',
+          type: 'button',
+          text: 'Atualizar produção',
+          disabled: !canUpdate,
+          title: canUpdate ? 'Atualizar produção com o SHA homologado' : blockedTitle,
+          onClick: updateProduction,
+        }),
       ]),
+      el('p', { className: 'muted', text: 'Agendamento disponível após habilitar produção.' }),
+      state.promotionDryRun
+        ? el('article', { className: 'card' }, [
+          el('span', { text: 'Validação da promoção' }),
+          el('p', {}, [
+            el('span', { className: `badge ${state.promotionDryRun.status === 'VALIDADA' ? 'badge-ok' : 'badge-off'}`, text: state.promotionDryRun.status }),
+          ]),
+          renderReleaseChecks(state.promotionDryRun.checks),
+        ])
+        : null,
       el('article', { className: 'card' }, [
-        el('span', { text: 'Timeline' }),
-        el('p', { className: 'muted', text: 'Criada → Validada → Agendada → Em execução → Publicada/Erro/Bloqueada' }),
+        el('span', { text: 'Histórico' }),
+        el('p', { className: 'muted', text: 'Validada → Agendada → Em execução → Publicada / Bloqueada / Erro' }),
         (data.publicacoes || []).length
-          ? simpleTable(['Tipo', 'Status', 'Agendada', 'Erro'], data.publicacoes.map((item) => [item.tipo_publicacao, item.status_publicacao, formatDate(item.data_agendada), item.mensagem_erro || '—']))
+          ? el('div', { className: 'pub-timeline' }, data.publicacoes.map((item) => {
+            const resumo = publicationResumo(item);
+            return el('article', { className: 'pub-timeline-item' }, [
+              el('div', { className: 'pub-timeline-head' }, [
+                el('span', { className: `badge ${publicationBadgeClass(item.status_publicacao)}`, text: publicationStatusLabel(item.status_publicacao) }),
+                el('strong', { text: item.tipo_publicacao || resumo.acao || 'Publicação' }),
+              ]),
+              el('p', { text: formatDate(item.data_criacao || item.data_agendada) }),
+              el('p', { text: `Usuário: ${resumo.nome_usuario || item.id_usuario_admin || '—'}` }),
+              el('p', { text: `SHA: ${item.git_sha || '—'}` }),
+              el('p', { className: 'muted', text: item.mensagem_erro || 'Sem mensagem adicional.' }),
+            ]);
+          }))
           : emptyState('Nenhuma publicação registrada.'),
       ]),
     );
   }
 
   async function validatePromo() {
-    const result = await request('/api/admin/publicacoes', { method: 'POST', body: JSON.stringify({ acao: 'validar' }) });
-    toast(result.motivo || result.status, result.status !== 'ERRO');
+    const homologSha = state.publicacoes?.homolog?.git_sha || null;
+    const result = await request('/api/admin/publicacoes', {
+      method: 'POST',
+      body: JSON.stringify({ acao: 'validar', git_sha: homologSha }),
+    });
+    state.promotionDryRun = result;
+    toast(result.motivo || result.status, result.status === 'VALIDADA');
+    renderPublications();
   }
 
-  async function publishNow() {
-    const confirmed = await askConfirm({
-      title: 'Publicar em produção?',
-      description: 'Produção ainda não habilitada. Configure e aprove o ambiente antes de publicar.',
-      confirmLabel: 'Entendi',
+  async function updateProduction() {
+    const producao = state.publicacoes?.producao || {};
+    if (!canEnableProductionUpdateButton({
+      session: currentSession(),
+      producao,
+      dryRunStatus: state.promotionDryRun?.status,
+    })) {
+      toast('Produção ainda não está habilitada para promoção.', false);
+      return;
+    }
+    const sha = state.publicacoes?.homolog?.git_sha;
+    const confirmed = await askTypedConfirm({
+      title: 'Atualizar produção?',
+      description: `Origem: HOMOLOGAÇÃO\nDestino: PRODUÇÃO\nSHA: ${sha || '—'}`,
+      confirmPhrase: PROD_PUBLISH_CONFIRMATION,
+      confirmLabel: 'Atualizar produção',
     });
     if (!confirmed) return;
     try {
-      await request('/api/admin/publicacoes', { method: 'POST', body: JSON.stringify({ acao: 'publicar', tipo_publicacao: 'CATALOGO' }) });
+      await request('/api/admin/publicacoes', {
+        method: 'POST',
+        body: JSON.stringify({
+          acao: 'publicar',
+          tipo_publicacao: 'CATALOGO',
+          git_sha: sha,
+          confirmacao: PROD_PUBLISH_CONFIRMATION,
+        }),
+      });
+      toast('Promoção registrada.');
+      await refreshView();
     } catch (error) {
-      toast(error.payload?.message || 'Produção ainda não habilitada.', false);
+      toast(error.payload?.message || error.payload?.error || 'Produção ainda não habilitada.', false);
+      if (error.payload?.checks) {
+        state.promotionDryRun = error.payload;
+        renderPublications();
+      }
     }
-  }
-
-  async function schedulePublish() {
-    resourceForm.replaceChildren(dialogFrame({
-      eyebrow: 'Gestão',
-      title: 'Agendar publicação',
-      description: 'A publicação em produção permanece bloqueada até a configuração do ambiente.',
-      submitLabel: 'Agendar',
-      size: 'small',
-      children: [
-        field('data_agendada', 'Data', input('data_agendada', { type: 'date', required: true })),
-        field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time', required: true })),
-      ],
-    }));
-    resourceForm.dataset.kind = 'publicacao';
-    bindFormDirty(resourceForm);
-    formDialog.showModal();
   }
 
   function auditQuery(extra = {}) {
@@ -2004,11 +2163,14 @@ import {
   sidebarBackdrop?.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && adminSidebar.classList.contains('is-open')) closeDrawer();
-    if (event.key === 'Escape') closeUserSheet();
+    if (event.key === 'Escape') closeUserSheet({ restoreFocus: true });
   });
   document.addEventListener('click', (event) => {
-    const user = document.getElementById('adminUser');
-    if (user && !user.contains(event.target)) closeUserSheet();
+    const trigger = document.getElementById('adminUserTrigger');
+    const menu = document.getElementById('adminUserMenu');
+    const insideTrigger = Boolean(trigger && trigger.contains(event.target));
+    const insideMenu = Boolean(menu && menu.contains(event.target));
+    if (!insideTrigger && !insideMenu) closeUserSheet();
   });
   formDialog.addEventListener('click', (event) => {
     if (event.target !== formDialog) return;

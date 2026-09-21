@@ -16,6 +16,7 @@ import { getReports } from './admin-reports.js';
 import { AdminError } from './admin-errors.js';
 import { hashPassword } from './password.js';
 import { parseReaisToCentavos } from './money.js';
+import { getPublicationStatus, promoteToProduction, validatePromotionDryRun } from './admin-publish.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
 
@@ -54,6 +55,13 @@ function sessionHeaders() {
 afterEach(() => {
   delete process.env.ADMIN_SESSION_SECRET;
   delete process.env.PROMOCAO_PROD_HABILITADA;
+  delete process.env.GIT_SHA;
+  delete process.env.VERCEL_GIT_COMMIT_SHA;
+  delete process.env.VERCEL_RELEASE_TOKEN;
+  delete process.env.VERCEL_TEAM_ID;
+  delete process.env.VERCEL_PROD_PROJECT_ID;
+  delete process.env.VERCEL_PROD_PROJECT_NAME;
+  delete process.env.VERCEL;
 });
 
 test('login email/senha succeeds and inactive user is rejected', async () => {
@@ -358,20 +366,239 @@ test('relatorios vazios and with data', async () => {
   assert.equal(filled.produtos[0].quantidade, 1);
 });
 
+function sessionHeadersFor(claims = {}) {
+  return {
+    cookie: `${COOKIE_NAME}=${signSession(SECRET, {
+      id_usuario_admin: claims.id_usuario_admin || 'u1',
+      email: claims.email || 'admin@example.com',
+      perfil: claims.perfil || 'ADMIN',
+      protegido: claims.protegido === true,
+      nome_usuario: claims.nome_usuario || 'Admin',
+    })}`,
+  };
+}
+
+function publishPool() {
+  const audits = [];
+  const inserted = [];
+  return {
+    audits,
+    inserted,
+    async query(sql, params = []) {
+      const text = String(sql);
+      if (text.includes('list_publicacoes')) return { rows: [] };
+      if (text.includes('tab_categoria')) return { rows: [{ total: 2 }] };
+      if (text.includes('tab_produto')) return { rows: [{ total: 3 }] };
+      if (text.includes('schema_migrations')) return { rows: [] };
+      if (text.includes('insert_publicacao')) {
+        const row = {
+          id_publicacao: params[0],
+          id_usuario_admin: params[1],
+          tipo_publicacao: params[2],
+          git_sha: params[3],
+          status_publicacao: params[4],
+          mensagem_erro: params[7],
+        };
+        inserted.push(row);
+        return { rows: [row] };
+      }
+      if (text.includes('insert_auditoria')) {
+        audits.push({ acao: params[2], sucesso: params[5] });
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+  };
+}
+
+async function postPublicacao(claims, body, extra = {}) {
+  const response = mockResponse();
+  const pool = extra.pool || publishPool();
+  let vercelCalls = 0;
+  await handleAdminPublicacoes({
+    method: 'POST',
+    headers: sessionHeadersFor(claims),
+    url: '/api/admin/publicacoes',
+    body,
+  }, response, {
+    getPool: () => pool,
+    vercelReleaseClient: extra.vercelReleaseClient || (async () => { vercelCalls += 1; }),
+    prodDatabaseReady: extra.prodDatabaseReady,
+    prodEnvReady: extra.prodEnvReady,
+  });
+  return { response, pool, vercelCalls };
+}
+
 test('publicacao is blocked without production enabled', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
   process.env.PROMOCAO_PROD_HABILITADA = 'false';
-  const response = mockResponse();
-  await handleAdminPublicacoes({
-    method: 'POST',
-    headers: sessionHeaders(),
-    url: '/api/admin/publicacoes',
-    body: { acao: 'publicar', tipo_publicacao: 'CATALOGO' },
-  }, response, {
-    getPool: () => ({ query: async () => ({ rows: [] }) }),
+  const { response } = await postPublicacao({ perfil: 'ADMIN' }, { acao: 'publicar', tipo_publicacao: 'CATALOGO' });
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.body.error, 'forbidden');
+});
+
+test('ADMIN e GESTOR nao promovem producao', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  for (const perfil of ['ADMIN', 'GESTOR']) {
+    const { response, vercelCalls } = await postPublicacao({ perfil }, {
+      acao: 'publicar',
+      tipo_publicacao: 'CATALOGO',
+      confirmacao: 'PUBLICAR PRODUCAO',
+    });
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.body.status, 'BLOQUEADA');
+    assert.equal(vercelCalls, 0);
+  }
+});
+
+test('SUPER_ADMIN nao protegido nao promove e ROOT chega ao gate bloqueado', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'false';
+  const unprotected = await postPublicacao({ perfil: 'SUPER_ADMIN', protegido: false }, {
+    acao: 'publicar',
+    git_sha: 'abc',
+    confirmacao: 'PUBLICAR PRODUCAO',
   });
-  assert.equal(response.statusCode, 409);
-  assert.equal(response.body.error, 'production_not_enabled');
+  assert.equal(unprotected.response.statusCode, 403);
+  assert.equal(unprotected.vercelCalls, 0);
+
+  const root = await postPublicacao({ perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'Marco' }, {
+    acao: 'publicar',
+    git_sha: 'abc',
+    confirmacao: 'PUBLICAR PRODUCAO',
+  });
+  assert.equal(root.response.statusCode, 409);
+  assert.equal(root.response.body.error, 'production_not_enabled');
+  assert.equal(root.response.body.status, 'BLOQUEADA');
+  assert.equal(root.vercelCalls, 0);
+  assert.equal(root.response.body.checks.some((item) => item.id === 'feature_flag' && item.status === 'BLOCK'), true);
+});
+
+test('validar promocao retorna checks estruturados e nao publica', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'false';
+  process.env.GIT_SHA = '89d0a9152a2604d71e5898040fb95b5783e5e3d0';
+  const { response, vercelCalls, pool } = await postPublicacao({ perfil: 'SUPER_ADMIN', protegido: true }, {
+    acao: 'validar',
+    git_sha: '89d0a9152a2604d71e5898040fb95b5783e5e3d0',
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.status, 'BLOQUEADA');
+  assert.equal(Array.isArray(response.body.checks), true);
+  assert.equal(response.body.checks.some((item) => item.id === 'feature_flag' && item.status === 'BLOCK'), true);
+  assert.equal(vercelCalls, 0);
+  assert.equal(pool.audits.some((item) => item.acao === 'VALIDAR_PUBLICACAO'), true);
+});
+
+test('confirmacao errada, ausente, SHA divergente e config incompleta bloqueiam', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  const root = { perfil: 'SUPER_ADMIN', protegido: true };
+
+  const missing = await postPublicacao(root, { acao: 'publicar', git_sha: 'sha-hml-exato' });
+  assert.equal(missing.response.statusCode, 409);
+  assert.equal(missing.response.body.checks.some((item) => item.id === 'confirmacao' && item.status === 'BLOCK'), true);
+  assert.equal(missing.vercelCalls, 0);
+
+  const wrong = await postPublicacao(root, {
+    acao: 'publicar',
+    git_sha: 'sha-hml-exato',
+    confirmacao: true,
+  });
+  assert.equal(wrong.response.statusCode, 409);
+  assert.equal(wrong.response.body.checks.some((item) => item.id === 'confirmacao' && /inválida/i.test(item.mensagem)), true);
+  assert.equal(wrong.vercelCalls, 0);
+
+  const diverged = await postPublicacao(root, {
+    acao: 'publicar',
+    git_sha: 'sha-diferente',
+    confirmacao: 'PUBLICAR PRODUCAO',
+  });
+  assert.equal(diverged.response.statusCode, 409);
+  assert.equal(diverged.response.body.checks.some((item) => item.id === 'git_sha' && item.status === 'BLOCK'), true);
+  assert.equal(diverged.vercelCalls, 0);
+
+  const incomplete = await postPublicacao(root, {
+    acao: 'publicar',
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+  });
+  assert.equal(incomplete.response.statusCode, 409);
+  assert.equal(incomplete.response.body.checks.some((item) => item.id === 'release_config' && item.status === 'BLOCK'), true);
+  assert.equal(incomplete.vercelCalls, 0);
+});
+
+test('GET publicacoes expoe readiness sem segredo e promote mockado nao chama Vercel real', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'false';
+  process.env.GIT_SHA = '89d0a9152a2604d71e5898040fb95b5783e5e3d0';
+  process.env.VERCEL_RELEASE_TOKEN = 'super-secret-token-value';
+  const response = mockResponse();
+  const pool = publishPool();
+  await handleAdminPublicacoes({
+    method: 'GET',
+    headers: sessionHeadersFor({ perfil: 'SUPER_ADMIN', protegido: true }),
+    url: '/api/admin/publicacoes',
+  }, response, { getPool: () => pool });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.producao.habilitada, false);
+  assert.equal(response.body.producao.release_configurada, false);
+  assert.equal(response.body.producao.pronta, false);
+  assert.equal(Array.isArray(response.body.producao.bloqueios), true);
+  assert.doesNotMatch(JSON.stringify(response.body), /super-secret-token-value/);
+
+  const dryRun = validatePromotionDryRun({ session: { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true } });
+  assert.equal(dryRun.status, 'BLOQUEADA');
+  assert.equal(dryRun.checks.some((item) => item.id === 'feature_flag'), true);
+
+  let vercelCalls = 0;
+  const promoted = await promoteToProduction(pool, {
+    acao: 'publicar',
+    git_sha: '89d0a9152a2604d71e5898040fb95b5783e5e3d0',
+    confirmacao: 'PUBLICAR PRODUCAO',
+  }, { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true }, {
+    vercelReleaseClient: async () => { vercelCalls += 1; throw new Error('should not call vercel'); },
+  });
+  assert.equal(promoted.ok, false);
+  assert.equal(promoted.vercelCalled, false);
+  assert.equal(vercelCalls, 0);
+});
+
+test('promoteToProduction so chama cliente mock quando o gate passa', async () => {
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL = '1';
+  const pool = publishPool();
+  let vercelCalls = 0;
+  const result = await promoteToProduction(pool, {
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+    tipo_publicacao: 'CATALOGO',
+  }, { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'Marco' }, {
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient: async ({ sha, target }) => {
+      vercelCalls += 1;
+      assert.equal(sha, 'sha-hml-exato');
+      assert.equal(target, 'production');
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'PUBLICADA');
+  assert.equal(vercelCalls, 1);
+});
+
+test('GET publicacoes status permanece disponivel', async () => {
+  const status = await getPublicationStatus(publishPool(), {
+    session: { id_usuario_admin: 'u1', perfil: 'ADMIN' },
+  });
+  assert.equal(Boolean(status.homolog), true);
+  assert.equal(status.producao.habilitada, false);
+  assert.equal(status.permissoes.pode_atualizar_producao, false);
 });
 
 test('admin APIs without session return 401', async () => {

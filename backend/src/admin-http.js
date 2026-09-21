@@ -11,7 +11,7 @@ import { AUDIT_ACTIONS, AUDIT_CSV_MAX_ROWS, auditPaginationMeta, parseAuditPagin
 import { executeAdminAction, getAdminCatalog } from './admin-catalog.js';
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
-import { getPublicationStatus, createPublicacao, processDuePublications, validatePromotionDryRun } from './admin-publish.js';
+import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, validatePromotionDryRun } from './admin-publish.js';
 import { assertLoginRateLimit, assertPublicFormRateLimit } from './admin-rate-limit.js';
 import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
@@ -677,7 +677,7 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
-      sendJson(response, 200, await getPublicationStatus(pool));
+      sendJson(response, 200, await getPublicationStatus(pool, { session }));
       return;
     }
     if (request.method !== 'POST') {
@@ -686,7 +686,48 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
     }
     const body = await readJsonBody(request);
     if (body.acao === 'validar' && !body.persistir) {
-      sendJson(response, 200, validatePromotionDryRun());
+      const dryRun = validatePromotionDryRun({ session, requestedSha: body.git_sha });
+      await recordAudit(pool, {
+        id_usuario_admin: session.id_usuario_admin,
+        acao: AUDIT_ACTIONS.VALIDAR_PUBLICACAO,
+        entidade: 'publicacao',
+        sucesso: dryRun.status === 'VALIDADA',
+        descricao_evento: dryRun.motivo || dryRun.status,
+        detalhes_json: { status: dryRun.status, git_sha: dryRun.git_sha, checks: dryRun.checks },
+        identificador_requisicao: reqId,
+      });
+      sendJson(response, 200, dryRun);
+      return;
+    }
+    if (body.acao === 'publicar') {
+      await recordAudit(pool, {
+        id_usuario_admin: session.id_usuario_admin,
+        acao: AUDIT_ACTIONS.TENTAR_PUBLICACAO,
+        entidade: 'publicacao',
+        sucesso: false,
+        descricao_evento: 'Tentativa de atualizar produção.',
+        detalhes_json: { git_sha: body.git_sha || null },
+        identificador_requisicao: reqId,
+      });
+      const promotion = await promoteToProduction(pool, body, session, deps);
+      await recordAudit(pool, {
+        id_usuario_admin: session.id_usuario_admin,
+        acao: AUDIT_ACTIONS.PUBLICACAO_HML_PROD,
+        entidade: 'publicacao',
+        id_registro: promotion.publicacao?.id_publicacao,
+        sucesso: promotion.ok === true,
+        descricao_evento: promotion.ok ? 'PUBLICADA' : (promotion.mensagem || 'BLOQUEADA'),
+        detalhes_json: { status: promotion.status, git_sha: body.git_sha || null, checks: promotion.checks },
+        identificador_requisicao: reqId,
+      });
+      sendJson(response, promotion.httpStatus || 409, {
+        ok: promotion.ok === true,
+        status: promotion.status,
+        error: promotion.error,
+        message: promotion.mensagem,
+        checks: promotion.checks,
+        publicacao: promotion.publicacao,
+      });
       return;
     }
     const publicacao = await createPublicacao(pool, body, session);
@@ -695,7 +736,7 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
       acao: AUDIT_ACTIONS.PUBLICACAO_HML_PROD,
       entidade: 'publicacao',
       id_registro: publicacao.id_publicacao,
-      sucesso: publicacao.status_publicacao !== 'ERRO',
+      sucesso: publicacao.status_publicacao !== 'ERRO' && publicacao.status_publicacao !== 'BLOQUEADA',
       descricao_evento: publicacao.mensagem_erro || 'Registro de publicação.',
       identificador_requisicao: reqId,
     });
