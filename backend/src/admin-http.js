@@ -53,6 +53,20 @@ function sendText(response, status, contentType, body) {
   response.end(body);
 }
 
+// Registra no log server-side a falha do banco. Erros já mapeados para AdminError
+// 5xx (ex.: 503 database_unavailable) carregam a causa original em `cause`.
+// Nada disso vai para a resposta pública.
+function logRequestFailure(logDatabaseError, scope, error) {
+  if (typeof logDatabaseError !== 'function') return;
+  if (!(error instanceof AdminError)) {
+    logDatabaseError(scope, error);
+    return;
+  }
+  if (error.status >= 500 && error.cause) {
+    logDatabaseError(scope, error.cause);
+  }
+}
+
 function sendError(response, error) {
   if (error?.code === 'rate_limited' || error?.status === 429) {
     sendJson(response, 429, { error: 'rate_limited', message: 'Muitas tentativas. Tente novamente em instantes.' });
@@ -129,9 +143,7 @@ async function withAdmin(request, response, { getPool, logDatabaseError } = {}, 
     const pool = requirePool(getPool);
     await fn({ pool, session, requestId: requestId(request) });
   } catch (error) {
-    if (!(error instanceof AdminError) && typeof logDatabaseError === 'function') {
-      logDatabaseError('[admin] request failed', error);
-    }
+    logRequestFailure(logDatabaseError, '[admin] request failed', error);
     sendError(response, error);
   }
 }
@@ -857,9 +869,7 @@ export async function handlePublicEncomenda(request, response, { getPool, logDat
     const solicitacao = await createSolicitacaoEncomenda(requirePool(getPool), body);
     sendJson(response, 200, { ok: true, solicitacao });
   } catch (error) {
-    if (!(error instanceof AdminError) && typeof logDatabaseError === 'function') {
-      logDatabaseError('[encomendas] request failed', error);
-    }
+    logRequestFailure(logDatabaseError, '[encomendas] request failed', error);
     sendError(response, error);
   }
 }
@@ -888,9 +898,7 @@ export async function handlePublicVenda(request, response, deps = {}) {
     const result = await captureVenda(requirePool(deps.getPool), body);
     sendJson(response, 200, { ok: true, ...result });
   } catch (error) {
-    if (!(error instanceof AdminError) && typeof deps.logDatabaseError === 'function') {
-      deps.logDatabaseError('[vendas] request failed', error);
-    }
+    logRequestFailure(deps.logDatabaseError, '[vendas] request failed', error);
     sendError(response, error);
   }
 }

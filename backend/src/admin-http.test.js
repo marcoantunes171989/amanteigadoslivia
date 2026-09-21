@@ -4,6 +4,9 @@ import { AUDIT_PAGE_LIMIT, parseAuditPagination } from './admin-audit.js';
 import { COOKIE_NAME, signSession } from './admin-auth.js';
 import { handleAdminAuditoria, handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
 import { hashPassword } from './password.js';
+import { AdminError, isDatabaseUnavailable, mapDatabaseError, safeDatabaseErrorLog, toClientError } from './admin-errors.js';
+import { POOL_LIMITS } from '../../api/catalogo.js';
+import healthDbHandler from '../../api/health-db.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
 const PASSWORD = 'homolog-admin-test-password';
@@ -479,4 +482,111 @@ test('auditoria CSV is not limited to the current page', async () => {
   });
   assert.equal(response.statusCode, 200);
   assert.equal(String(response.body).split('\n').length, 48);
+});
+
+// ---- V11: estabilidade de conexão (SQLSTATE 53300) ----
+
+function tooManyConnectionsError() {
+  const error = new Error('too many connections for role "amanteigados_homolog_app"');
+  error.code = '53300';
+  error.name = 'error';
+  return error;
+}
+
+test('53300 (too many connections) é indisponibilidade do banco', () => {
+  assert.equal(isDatabaseUnavailable(tooManyConnectionsError()), true);
+  assert.equal(isDatabaseUnavailable({ code: '23505' }), false);
+});
+
+test('mapDatabaseError: 53300 => 503 database_unavailable sem vazar SQLSTATE/role', () => {
+  const original = tooManyConnectionsError();
+  const mapped = mapDatabaseError(original);
+  assert.equal(mapped instanceof AdminError, true);
+  assert.equal(mapped.status, 503);
+  assert.equal(mapped.code, 'database_unavailable');
+  assert.equal(mapped.message, 'Serviço temporariamente indisponível. Tente novamente em instantes.');
+
+  const client = toClientError(original);
+  assert.equal(client.status, 503);
+  assert.equal(client.body.error, 'database_unavailable');
+  const publicJson = JSON.stringify(client.body);
+  assert.equal(publicJson.includes('53300'), false);
+  assert.equal(publicJson.includes('amanteigados_homolog_app'), false);
+  assert.equal(publicJson.includes('role'), false);
+
+  // causa original só existe para log server-side
+  assert.equal(mapped.cause, original);
+  assert.equal(Object.keys(client.body).sort().join(','), 'error,message');
+});
+
+test('safeDatabaseErrorLog mantém SQLSTATE e nome, sem nome de role/usuário', () => {
+  const logged = safeDatabaseErrorLog(tooManyConnectionsError());
+  assert.equal(logged.code, '53300');
+  assert.equal(logged.name, 'error');
+  assert.equal(logged.message.includes('amanteigados_homolog_app'), false);
+  assert.equal(safeDatabaseErrorLog(new Error('password authentication failed for user "x.abc"')).message.includes('x.abc'), false);
+});
+
+test('POST /api/vendas com 53300: 503 público sem detalhes e SQLSTATE original no log', async () => {
+  const logs = [];
+  const response = mockResponse();
+  await handlePublicVenda({
+    method: 'POST',
+    url: '/api/vendas',
+    query: {},
+    headers: {},
+    body: {
+      chave_idempotencia: 'v11-53300-probe',
+      nome_cliente: 'Ana Souza',
+      telefone_cliente: '11999990000',
+      itens: [{ id_produto: 'p1', quantidade: 1 }],
+    },
+  }, response, {
+    getPool() {
+      return { async connect() { throw tooManyConnectionsError(); } };
+    },
+    logDatabaseError(scope, error) {
+      logs.push({ scope, error });
+    },
+  });
+  const publicBody = typeof response.body === 'string' ? response.body : JSON.stringify(response.body);
+  assert.equal(response.statusCode, 503);
+  assert.equal(JSON.parse(publicBody).error, 'database_unavailable');
+  assert.equal(publicBody.includes('53300'), false);
+  assert.equal(publicBody.includes('amanteigados_homolog_app'), false);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].scope, '[vendas] request failed');
+  assert.equal(logs[0].error.code, '53300');
+});
+
+test('erros de negócio (409/400) não geram log de banco', async () => {
+  const logs = [];
+  const response = mockResponse();
+  await handlePublicVenda({
+    method: 'POST', url: '/api/vendas', query: {}, headers: {}, body: { chave_idempotencia: 'k' },
+  }, response, { getPool: () => ({}), logDatabaseError: (...args) => logs.push(args) });
+  assert.equal(response.statusCode, 400);
+  assert.equal(logs.length, 0);
+});
+
+test('pool serverless: max=1 e liberação rápida de conexões ociosas', () => {
+  assert.equal(POOL_LIMITS.max, 1);
+  assert.equal(POOL_LIMITS.idleTimeoutMillis, 1000);
+  assert.equal(POOL_LIMITS.connectionTimeoutMillis, 8000);
+  assert.equal(POOL_LIMITS.allowExitOnIdle, true);
+});
+
+test('GET /api/health-db em erro devolve só {ok:false, database:unavailable} com 503', async (t) => {
+  const saved = { host: process.env.DATABASE_HOST, url: process.env.DATABASE_URL };
+  delete process.env.DATABASE_HOST;
+  delete process.env.DATABASE_URL;
+  t.after(() => {
+    if (saved.host !== undefined) process.env.DATABASE_HOST = saved.host;
+    if (saved.url !== undefined) process.env.DATABASE_URL = saved.url;
+  });
+  t.mock.method(console, 'error', () => {});
+  const response = mockResponse();
+  await healthDbHandler({ method: 'GET' }, response);
+  assert.equal(response.statusCode, 503);
+  assert.deepEqual(response.body, { ok: false, database: 'unavailable' });
 });

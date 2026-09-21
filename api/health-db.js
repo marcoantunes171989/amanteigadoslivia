@@ -19,7 +19,6 @@ export default async function handler(request, response) {
     response.status(503).json({
       ok: false,
       database: 'unavailable',
-      code: error?.code || 'unknown',
     });
   }
 }

@@ -1,6 +1,6 @@
 export class AdminError extends Error {
-  constructor(status, code, message) {
-    super(message || code);
+  constructor(status, code, message, options = {}) {
+    super(message || code, options?.cause ? { cause: options.cause } : undefined);
     this.name = 'AdminError';
     this.status = status;
     this.code = code;
@@ -21,6 +21,7 @@ export function isDatabaseUnavailable(error) {
     '57P01',
     '57P02',
     '57P03',
+    '53300',
   ].includes(code);
 }
 
@@ -49,10 +50,25 @@ export function mapDatabaseError(error) {
     return new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
   }
   if (isDatabaseUnavailable(error)) {
-    return new AdminError(503, 'database_unavailable', 'Catálogo temporariamente indisponível.');
+    return new AdminError(
+      503,
+      'database_unavailable',
+      'Serviço temporariamente indisponível. Tente novamente em instantes.',
+      { cause: error },
+    );
   }
 
-  return new AdminError(500, 'internal_error', 'Não foi possível concluir a operação.');
+  return new AdminError(500, 'internal_error', 'Não foi possível concluir a operação.', { cause: error });
+}
+
+// Campos seguros para log server-side: SQLSTATE, nome do erro e mensagem sem
+// o nome de role/usuário (ex.: too many connections for role "...").
+export function safeDatabaseErrorLog(error) {
+  return {
+    code: error?.code || 'unknown',
+    name: error?.name || 'Error',
+    message: String(error?.message || 'unknown error').replace(/\b(role|user) "[^"]*"/gi, '$1 "[redacted]"'),
+  };
 }
 
 export function toClientError(error) {

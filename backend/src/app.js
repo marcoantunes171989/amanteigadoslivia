@@ -17,6 +17,7 @@ import {
   handlePublicCatalog,
   handlePublicVenda,
 } from './admin-http.js';
+import { safeDatabaseErrorLog } from './admin-errors.js';
 import pool from './database.js';
 import { checkReadiness } from './readiness.js';
 
@@ -31,11 +32,7 @@ app.use(express.json({
 const deps = {
   getPool: () => pool,
   logDatabaseError(scope, error) {
-    console.error(scope, {
-      code: error?.code || 'unknown',
-      name: error?.name || 'Error',
-      message: error?.message || 'unknown error',
-    });
+    console.error(scope, safeDatabaseErrorLog(error));
   },
 };
 

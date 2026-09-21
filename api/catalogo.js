@@ -1,7 +1,16 @@
 import pg from 'pg';
 import { handlePublicCatalog } from '../backend/src/admin-http.js';
+import { safeDatabaseErrorLog } from '../backend/src/admin-errors.js';
 
 const { Pool } = pg;
+
+// Serverless: 1 conexão por instância, liberada rápido (Supavisor transaction mode).
+export const POOL_LIMITS = Object.freeze({
+  max: 1,
+  connectionTimeoutMillis: 8000,
+  idleTimeoutMillis: 1000,
+  allowExitOnIdle: true,
+});
 
 let pool = null;
 
@@ -13,10 +22,7 @@ function createPoolFromDiscreteEnv() {
     user: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,
     ssl: { rejectUnauthorized: false },
-    max: 1,
-    connectionTimeoutMillis: 8000,
-    idleTimeoutMillis: 1000,
-    allowExitOnIdle: true,
+    ...POOL_LIMITS,
     application_name: 'amanteigados-livia-api-homolog',
   });
 }
@@ -31,10 +37,7 @@ function createPoolFromUrl() {
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 1,
-    connectionTimeoutMillis: 8000,
-    idleTimeoutMillis: 1000,
-    allowExitOnIdle: true,
+    ...POOL_LIMITS,
     application_name: 'amanteigados-livia-api-homolog',
   });
 }
@@ -60,11 +63,7 @@ export function getPool() {
 }
 
 export function logDatabaseError(scope, error) {
-  console.error(scope, {
-    code: error?.code || 'unknown',
-    name: error?.name || 'Error',
-    message: error?.message || 'unknown error',
-  });
+  console.error(scope, safeDatabaseErrorLog(error));
 }
 
 export default async function handler(request, response) {
