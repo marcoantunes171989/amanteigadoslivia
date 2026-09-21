@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { AUDIT_PAGE_LIMIT, parseAuditPagination } from './admin-audit.js';
 import { COOKIE_NAME, signSession } from './admin-auth.js';
-import { handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
+import { handleAdminAuditoria, handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
 import { hashPassword } from './password.js';
 
 const SECRET = 'test-admin-session-secret-value-32b';
@@ -20,6 +21,14 @@ function mockResponse() {
       return this;
     },
     json(payload) {
+      this.body = payload;
+      return this;
+    },
+    send(payload) {
+      this.body = payload;
+      return this;
+    },
+    end(payload) {
       this.body = payload;
       return this;
     },
@@ -246,6 +255,7 @@ test('public encomenda rewrite validates and stores a new request', async () => 
       nome_cliente: 'Ana',
       telefone_cliente: '11999990000',
       tipo_solicitacao: 'ENCOMENDA',
+      quantidade_estimada: 1,
       descricao_pedido: 'Caixa de clássicos',
     },
   }, response, {
@@ -261,7 +271,7 @@ test('public encomenda rewrite validates and stores a new request', async () => 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.ok, true);
   assert.equal(response.body.solicitacao.status_solicitacao, 'NOVA');
-  assert.match(inserted[0].sql, /tab_solicitacao_encomenda/);
+  assert.equal(inserted.some((item) => /tab_solicitacao_encomenda/.test(item.sql)), true);
 });
 
 test('SUPER_ADMIN login sets session cookie with perfil', async () => {
@@ -385,4 +395,88 @@ test('GET /api/admin/sessao returns 401 without a cookie', async () => {
   await handleAdminSessao({ method: 'GET', headers: {} }, response);
   assert.equal(response.statusCode, 401);
   assert.equal(response.body.error, 'unauthorized');
+});
+
+test('auditoria pagination defaults to 10 and ignores larger limite', () => {
+  assert.deepEqual(parseAuditPagination({}), { pagina: 1, limite: AUDIT_PAGE_LIMIT });
+  assert.deepEqual(parseAuditPagination({ limite: '50', pagina: '2' }), { pagina: 2, limite: 10 });
+  assert.deepEqual(parseAuditPagination({ pagina: '0' }), { pagina: 1, limite: 10 });
+});
+
+test('GET /api/admin/auditoria paginates with count, offset and preserved filters', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const token = signSession(SECRET);
+  const calls = [];
+  const rows = Array.from({ length: 10 }, (_, index) => ({
+    id_auditoria: `evt-${index + 11}`,
+    acao: 'EDITAR_PRODUTO',
+    entidade: 'produto',
+    sucesso: true,
+  }));
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql: String(sql), params });
+      if (String(sql).includes('op:count_auditoria')) {
+        return { rows: [{ total: 47 }] };
+      }
+      return { rows };
+    },
+  };
+  const page1 = mockResponse();
+  await handleAdminAuditoria({
+    method: 'GET',
+    url: '/api/admin/auditoria?acao=EDITAR_PRODUTO&limite=50&pagina=1',
+    headers: { cookie: `${COOKIE_NAME}=${token}` },
+  }, page1, { getPool: () => pool });
+  assert.equal(page1.statusCode, 200);
+  assert.equal(page1.body.eventos.length, 10);
+  assert.equal(page1.body.paginacao.limite, 10);
+  assert.equal(page1.body.paginacao.pagina, 1);
+  assert.equal(page1.body.paginacao.total, 47);
+  assert.equal(page1.body.paginacao.total_paginas, 5);
+  assert.equal(calls[0].params.includes('EDITAR_PRODUTO'), true);
+
+  const page2 = mockResponse();
+  await handleAdminAuditoria({
+    method: 'GET',
+    url: '/api/admin/auditoria?acao=EDITAR_PRODUTO&pagina=2',
+    headers: { cookie: `${COOKIE_NAME}=${token}` },
+  }, page2, { getPool: () => pool });
+  const listCalls = calls.filter((item) => item.sql.includes('op:list_auditoria') && item.sql.includes('OFFSET'));
+  assert.equal(listCalls[0].params.at(-1), 0);
+  assert.equal(listCalls[1].params.at(-1), 10);
+  assert.equal(listCalls[1].params.at(-2), 10);
+  assert.equal(page2.body.paginacao.pagina, 2);
+});
+
+test('auditoria CSV is not limited to the current page', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const token = signSession(SECRET);
+  const csvRows = Array.from({ length: 47 }, (_, index) => ({
+    data_evento: '2026-01-01',
+    email_usuario: 'a@b.com',
+    acao: 'LOGIN_SUCESSO',
+    entidade: 'usuario_admin',
+    id_registro: `id-${index}`,
+    sucesso: true,
+    descricao_evento: 'ok',
+  }));
+  const response = mockResponse();
+  await handleAdminAuditoria({
+    method: 'GET',
+    url: '/api/admin/auditoria?formato=csv&pagina=2',
+    headers: { cookie: `${COOKIE_NAME}=${token}` },
+  }, response, {
+    getPool() {
+      return {
+        async query(sql) {
+          if (String(sql).includes('op:count_auditoria')) return { rows: [{ total: 47 }] };
+          if (String(sql).includes('op:list_auditoria_csv')) return { rows: csvRows };
+          return { rows: csvRows.slice(0, 10) };
+        },
+      };
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(String(response.body).split('\n').length, 48);
 });

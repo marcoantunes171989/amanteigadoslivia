@@ -28,6 +28,16 @@ test('whatsapp config rejects invalid numbers', () => {
   assert.equal(ok.valor_texto, '5511999990000');
 });
 
+test('quantidade minima config is stored as valor_json', () => {
+  const patch = validateSiteConfigPatch({
+    chave_configuracao: 'quantidade_minima_solicitacao',
+    valor_json: { ANIVERSARIO: 30, ENCOMENDA: 1 },
+  });
+  assert.equal(patch.valor_json.ANIVERSARIO, 30);
+  assert.equal(patch.valor_json.PRESENTE, 1);
+  assert.equal(patch.valor_texto, null);
+});
+
 test('public site content never includes private collections', async () => {
   const queryable = {
     async query(sql) {
@@ -63,6 +73,7 @@ test('public site content never includes private collections', async () => {
   assert.equal(payload.solicitacoes, undefined);
   assert.equal(payload.usuarios, undefined);
   assert.equal(payload.auditoria, undefined);
+  assert.deepEqual(payload.configuracao.quantidade_minima_solicitacao.ENCOMENDA, 1);
   assert.ok(!JSON.stringify(payload).includes('service_role'));
 });
 

@@ -1,4 +1,4 @@
-import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
+import { readSidebarCollapsed, writeSidebarCollapsed, ENCOMENDA_TIPO_LABELS, QUANTIDADE_MINIMA_DEFAULT, QUANTIDADE_MINIMA_KEY, formatIsoToBrDate, formatWhatsAppMaskDisplay, normalizeQuantidadeMinimaMap } from './ui-core.js';
 import {
   DATA_LOAD_ERROR_MESSAGE,
   DIALOG_CLOSE_LABEL,
@@ -89,6 +89,8 @@ import {
     auditAction: '',
     auditEntity: '',
     auditResult: '',
+    auditPage: 1,
+    auditPagination: { pagina: 1, limite: 10, total: 0, total_paginas: 1 },
     slugManual: false,
     pendingFile: null,
     sessao: null,
@@ -134,10 +136,11 @@ import {
     }, [svgIcon('M6 6l12 12M18 6 6 18')]);
   }
 
-  function dialogFrame({ eyebrow, title, description, children, cancelLabel = 'Cancelar', submitLabel = 'Salvar', onClose }) {
+  function dialogFrame({ eyebrow, title, description, children, cancelLabel = 'Cancelar', submitLabel = 'Salvar', onClose, size = 'medium' }) {
     const close = onClose || (() => formDialog.close());
+    formDialog.className = `admin-dialog is-${size}`;
     return el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [
+      el('header', { className: 'dialog-header' }, [
         el('div', { className: 'dialog-heading' }, [
           eyebrow ? el('p', { className: 'eyebrow', text: eyebrow }) : null,
           el('h2', { text: title }),
@@ -145,12 +148,28 @@ import {
         ]),
         closeIconBtn(close),
       ]),
-      el('div', { className: 'dialog-fields' }, children),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
+      el('div', { className: 'dialog-fields' }, [
+        ...(Array.isArray(children) ? children : [children]),
+        el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      ]),
+      el('footer', { className: 'dialog-actions' }, [
         el('button', { className: 'btn btn-ghost', type: 'button', text: cancelLabel, onClick: close }),
         el('button', { className: 'btn btn-primary', type: 'submit', text: submitLabel }),
       ]),
+    ]);
+  }
+
+  function createBtn(label, onClick) {
+    return el('button', { className: 'btn btn-primary btn-create', type: 'button', onClick }, [
+      svgIcon('M12 5v14M5 12h14'),
+      el('span', { text: label }),
+    ]);
+  }
+
+  function editBtn(onClick, label = 'Editar') {
+    return el('button', { className: 'btn btn-ghost btn-small btn-edit', type: 'button', onClick }, [
+      svgIcon('M4 20h4L18 10l-4-4L4 16v4Zm11-13 4 4'),
+      el('span', { text: label }),
     ]);
   }
 
@@ -178,6 +197,7 @@ import {
     const dialog = document.getElementById('confirmDialog');
     const form = document.getElementById('confirmForm');
     if (!dialog || !form) return Promise.resolve(false);
+    dialog.className = 'admin-dialog is-small';
     return new Promise((resolve) => {
       const finish = (value) => {
         dialog.close();
@@ -222,6 +242,11 @@ import {
   function formatDate(value) {
     if (!value) return '—';
     return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+  }
+
+  function formatDateOnly(value) {
+    if (!value) return '—';
+    return formatIsoToBrDate(value) || '—';
   }
 
   function slugFromName(name) {
@@ -340,7 +365,6 @@ import {
         'aria-controls': 'adminUserSheet',
         'aria-label': `Conta de ${name}`,
         onClick: () => {
-          if (!isPhoneAdmin()) return;
           const sheet = document.getElementById('adminUserSheet');
           const trigger = document.getElementById('adminUserTrigger');
           const open = Boolean(sheet && sheet.hidden);
@@ -352,20 +376,20 @@ import {
         el('span', { className: 'admin-user-meta' }, [
           el('strong', { className: 'admin-user-name', text: name }),
           el('span', { className: 'admin-user-compact', text: sessionFirstName(name) }),
-          email ? el('span', { className: 'admin-user-email', text: truncateEmail(email) }) : null,
-          el('span', { className: 'admin-user-badges' }, [
-            el('span', { className: `badge ${perfil === 'SUPER_ADMIN' ? 'badge-root' : perfil === 'ADMIN' ? 'badge-ok' : 'badge-warn'}`, text: perfilBadgeLabel(perfil) }),
-            session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
-          ]),
+          el('span', { className: 'admin-user-role', text: perfilFormLabel(perfil) }),
+          email ? el('span', { className: 'admin-user-email', text: truncateEmail(email, 24) }) : null,
+          session.protegido ? el('span', { className: 'admin-user-badges' }, [
+            el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }),
+          ]) : null,
         ]),
+        svgIcon('M6 9l6 6 6-6'),
       ]),
       el('div', { className: 'admin-user-sheet', id: 'adminUserSheet', hidden: true, role: 'dialog', 'aria-label': 'Conta logada' }, [
         el('strong', { text: name }),
         email ? el('p', { className: 'muted', text: email }) : null,
-        el('div', { className: 'user-flags' }, [
-          el('span', { className: `badge ${perfil === 'SUPER_ADMIN' ? 'badge-root' : perfil === 'ADMIN' ? 'badge-ok' : 'badge-warn'}`, text: perfilBadgeLabel(perfil) }),
-          session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
-        ]),
+        el('p', { className: 'muted', text: perfilFormLabel(perfil) }),
+        session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
+        el('hr', { className: 'sheet-sep' }),
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Sair', onClick: logout }),
       ]),
     );
@@ -526,8 +550,11 @@ import {
     if (state.auditAction) params.set('acao', state.auditAction);
     if (state.auditEntity) params.set('entidade', state.auditEntity);
     if (state.auditResult) params.set('sucesso', state.auditResult);
+    params.set('pagina', String(state.auditPage || 1));
+    params.set('limite', '10');
     const payload = await request(`/api/admin/auditoria?${params}`);
     state.auditoria = payload.eventos || [];
+    state.auditPagination = payload.paginacao || { pagina: 1, limite: 10, total: 0, total_paginas: 1 };
   }
 
   async function loadPublications() {
@@ -539,10 +566,13 @@ import {
   }
 
   async function loadRequests() {
-    const params = new URLSearchParams();
-    if (state.requestStatus) params.set('status_solicitacao', state.requestStatus);
-    const payload = await request(`/api/admin/solicitacoes?${params}`);
+    const payload = await request('/api/admin/solicitacoes');
     state.solicitacoes = payload.solicitacoes || [];
+  }
+
+  function filteredRequests() {
+    if (!state.requestStatus) return state.solicitacoes;
+    return state.solicitacoes.filter((item) => item.status_solicitacao === state.requestStatus);
   }
 
   async function refreshView() {
@@ -603,39 +633,74 @@ import {
   function renderOverview() {
     const dash = state.reports?.dashboard || {};
     const hoje = dash.hoje || {};
+    const catalogo = state.reports?.catalogo || {};
     views.overview.replaceChildren(
       pageHeading('overview'),
-      el('div', { className: 'kpi-grid' }, [
-        metric('Produtos ativos', dash.produtos_ativos),
-        metric('Categorias ativas', dash.categorias_ativas),
-        metric('Produtos em destaque', dash.destaques),
-        metric('Promoções ativas', dash.promocoes_ativas),
-        metric('Pedidos hoje', hoje.pedidos),
-        metric('Vendas confirmadas hoje', hoje.vendas_confirmadas),
-        metric('Faturamento hoje', money(hoje.faturamento_centavos)),
-        metric('Ticket médio hoje', money(hoje.ticket_medio_centavos)),
-      ]),
-      el('div', { className: 'cards', style: 'margin-top:16px' }, [
-        metric('Pedidos 7 dias', dash.dias_7?.pedidos),
-        metric('Faturamento 7 dias', money(dash.dias_7?.faturamento_centavos)),
-        metric('Pedidos 30 dias', dash.dias_30?.pedidos),
-        metric('Faturamento 30 dias', money(dash.dias_30?.faturamento_centavos)),
-      ]),
-      el('div', { className: 'env-grid', style: 'margin-top:16px' }, [
-        el('article', { className: 'card' }, [
-          el('span', { text: 'Vendas por dia' }),
-          chart(state.reports?.vendas?.por_dia || [], 'pedidos'),
-        ]),
-        el('article', { className: 'card' }, [
-          el('span', { text: 'Faturamento por dia' }),
-          chart(state.reports?.vendas?.por_dia || [], 'faturamento_centavos'),
+      el('section', { className: 'overview-section' }, [
+        el('h3', { text: 'Indicadores' }),
+        el('div', { className: 'kpi-grid' }, [
+          metric('Produtos ativos', dash.produtos_ativos),
+          metric('Categorias ativas', dash.categorias_ativas),
+          metric('Produtos em destaque', dash.destaques),
+          metric('Promoções ativas', dash.promocoes_ativas),
+          metric('Pedidos hoje', hoje.pedidos),
+          metric('Vendas confirmadas hoje', hoje.vendas_confirmadas),
+          metric('Faturamento hoje', money(hoje.faturamento_centavos)),
+          metric('Ticket médio hoje', money(hoje.ticket_medio_centavos)),
         ]),
       ]),
-      el('article', { className: 'card', style: 'margin-top:16px' }, [
-        el('span', { text: 'Produtos mais vendidos' }),
-        (state.reports?.produtos || []).length
-          ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Qtd', 'Receita'], (state.reports.produtos || []).slice(0, 8).map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
-          : emptyState('Nenhuma venda encontrada para este período.'),
+      el('section', { className: 'overview-section' }, [
+        el('h3', { text: 'Atividade e pedidos' }),
+        el('div', { className: 'cards' }, [
+          metric('Pedidos 7 dias', dash.dias_7?.pedidos),
+          metric('Faturamento 7 dias', money(dash.dias_7?.faturamento_centavos)),
+          metric('Pedidos 30 dias', dash.dias_30?.pedidos),
+          metric('Faturamento 30 dias', money(dash.dias_30?.faturamento_centavos)),
+        ]),
+        el('div', { className: 'env-grid' }, [
+          el('article', { className: 'card' }, [
+            el('span', { text: 'Vendas por dia' }),
+            chart(state.reports?.vendas?.por_dia || [], 'pedidos'),
+          ]),
+          el('article', { className: 'card' }, [
+            el('span', { text: 'Faturamento por dia' }),
+            chart(state.reports?.vendas?.por_dia || [], 'faturamento_centavos'),
+          ]),
+        ]),
+        el('article', { className: 'card' }, [
+          el('span', { text: 'Produtos mais vendidos' }),
+          (state.reports?.produtos || []).length
+            ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Qtd', 'Receita'], (state.reports.produtos || []).slice(0, 8).map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
+            : emptyState('Nenhuma venda encontrada para este período.'),
+        ]),
+      ]),
+      el('section', { className: 'overview-section' }, [
+        el('h3', { text: 'Atalhos' }),
+        el('div', { className: 'cards' }, [
+          el('article', { className: 'card' }, [
+            el('span', { text: 'Catálogo' }),
+            el('div', { className: 'actions' }, [
+              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Categorias', onClick: () => setView('categories') }),
+              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Produtos', onClick: () => setView('products') }),
+            ]),
+          ]),
+          el('article', { className: 'card' }, [
+            el('span', { text: 'Operação' }),
+            el('div', { className: 'actions' }, [
+              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Solicitações', onClick: () => setView('requests') }),
+              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Relatórios', onClick: () => setView('reports') }),
+            ]),
+          ]),
+        ]),
+      ]),
+      el('section', { className: 'overview-section' }, [
+        el('h3', { text: 'Estado do sistema' }),
+        el('div', { className: 'cards' }, [
+          metric('Ativos no catálogo', catalogo.produtos_ativos ?? dash.produtos_ativos),
+          metric('Sem imagem', catalogo.sem_imagem),
+          metric('Sem preço vigente', catalogo.sem_preco_vigente),
+          metric('Promoções ativas', catalogo.promocoes_ativas ?? dash.promocoes_ativas),
+        ]),
       ]),
     );
   }
@@ -651,7 +716,7 @@ import {
     const rows = state.catalog.categorias || [];
     views.categories.replaceChildren(
       pageHeading('categories', [
-        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Nova categoria', onClick: () => openCategoryForm() }),
+        createBtn('+ Nova categoria', () => openCategoryForm()),
       ]),
       el('div', { className: 'toolbar' }, [
         el('p', { className: 'muted', text: `${rows.length} categoria(s)` }),
@@ -675,7 +740,7 @@ import {
 
   function categoryActions(category) {
     return el('div', { className: 'actions' }, [
-      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openCategoryForm(category) }),
+      editBtn(() => openCategoryForm(category)),
       el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: category.ativo ? 'Desativar' : 'Ativar', onClick: () => mutate('categoria', category.ativo ? 'desativar' : 'ativar', category.id_categoria) }),
     ]);
   }
@@ -695,7 +760,7 @@ import {
     const rows = filteredProducts();
     views.products.replaceChildren(
       pageHeading('products', [
-        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo produto', onClick: () => openProductForm() }),
+        createBtn('+ Novo produto', () => openProductForm()),
       ]),
       el('div', { className: 'toolbar' }, [
         el('input', { className: 'search-input', type: 'search', placeholder: 'Buscar por nome', value: state.productQuery, onInput: (event) => { state.productQuery = event.target.value; renderProducts(); } }),
@@ -728,7 +793,7 @@ import {
 
   function productActions(product) {
     return el('div', { className: 'actions' }, [
-      el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openProductForm(product) }),
+      editBtn(() => openProductForm(product)),
       el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: product.ativo ? 'Desativar' : 'Ativar', onClick: () => mutate('produto', product.ativo ? 'desativar' : 'ativar', product.id_produto) }),
     ]);
   }
@@ -737,29 +802,31 @@ import {
     return (state.conteudo.configuracoes || []).find((item) => item.chave_configuracao === chave)?.valor_texto || '';
   }
 
+  function configJson(chave) {
+    return (state.conteudo.configuracoes || []).find((item) => item.chave_configuracao === chave)?.valor_json || null;
+  }
+
   function contentsFor(secao, tipo) {
     return (state.conteudo.conteudos || []).filter((item) => item.secao === secao && (!tipo || item.tipo_conteudo === tipo));
   }
 
   function contentCard(item) {
     const principal = item.imagem_principal || (item.imagens || []).find((image) => image.principal === true) || null;
-    const galeria = item.galeria || (item.imagens || []).filter((image) => image.principal !== true);
-    return el('article', { className: 'card' }, [
-      el('strong', { text: item.titulo || item.tipo_conteudo }),
-      el('span', { className: 'muted', text: `${item.secao} · ${item.tipo_conteudo}` }),
-      item.descricao ? el('p', { text: item.descricao }) : null,
-      el('div', { className: 'image-slot' }, [
-        el('span', { className: 'muted', text: 'Imagem principal' }),
-        principal ? el('img', { className: 'branding-preview', src: principal.url_imagem, alt: principal.texto_alternativo || item.titulo || '' }) : el('span', { className: 'muted', text: 'Sem imagem no slot' }),
-        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Substituir imagem', onClick: () => openPrincipalImageForm(item, principal) }),
+    const excerpt = String(item.descricao || item.subtitulo || '').slice(0, 140);
+    return el('article', { className: 'card content-admin-card' }, [
+      el('div', { className: 'content-preview' }, [
+        principal
+          ? el('img', { src: principal.url_imagem, alt: principal.texto_alternativo || item.titulo || '' })
+          : el('span', { className: 'muted', text: 'Sem imagem' }),
       ]),
-      item.tipo_conteudo === 'GALERIA' ? el('div', { className: 'image-slot' }, [
-        el('span', { className: 'muted', text: 'Galeria' }),
-        galeria.length ? el('div', { className: 'thumbs' }, galeria.slice(0, 6).map((image) => thumb(image.url_imagem, image.texto_alternativo))) : el('span', { className: 'muted', text: 'Nenhuma imagem extra' }),
-        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: '+ Adicionar à galeria', onClick: () => openGalleryAddForm(item) }),
-      ]) : null,
+      el('div', { className: 'card-copy' }, [
+        el('span', { className: 'eyebrow', text: item.tipo_conteudo }),
+        el('strong', { text: item.titulo || item.tipo_conteudo }),
+        excerpt ? el('p', { text: excerpt }) : null,
+        badge(item.ativo !== false),
+      ]),
       el('div', { className: 'actions' }, [
-        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openContentForm(item) }),
+        editBtn(() => openContentForm(item)),
       ]),
     ]);
   }
@@ -771,9 +838,9 @@ import {
     if (view === 'branding') {
       target.replaceChildren(
         pageHeading('branding'),
-        el('div', { className: 'cards' }, [
-          brandingEditor('logo_topo_url', 'Logo do topo', configValue('logo_topo_url')),
-          brandingEditor('logo_rodape_url', 'Logo do rodapé', configValue('logo_rodape_url')),
+        el('div', { className: 'content-admin-grid' }, [
+          brandingEditor('logo_topo_url', 'Logo do topo', configValue('logo_topo_url'), true, 'round'),
+          brandingEditor('logo_rodape_url', 'Logo do rodapé', configValue('logo_rodape_url'), true, 'wide'),
           brandingEditor('whatsapp_telefone', 'WhatsApp comercial', configValue('whatsapp_telefone'), false),
         ]),
       );
@@ -781,24 +848,107 @@ import {
     }
     const secao = view === 'homeContent' ? 'HOME' : view === 'encomendasContent' ? 'ENCOMENDAS' : view === 'festasContent' ? 'FESTAS' : 'PERSONALIZADOS';
     const items = contentsFor(secao);
+    if (view === 'encomendasContent') {
+      const chamada = items.find((item) => item.tipo_conteudo === 'CHAMADA') || items[0];
+      const galeria = items.find((item) => item.tipo_conteudo === 'GALERIA');
+      target.replaceChildren(
+        pageHeading(view, [createBtn('+ Novo conteúdo', () => openContentForm({ secao, tipo_conteudo: 'CHAMADA' }))]),
+        el('div', { className: 'content-admin-grid' }, [
+          chamada ? contentCard(chamada) : emptyState('Nenhum conteúdo nesta seção.'),
+          chamada ? imageSlotCard('Imagem principal', chamada) : null,
+          galeria ? gallerySlotCard(galeria) : null,
+          minimaCard(),
+        ].filter(Boolean)),
+      );
+      return;
+    }
     const homeImages = view === 'homeContent'
       ? [
-        brandingEditor('hero_imagem_url', 'Imagem do hero', configValue('hero_imagem_url')),
-        brandingEditor('descubra_imagem_url', 'Imagem de “Descubra nossos amanteigados”', configValue('descubra_imagem_url')),
+        brandingEditor('hero_imagem_url', 'Imagem do hero', configValue('hero_imagem_url'), true, 'wide'),
+        brandingEditor('descubra_imagem_url', 'Imagem de “Descubra nossos amanteigados”', configValue('descubra_imagem_url'), true, 'wide'),
       ]
       : [];
     target.replaceChildren(
       pageHeading(view, [
-        el('button', { className: 'btn btn-primary', type: 'button', text: 'Novo bloco', onClick: () => openContentForm({ secao, tipo_conteudo: secao === 'FESTAS' ? 'CARD' : 'CHAMADA' }) }),
+        createBtn('+ Novo conteúdo', () => openContentForm({ secao, tipo_conteudo: secao === 'FESTAS' ? 'CARD' : 'CHAMADA' })),
       ]),
-      el('div', { className: 'cards' }, homeImages.concat(items.length ? items.map(contentCard) : [emptyState('Nenhum conteúdo nesta seção.')])),
+      el('div', { className: 'content-admin-grid' }, homeImages.concat(items.length ? items.map(contentCard) : [emptyState('Nenhum conteúdo nesta seção.')])),
     );
   }
 
-  function brandingEditor(chave, label, value, isImage = true) {
+  function imageSlotCard(title, item) {
+    const principal = item.imagem_principal || (item.imagens || []).find((image) => image.principal === true) || null;
+    return el('article', { className: 'card content-admin-card' }, [
+      el('strong', { text: title }),
+      el('div', { className: 'content-preview' }, [
+        principal ? el('img', { src: principal.url_imagem, alt: principal.texto_alternativo || title }) : el('span', { className: 'muted', text: 'Sem imagem no slot' }),
+      ]),
+      el('div', { className: 'actions' }, [
+        editBtn(() => openPrincipalImageForm(item, principal), 'Editar imagem'),
+      ]),
+    ]);
+  }
+
+  function gallerySlotCard(item) {
+    const galeria = item.galeria || (item.imagens || []).filter((image) => image.principal !== true);
+    return el('article', { className: 'card content-admin-card' }, [
+      el('strong', { text: 'Galeria' }),
+      el('span', { className: 'muted', text: item.titulo || 'Galeria da seção' }),
+      galeria.length
+        ? el('div', { className: 'thumbs' }, galeria.slice(0, 6).map((image) => thumb(image.url_imagem, image.texto_alternativo)))
+        : el('span', { className: 'muted', text: 'Nenhuma imagem extra' }),
+      el('div', { className: 'actions' }, [
+        editBtn(() => openContentForm(item)),
+        el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: '+ Adicionar à galeria', onClick: () => openGalleryAddForm(item) }),
+      ]),
+    ]);
+  }
+
+  function minimaCard() {
+    const current = normalizeQuantidadeMinimaMap(configJson(QUANTIDADE_MINIMA_KEY) || QUANTIDADE_MINIMA_DEFAULT);
+    const fields = Object.entries(ENCOMENDA_TIPO_LABELS).map(([tipo, label]) => field(`minima_${tipo}`, label, el('input', {
+      id: `minima_${tipo}`,
+      type: 'number',
+      min: '1',
+      max: '10000',
+      step: '1',
+      value: String(current[tipo] || 1),
+    })));
     return el('article', { className: 'card' }, [
+      el('strong', { text: 'Quantidades mínimas' }),
+      el('p', { className: 'muted', text: 'Defina o mínimo por tipo de solicitação.' }),
+      el('div', { className: 'minima-grid' }, fields),
+      el('button', { className: 'btn btn-primary', type: 'button', text: 'Salvar quantidades mínimas', onClick: saveMinima }),
+    ]);
+  }
+
+  async function saveMinima() {
+    const valor_json = {};
+    for (const tipo of Object.keys(ENCOMENDA_TIPO_LABELS)) {
+      const parsed = Number.parseInt(document.getElementById(`minima_${tipo}`)?.value || '1', 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10000) {
+        toast('Informe um inteiro entre 1 e 10000.', false);
+        return;
+      }
+      valor_json[tipo] = parsed;
+    }
+    await request('/api/admin/conteudo', {
+      method: 'POST',
+      body: JSON.stringify({
+        acao: 'salvar_configuracao',
+        dados: { chave_configuracao: QUANTIDADE_MINIMA_KEY, valor_json },
+      }),
+    });
+    toast('Quantidades mínimas salvas.');
+    await refreshView();
+  }
+
+  function brandingEditor(chave, label, value, isImage = true, shape = 'wide') {
+    return el('article', { className: 'card content-admin-card' }, [
       el('strong', { text: label }),
-      isImage && value ? el('img', { className: 'branding-preview', src: value, alt: label }) : null,
+      isImage ? el('div', { className: `brand-preview-shell ${shape === 'round' ? 'is-round' : 'is-wide'}` }, [
+        value ? el('img', { src: value, alt: label }) : el('span', { className: 'muted', text: 'Sem imagem' }),
+      ]) : null,
       field(chave, isImage ? 'URL da imagem' : 'Telefone com DDI', el('input', { id: chave, name: chave, value, type: 'text' })),
       isImage ? el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', onChange: async (event) => {
         const file = event.target.files?.[0];
@@ -835,7 +985,8 @@ import {
       eyebrow: 'Conteúdo',
       title: item.id_conteudo_site ? 'Editar conteúdo' : 'Novo conteúdo',
       description: 'Atualize textos, ordem e destino do bloco.',
-      submitLabel: 'Salvar',
+      submitLabel: item.id_conteudo_site ? 'Atualizar conteúdo' : 'Salvar conteúdo',
+      size: 'medium',
       children: [
         field('secao', 'Seção', el('select', { id: 'secao' }, ['HOME', 'ENCOMENDAS', 'FESTAS', 'PERSONALIZADOS'].map((value) => el('option', { value, text: value, selected: (item.secao || '') === value })))),
         field('tipo_conteudo', 'Tipo', el('select', { id: 'tipo_conteudo' }, ['CHAMADA', 'DESTAQUE', 'GALERIA', 'CARD'].map((value) => el('option', { value, text: value, selected: (item.tipo_conteudo || '') === value })))),
@@ -881,6 +1032,7 @@ import {
       title,
       description: 'Envie um arquivo local ou informe uma URL segura.',
       submitLabel,
+      size: 'medium',
       children: [
         field('url_imagem', 'URL da imagem', input('url_imagem', { value: url || '' })),
         field('arquivo_imagem', 'Upload local', el('input', { id: 'arquivo_imagem', type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
@@ -916,39 +1068,84 @@ import {
 
   function renderRequests() {
     const statuses = ['NOVA', 'EM_ATENDIMENTO', 'CONCLUIDA', 'CANCELADA'];
+    const rows = filteredRequests();
+    const counts = Object.fromEntries(statuses.map((status) => [
+      status,
+      state.solicitacoes.filter((item) => item.status_solicitacao === status).length,
+    ]));
     views.requests.replaceChildren(
       pageHeading('requests'),
+      el('div', { className: 'request-kpis' }, statuses.map((status) => el('article', {
+        className: `card${state.requestStatus === status ? ' is-active' : ''}`,
+        onClick: () => { state.requestStatus = status; renderRequests(); },
+      }, [
+        el('span', { text: requestStatusLabel(status) }),
+        el('strong', { text: String(counts[status] || 0) }),
+      ]))),
       el('div', { className: 'filters' }, statuses.map((status) => el('button', {
         className: `chip${state.requestStatus === status ? ' is-active' : ''}`,
         type: 'button',
         text: requestStatusLabel(status),
-        onClick: () => { state.requestStatus = status; refreshView(); },
+        onClick: () => { state.requestStatus = status; renderRequests(); },
       }))),
       el('div', { className: 'table-wrap' }, [
-        state.solicitacoes.length
+        rows.length
           ? el('table', {}, [
-            el('thead', {}, [el('tr', {}, ['Data', 'Cliente', 'Telefone', 'Tipo', 'Evento', 'Resumo', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
-            el('tbody', {}, state.solicitacoes.map((item) => el('tr', {}, [
-              el('td', { text: formatDate(item.data_criacao) }),
+            el('thead', {}, [el('tr', {}, ['Cliente', 'Tipo', 'Data', 'Quantidade', 'Status', 'Ação'].map((h) => el('th', { text: h })))]),
+            el('tbody', {}, rows.map((item) => el('tr', {}, [
               el('td', { text: item.nome_cliente }),
-              el('td', { text: item.telefone_cliente }),
-              el('td', { text: item.tipo_solicitacao }),
-              el('td', { text: item.data_evento || '—' }),
-              el('td', { text: String(item.descricao_pedido || '').slice(0, 48) }),
+              el('td', { text: ENCOMENDA_TIPO_LABELS[item.tipo_solicitacao] || item.tipo_solicitacao }),
+              el('td', { text: formatDateOnly(item.data_evento || item.data_criacao) }),
+              el('td', { text: String(item.quantidade_estimada || '—') }),
               el('td', {}, [el('span', { className: `badge ${requestStatusBadgeClass(item.status_solicitacao)}`, text: requestStatusLabel(item.status_solicitacao) })]),
-              el('td', {}, [requestActions(item, statuses)]),
+              el('td', {}, [
+                el('div', { className: 'actions' }, [
+                  editBtn(() => openRequestDetail(item), 'Abrir'),
+                ]),
+              ]),
             ]))),
           ])
           : emptyState('Nenhuma solicitação neste filtro.'),
-        state.solicitacoes.length ? el('div', { className: 'request-cards' }, state.solicitacoes.map((item) => el('article', { className: 'mobile-card' }, [
+        rows.length ? el('div', { className: 'request-cards' }, rows.map((item) => el('article', { className: 'mobile-card' }, [
           el('strong', { text: item.nome_cliente }),
-          el('span', { className: 'muted', text: `${item.tipo_solicitacao} · ${item.telefone_cliente}` }),
+          el('span', { className: 'muted', text: `${ENCOMENDA_TIPO_LABELS[item.tipo_solicitacao] || item.tipo_solicitacao} · ${formatDateOnly(item.data_evento || item.data_criacao)}` }),
+          el('span', { text: `Qtd: ${item.quantidade_estimada || '—'}` }),
           el('span', { className: `badge ${requestStatusBadgeClass(item.status_solicitacao)}`, text: requestStatusLabel(item.status_solicitacao) }),
-          el('p', { text: item.descricao_pedido }),
-          requestActions(item, statuses),
+          editBtn(() => openRequestDetail(item), 'Abrir'),
         ]))) : null,
       ]),
     );
+  }
+
+  function openRequestDetail(item) {
+    const statuses = ['NOVA', 'EM_ATENDIMENTO', 'CONCLUIDA', 'CANCELADA'];
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Operação',
+      title: 'Detalhe da solicitação',
+      description: ENCOMENDA_TIPO_LABELS[item.tipo_solicitacao] || item.tipo_solicitacao,
+      submitLabel: 'Atualizar status',
+      size: 'medium',
+      children: [
+        el('input', { type: 'hidden', id: 'id_solicitacao_encomenda', value: item.id_solicitacao_encomenda }),
+        field('detalhe_nome', 'Nome', el('input', { id: 'detalhe_nome', value: item.nome_cliente || '', disabled: true })),
+        field('detalhe_whatsapp', 'WhatsApp', el('input', { id: 'detalhe_whatsapp', value: formatWhatsAppMaskDisplay(item.telefone_cliente) || item.telefone_cliente || '', disabled: true })),
+        field('detalhe_email', 'E-mail', el('input', { id: 'detalhe_email', value: item.email_cliente || '—', disabled: true })),
+        field('detalhe_tipo', 'Tipo', el('input', { id: 'detalhe_tipo', value: ENCOMENDA_TIPO_LABELS[item.tipo_solicitacao] || item.tipo_solicitacao, disabled: true })),
+        field('detalhe_data', 'Data', el('input', { id: 'detalhe_data', value: formatDateOnly(item.data_evento), disabled: true })),
+        field('detalhe_qtd', 'Quantidade', el('input', { id: 'detalhe_qtd', value: String(item.quantidade_estimada || '—'), disabled: true })),
+        field('detalhe_desc', 'Descrição', el('textarea', { id: 'detalhe_desc', disabled: true, text: item.descricao_pedido || '' })),
+        field('status_solicitacao', 'Status', el('select', { id: 'status_solicitacao' }, statuses.map((status) => el('option', {
+          value: status,
+          text: requestStatusLabel(status),
+          selected: item.status_solicitacao === status,
+        })))),
+        field('detalhe_criada', 'Criada em', el('input', { id: 'detalhe_criada', value: formatDate(item.data_criacao), disabled: true })),
+      ],
+    }));
+    resourceForm.dataset.kind = 'solicitacao';
+    resourceForm.dataset.id = item.id_solicitacao_encomenda;
+    bindFormDirty(resourceForm);
+    formDialog.showModal();
   }
 
   function renderSales() {
@@ -1014,11 +1211,9 @@ import {
   function renderReports() {
     const reports = state.reports || {};
     const tabs = [
-      ['visao', 'Visão Geral'],
+      ['visao', 'Resumo'],
       ['vendas', 'Vendas'],
       ['produtos', 'Produtos'],
-      ['catalogo', 'Catálogo'],
-      ['alteracoes', 'Alterações'],
       ['auditoria', 'Auditoria'],
     ];
     views.reports.replaceChildren(
@@ -1037,7 +1232,7 @@ import {
           window.location.href = `/api/admin/relatorios?formato=csv&secao=${state.reportTab === 'produtos' ? 'produtos' : state.reportTab === 'auditoria' ? 'auditoria' : 'vendas'}&${periodQuery()}`;
         } }),
       ]),
-      reportBody(reports),
+      el('div', { className: 'report-panel' }, [reportBody(reports)]),
     );
   }
 
@@ -1048,6 +1243,8 @@ import {
         metric('Vendas confirmadas', reports.visao_geral?.vendas_confirmadas),
         metric('Faturamento', money(reports.visao_geral?.faturamento_centavos)),
         metric('Ticket médio', money(reports.visao_geral?.ticket_medio_centavos)),
+        metric('Produtos ativos', reports.catalogo?.produtos_ativos),
+        metric('Promoções ativas', reports.catalogo?.promocoes_ativas),
       ]);
     }
     if (state.reportTab === 'vendas') {
@@ -1155,6 +1352,7 @@ import {
       title: 'Agendar publicação',
       description: 'A publicação em produção permanece bloqueada até a configuração do ambiente.',
       submitLabel: 'Agendar',
+      size: 'small',
       children: [
         field('data_agendada', 'Data', input('data_agendada', { type: 'date', required: true })),
         field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time', required: true })),
@@ -1165,13 +1363,32 @@ import {
     formDialog.showModal();
   }
 
+  function auditQuery(extra = {}) {
+    const params = new URLSearchParams();
+    if (state.auditPeriod) params.set('periodo', state.auditPeriod);
+    if (state.auditUser) params.set('usuario', state.auditUser);
+    if (state.auditAction) params.set('acao', state.auditAction);
+    if (state.auditEntity) params.set('entidade', state.auditEntity);
+    if (state.auditResult) params.set('sucesso', state.auditResult);
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value != null && value !== '') params.set(key, String(value));
+    });
+    return params;
+  }
+
   function renderAudit() {
+    const page = state.auditPagination || { pagina: 1, limite: 10, total: 0, total_paginas: 1 };
+    const setFilter = (mutate) => {
+      mutate();
+      state.auditPage = 1;
+      refreshView();
+    };
     views.audit.replaceChildren(
       pageHeading('audit'),
       el('div', { className: 'audit-filters' }, [
         field('auditPeriod', 'Período', el('select', {
           id: 'auditPeriod', value: state.auditPeriod,
-          onChange: (event) => { state.auditPeriod = event.target.value; refreshView(); },
+          onChange: (event) => setFilter(() => { state.auditPeriod = event.target.value; }),
         }, [
           el('option', { value: '', text: 'Todos' }),
           el('option', { value: 'hoje', text: 'Hoje', selected: state.auditPeriod === 'hoje' }),
@@ -1181,19 +1398,19 @@ import {
         ])),
         field('auditUser', 'Usuário', el('input', {
           id: 'auditUser', type: 'search', placeholder: 'Nome ou e-mail', value: state.auditUser,
-          onChange: (event) => { state.auditUser = event.target.value; refreshView(); },
+          onChange: (event) => setFilter(() => { state.auditUser = event.target.value; }),
         })),
         field('auditAction', 'Ação', el('input', {
           id: 'auditAction', type: 'search', placeholder: 'LOGIN_SUCESSO', value: state.auditAction,
-          onChange: (event) => { state.auditAction = event.target.value; refreshView(); },
+          onChange: (event) => setFilter(() => { state.auditAction = event.target.value; }),
         })),
         field('auditEntity', 'Entidade', el('input', {
           id: 'auditEntity', type: 'search', placeholder: 'produto', value: state.auditEntity,
-          onChange: (event) => { state.auditEntity = event.target.value; refreshView(); },
+          onChange: (event) => setFilter(() => { state.auditEntity = event.target.value; }),
         })),
         field('auditResult', 'Resultado', el('select', {
           id: 'auditResult',
-          onChange: (event) => { state.auditResult = event.target.value; refreshView(); },
+          onChange: (event) => setFilter(() => { state.auditResult = event.target.value; }),
         }, [
           el('option', { value: '', text: 'Todos' }),
           el('option', { value: 'true', text: 'Sucesso', selected: state.auditResult === 'true' }),
@@ -1201,7 +1418,7 @@ import {
         ])),
       ]),
       el('div', { className: 'toolbar' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => { window.location.href = '/api/admin/auditoria?formato=csv'; } }),
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => { window.location.href = `/api/admin/auditoria?${auditQuery({ formato: 'csv' })}`; } }),
       ]),
       el('div', { className: 'table-wrap' }, [
         state.auditoria.length
@@ -1222,6 +1439,23 @@ import {
           el('span', { text: item.sucesso ? 'Sucesso' : 'Falha' }),
           el('p', { text: item.descricao_evento || '—' }),
         ]))) : null,
+        el('div', { className: 'pagination' }, [
+          el('button', {
+            className: 'btn btn-ghost btn-small',
+            type: 'button',
+            text: '← Anterior',
+            disabled: page.pagina <= 1,
+            onClick: () => { if (page.pagina > 1) { state.auditPage = page.pagina - 1; refreshView(); } },
+          }),
+          el('span', { text: `Página ${page.pagina} de ${page.total_paginas}` }),
+          el('button', {
+            className: 'btn btn-ghost btn-small',
+            type: 'button',
+            text: 'Próxima →',
+            disabled: page.pagina >= page.total_paginas,
+            onClick: () => { if (page.pagina < page.total_paginas) { state.auditPage = page.pagina + 1; refreshView(); } },
+          }),
+        ]),
       ]),
     );
   }
@@ -1231,7 +1465,10 @@ import {
     views.users.replaceChildren(
       pageHeading('users', [
         canCreate
-          ? el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo usuário', onClick: () => openUserForm() })
+          ? el('button', { className: 'btn btn-primary btn-create', type: 'button', onClick: () => openUserForm() }, [
+            svgIcon('M12 5v14M5 12h14'),
+            el('span', { text: '+ Novo usuário' }),
+          ])
           : null,
       ]),
       el('div', { className: 'table-wrap' }, [
@@ -1267,7 +1504,7 @@ import {
   function userActions(user) {
     const nodes = [];
     if (canEditUser(user)) {
-      nodes.push(el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Editar', onClick: () => openUserForm(user) }));
+      nodes.push(editBtn(() => openUserForm(user)));
     }
     if (canResetUserPassword(user)) {
       nodes.push(el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Redefinir senha', onClick: () => openPasswordResetForm(user) }));
@@ -1325,7 +1562,8 @@ import {
       eyebrow: 'Catálogo',
       title: category ? 'Editar categoria' : 'Nova categoria',
       description: category ? 'Atualize os dados da categoria do cardápio.' : 'Crie uma categoria para organizar o cardápio.',
-      submitLabel: 'Salvar categoria',
+      submitLabel: category ? 'Atualizar categoria' : 'Salvar categoria',
+      size: 'medium',
       children: [
         el('input', { type: 'hidden', name: 'id_categoria', value: category?.id_categoria || '' }),
         field('nome', 'Nome *', input('nome', { required: true, value: category?.nome_categoria || '' })),
@@ -1355,17 +1593,23 @@ import {
       eyebrow: 'Catálogo',
       title: product ? 'Editar produto' : 'Novo produto',
       description: product ? 'Atualize informações, imagem, preço e disponibilidade.' : 'Cadastre um produto do cardápio.',
-      submitLabel: product ? 'Salvar produto' : 'Salvar produto',
+      submitLabel: product ? 'Atualizar produto' : 'Salvar produto',
+      size: 'large',
       children: [
         el('input', { type: 'hidden', name: 'id_produto', value: product?.id_produto || '' }),
         el('section', { className: 'form-section' }, [
           el('h3', { text: 'Informações' }),
           el('div', { className: 'form-grid' }, [
-            field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [el('option', { value: '', text: 'Selecione' }), ...options]), true),
             field('nome', 'Nome *', input('nome', { required: true, value: product?.nome_produto || '' }), true),
             field('slug', 'Slug *', input('slug', { required: true, value: product?.slug_produto || '' })),
-            field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
             field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' }), true),
+          ]),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Comercial' }),
+          el('div', { className: 'form-grid' }, [
+            field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [el('option', { value: '', text: 'Selecione' }), ...options])),
+            field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
           ]),
         ]),
         el('section', { className: 'form-section' }, [
@@ -1385,19 +1629,19 @@ import {
           ]),
         ]),
         el('section', { className: 'form-section' }, [
-          el('h3', { text: 'Disponibilidade' }),
-          el('div', { className: 'checkboxes' }, [
-            checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
-            checkbox('ativo', 'Ativo', product ? product.ativo : true),
-          ]),
-        ]),
-        el('section', { className: 'form-section' }, [
           el('h3', { text: 'Promoção' }),
           el('div', { className: 'form-grid' }, [
             field('preco_promocional', 'Preço promocional', input('preco_promocional', { inputmode: 'decimal', placeholder: '21,90', value: product?.preco_promocional || '' })),
           ]),
           el('div', { className: 'checkboxes' }, [
             checkbox('promocao_ativa', 'Promoção ativa', Boolean(product?.promocao_ativa)),
+          ]),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Disponibilidade' }),
+          el('div', { className: 'checkboxes' }, [
+            checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
+            checkbox('ativo', 'Ativo', product ? product.ativo : true),
           ]),
         ]),
         product ? scheduleFields() : null,
@@ -1423,7 +1667,8 @@ import {
       eyebrow: 'Gestão',
       title: user ? 'Editar usuário' : 'Novo usuário',
       description: user ? 'Atualize os dados de acesso.' : 'Crie um acesso para o painel.',
-      submitLabel: 'Salvar',
+      submitLabel: user ? 'Atualizar usuário' : 'Salvar usuário',
+      size: 'small',
       children: [
         el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
         field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
@@ -1459,6 +1704,7 @@ import {
       title: 'Redefinir senha',
       description: user?.email_usuario || '',
       submitLabel: 'Salvar senha',
+      size: 'small',
       children: [
         el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
         field('senha', 'Nova senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
@@ -1674,6 +1920,15 @@ import {
         });
         toast('Conteúdo salvo.');
         await refreshView();
+      } else if (kind === 'solicitacao') {
+        const id = resourceForm.dataset.id;
+        const status = document.getElementById('status_solicitacao')?.value;
+        await request('/api/admin/solicitacoes', {
+          method: 'POST',
+          body: JSON.stringify({ id_solicitacao_encomenda: id, status_solicitacao: status }),
+        });
+        toast('Status atualizado.');
+        await refreshView();
       } else if (kind === 'imagem-principal' || kind === 'galeria' || kind === 'galeria-add') {
         const url = await uploadSelectedImage('site');
         await request('/api/admin/conteudo', {
@@ -1736,7 +1991,7 @@ import {
     }
   });
 
-  logoutButton.addEventListener('click', logout);
+  logoutButton?.addEventListener('click', logout);
 
   document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));

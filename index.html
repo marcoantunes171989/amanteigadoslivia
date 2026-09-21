@@ -188,22 +188,25 @@
           <h3 id="form-encomenda">Solicitar encomenda</h3>
           <div class="form-grid">
             <div class="field">
-              <label for="encomendaNome">Nome *</label>
+              <label for="encomendaNome">Nome</label>
               <input id="encomendaNome" name="nome" type="text" autocomplete="name" required />
-              <p class="field-error" data-for="nome" hidden></p>
+              <p class="field-hint">Como devemos te chamar.</p>
+              <p class="field-error" id="encomendaNomeError" data-for="nome" hidden></p>
             </div>
             <div class="field">
-              <label for="encomendaTelefone">WhatsApp/Telefone *</label>
-              <input id="encomendaTelefone" name="telefone" type="tel" autocomplete="tel" inputmode="tel" required />
-              <p class="field-error" data-for="telefone" hidden></p>
+              <label for="encomendaTelefone">WhatsApp</label>
+              <input id="encomendaTelefone" name="telefone" type="tel" autocomplete="tel" inputmode="tel" required placeholder="(18) 99999-9999" />
+              <p class="field-hint">Celular com DDD, no formato (18) 99999-9999.</p>
+              <p class="field-error" id="encomendaTelefoneError" data-for="telefone" hidden></p>
             </div>
             <div class="field">
               <label for="encomendaEmail">E-mail</label>
               <input id="encomendaEmail" name="email" type="email" autocomplete="email" />
-              <p class="field-error" data-for="email" hidden></p>
+              <p class="field-hint">Opcional. Se informar, use um e-mail válido.</p>
+              <p class="field-error" id="encomendaEmailError" data-for="email" hidden></p>
             </div>
             <div class="field">
-              <label for="encomendaTipo">Tipo da solicitação *</label>
+              <label for="encomendaTipo">Tipo da solicitação</label>
               <select id="encomendaTipo" name="tipo" required>
                 <option value="ENCOMENDA">Encomenda</option>
                 <option value="ANIVERSARIO">Aniversário</option>
@@ -213,29 +216,34 @@
                 <option value="LEMBRANCA">Lembrança</option>
                 <option value="PERSONALIZADO">Personalizado</option>
               </select>
-              <p class="field-error" data-for="tipo" hidden></p>
+              <p class="field-error" id="encomendaTipoError" data-for="tipo" hidden></p>
             </div>
             <div class="field">
               <label for="encomendaData">Data do evento</label>
-              <input id="encomendaData" name="data" type="date" />
-              <p class="field-error" data-for="data" hidden></p>
+              <input id="encomendaData" name="data" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" autocomplete="off" />
+              <p class="field-hint">Dia / mês / ano.</p>
+              <p class="field-error" id="encomendaDataError" data-for="data" hidden></p>
             </div>
             <div class="field">
               <label for="encomendaQtd">Quantidade estimada</label>
-              <input id="encomendaQtd" name="quantidade" type="number" min="1" step="1" inputmode="numeric" />
-              <p class="field-error" data-for="quantidade" hidden></p>
+              <input id="encomendaQtd" name="quantidade" type="number" min="1" step="1" inputmode="numeric" required />
+              <p class="field-hint" id="encomendaQtdHint">Quantidade mínima: 1</p>
+              <p class="field-error" id="encomendaQtdError" data-for="quantidade" hidden></p>
             </div>
             <div class="field field-full">
-              <label for="encomendaDescricao">Conte-nos o que deseja *</label>
+              <label for="encomendaDescricao">Conte-nos o que deseja</label>
               <textarea id="encomendaDescricao" name="descricao" rows="4" required></textarea>
-              <p class="field-error" data-for="descricao" hidden></p>
+              <p class="field-error" id="encomendaDescricaoError" data-for="descricao" hidden></p>
             </div>
           </div>
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary" id="encomendaSubmit">Enviar solicitação</button>
+            <button type="submit" class="btn btn-primary encomenda-submit" id="encomendaSubmit">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 21 3l-7.5 18-2.4-6.6L3 11.5Z" fill="currentColor"/></svg>
+              Enviar pedido
+            </button>
           </div>
           <p class="form-success" id="encomendaSuccess" hidden></p>
-          <a class="btn btn-ghost" id="encomendaWhatsApp" hidden target="_blank" rel="noopener" data-dynamic="keep">Continuar pelo WhatsApp</a>
+          <p class="sr-only" id="encomendaLive" aria-live="polite"></p>
         </form>
       </section>
 
@@ -363,6 +371,6 @@
   <script src="site-content.js"></script>
   <script src="cart.js"></script>
   <script type="module" src="catalog-sync.js"></script>
-  <script src="encomenda-form.js"></script>
+  <script type="module" src="encomenda-form.js"></script>
 </body>
 </html>

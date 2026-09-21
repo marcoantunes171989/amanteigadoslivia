@@ -3,6 +3,10 @@ import { AdminError } from './admin-errors.js';
 import { getCatalogRevision, getPublicRealtimeConfig } from './catalog-revision.js';
 import { withTransaction } from './db-tx.js';
 import { formatWhatsAppDisplay, normalizeWhatsAppPhone } from './whatsapp.js';
+import {
+  QUANTIDADE_MINIMA_KEY,
+  normalizeQuantidadeMinimaMap,
+} from '../../ui-core.js';
 
 export const PUBLIC_CONFIG_KEYS = Object.freeze([
   'whatsapp_telefone',
@@ -61,6 +65,11 @@ export function publicConfigMap(rows = []) {
     map[row.chave_configuracao] = row.valor_texto || null;
   }
   return map;
+}
+
+export function publicQuantidadeMinima(rows = []) {
+  const row = (rows || []).find((item) => item.chave_configuracao === QUANTIDADE_MINIMA_KEY && item.ativo !== false);
+  return normalizeQuantidadeMinimaMap(row?.valor_json);
 }
 
 function mapImage(image) {
@@ -124,7 +133,7 @@ export async function getPublicSiteContent(queryable) {
         COALESCE((
           SELECT json_agg(to_jsonb(cfg))
           FROM (
-            SELECT chave_configuracao, valor_texto, ativo
+            SELECT chave_configuracao, valor_texto, valor_json, ativo
             FROM app.tab_configuracao_site
             WHERE ativo = true
               AND chave_configuracao = ANY($1::text[])
@@ -148,10 +157,11 @@ export async function getPublicSiteContent(queryable) {
             WHERE ativo = true
           ) i
         ), '[]'::json) AS imagens
-    `, [PUBLIC_CONFIG_KEYS]);
+    `, [[...PUBLIC_CONFIG_KEYS, QUANTIDADE_MINIMA_KEY]]);
 
   const row = result.rows[0] || {};
   const configuracao = publicConfigMap(row.configuracoes || []);
+  configuracao.quantidade_minima_solicitacao = publicQuantidadeMinima(row.configuracoes || []);
   if (configuracao.whatsapp_telefone) {
     configuracao.whatsapp_telefone = normalizeWhatsAppPhone(configuracao.whatsapp_telefone)
       || configuracao.whatsapp_telefone;
@@ -212,6 +222,15 @@ export async function getAdminSiteContent(queryable) {
 
 export function validateSiteConfigPatch(payload = {}) {
   const chave = clip(payload.chave_configuracao || payload.chave, TEXT_LIMITS.chave_configuracao);
+  if (chave === QUANTIDADE_MINIMA_KEY) {
+    const map = normalizeQuantidadeMinimaMap(payload.valor_json ?? payload.valor);
+    for (const [tipo, value] of Object.entries(map)) {
+      if (!Number.isInteger(value) || value < 1 || value > 10000) {
+        throw new AdminError(400, 'validation_error', `Quantidade mínima inválida para ${tipo}.`);
+      }
+    }
+    return { chave_configuracao: chave, valor_texto: null, valor_json: map };
+  }
   if (!PUBLIC_CONFIG_KEYS.includes(chave)) {
     throw new AdminError(400, 'validation_error', 'Configuração pública inválida.');
   }
@@ -225,7 +244,7 @@ export function validateSiteConfigPatch(payload = {}) {
   } else if (valor && chave.endsWith('_url') && !isSafePublicUrl(valor)) {
     throw new AdminError(400, 'validation_error', 'URL de imagem inválida.');
   }
-  return { chave_configuracao: chave, valor_texto: valor };
+  return { chave_configuracao: chave, valor_texto: valor, valor_json: null };
 }
 
 export async function upsertSiteConfig(queryable, payload = {}) {
@@ -238,14 +257,20 @@ export async function upsertSiteConfig(queryable, payload = {}) {
   await queryable.query(
     `-- op:upsert_configuracao_site
       INSERT INTO app.tab_configuracao_site (
-        id_configuracao_site, chave_configuracao, valor_texto, ativo, data_atualizacao
-      ) VALUES ($1, $2, $3, true, now())
+        id_configuracao_site, chave_configuracao, valor_texto, valor_json, ativo, data_atualizacao
+      ) VALUES ($1, $2, $3, $4::jsonb, true, now())
       ON CONFLICT (chave_configuracao) DO UPDATE
-        SET valor_texto = EXCLUDED.valor_texto,
+        SET valor_texto = COALESCE(EXCLUDED.valor_texto, app.tab_configuracao_site.valor_texto),
+            valor_json = COALESCE(EXCLUDED.valor_json, app.tab_configuracao_site.valor_json),
             ativo = true,
             data_atualizacao = now()
     `,
-    [id, patch.chave_configuracao, patch.valor_texto],
+    [
+      id,
+      patch.chave_configuracao,
+      patch.valor_texto,
+      patch.valor_json != null ? JSON.stringify(patch.valor_json) : null,
+    ],
   );
   return { id_configuracao_site: String(id), ...patch };
 }

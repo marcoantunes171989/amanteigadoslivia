@@ -7,7 +7,7 @@ import {
   readSessionToken,
   signSession,
 } from './admin-auth.js';
-import { AUDIT_ACTIONS, recordAudit } from './admin-audit.js';
+import { AUDIT_ACTIONS, AUDIT_CSV_MAX_ROWS, auditPaginationMeta, parseAuditPagination, recordAudit } from './admin-audit.js';
 import { executeAdminAction, getAdminCatalog } from './admin-catalog.js';
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
@@ -495,6 +495,7 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
     }
     const url = new URL(request.url || 'http://localhost/api/admin/auditoria', 'http://localhost');
     const query = Object.fromEntries(url.searchParams.entries());
+    const { pagina, limite } = parseAuditPagination(query);
     const params = [];
     const where = [];
     if (query.acao) {
@@ -522,18 +523,29 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
     } else if (query.periodo === 'mes') {
       where.push(`a.data_evento >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`);
     }
-    const sql = `-- op:list_auditoria
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const fromSql = `FROM app.tab_auditoria_admin a
+      LEFT JOIN app.tab_usuario_admin u ON u.id_usuario_admin = a.id_usuario_admin
+      ${whereSql}`;
+    const countResult = await pool.query(
+      `-- op:count_auditoria
+      SELECT COUNT(*)::int AS total
+      ${fromSql}`,
+      params,
+    );
+    const total = Number(countResult.rows[0]?.total || 0);
+    if (query.formato === 'csv') {
+      const csvParams = [...params, AUDIT_CSV_MAX_ROWS];
+      const csvResult = await pool.query(
+        `-- op:list_auditoria_csv
       SELECT a.id_auditoria, a.id_usuario_admin, u.nome_usuario, u.email_usuario,
              a.acao, a.entidade, a.id_registro, a.sucesso, a.descricao_evento, a.data_evento
-      FROM app.tab_auditoria_admin a
-      LEFT JOIN app.tab_usuario_admin u ON u.id_usuario_admin = a.id_usuario_admin
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ${fromSql}
       ORDER BY a.data_evento DESC
-      LIMIT 300
-    `;
-    const result = await pool.query(sql, params);
-    if (query.formato === 'csv') {
-      sendText(response, 200, 'text/csv; charset=utf-8', toCsv(result.rows, [
+      LIMIT $${csvParams.length}`,
+        csvParams,
+      );
+      sendText(response, 200, 'text/csv; charset=utf-8', toCsv(csvResult.rows, [
         { key: 'data_evento', label: 'Data' },
         { key: 'email_usuario', label: 'Usuario' },
         { key: 'acao', label: 'Acao' },
@@ -544,7 +556,21 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
       ]));
       return;
     }
-    sendJson(response, 200, { eventos: result.rows });
+    const offset = (pagina - 1) * limite;
+    const listParams = [...params, limite, offset];
+    const result = await pool.query(
+      `-- op:list_auditoria
+      SELECT a.id_auditoria, a.id_usuario_admin, u.nome_usuario, u.email_usuario,
+             a.acao, a.entidade, a.id_registro, a.sucesso, a.descricao_evento, a.data_evento
+      ${fromSql}
+      ORDER BY a.data_evento DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      listParams,
+    );
+    sendJson(response, 200, {
+      eventos: result.rows,
+      paginacao: auditPaginationMeta(total, pagina),
+    });
   });
 }
 

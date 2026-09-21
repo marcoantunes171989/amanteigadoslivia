@@ -54,6 +54,29 @@ export async function recordAudit(queryable, event = {}) {
   return id;
 }
 
+export const AUDIT_PAGE_LIMIT = 10;
+export const AUDIT_CSV_MAX_ROWS = 300;
+
+export function parseAuditPagination(query = {}) {
+  const parsed = Number.parseInt(String(query.pagina ?? '1'), 10);
+  const pagina = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+  return {
+    pagina,
+    limite: AUDIT_PAGE_LIMIT,
+  };
+}
+
+export function auditPaginationMeta(total, pagina = 1) {
+  const limite = AUDIT_PAGE_LIMIT;
+  const count = Number(total) || 0;
+  return {
+    pagina,
+    limite,
+    total: count,
+    total_paginas: Math.max(1, Math.ceil(count / limite)),
+  };
+}
+
 export const AUDIT_ACTIONS = Object.freeze({
   LOGIN_SUCESSO: 'LOGIN_SUCESSO',
   LOGIN_FALHA: 'LOGIN_FALHA',

@@ -71,7 +71,8 @@
   --sh-card: 0 1px 4px rgba(74,46,42,.05);
 
   --pad: clamp(16px, 3.3vw, 40px);
-  --content-max: 1200px;
+  --page-max: 1680px;
+  --content-max: 1400px;
   --header-h: 84px;
 }
 
@@ -101,7 +102,7 @@ a{ color:inherit; text-decoration:none; }
    levemente a viewport em ~320px antes desta mudança) passa a gerar scroll
    horizontal real — antes ficava mascarado pelo recorte do card externo. */
 .page{
-  width:min(100%, 1440px);
+  width:min(100%, var(--page-max));
   margin:0 auto;
   background:var(--page);
   overflow:visible;
@@ -140,11 +141,13 @@ a{ color:inherit; text-decoration:none; }
   background:rgba(255,253,252,.94);
   border-bottom:1px solid rgba(231,221,211,.55);
   box-shadow:0 2px 10px rgba(74,46,42,.05);
-  transition: min-height .22s ease, padding .22s ease, box-shadow .22s ease;
+  transition: background .22s ease, box-shadow .22s ease, border-color .22s ease;
 }
-.site-header.is-compact{ --header-h: 72px; padding:4px var(--pad); box-shadow:0 1px 8px rgba(74,46,42,.08); }
-.brand{ grid-column:1; grid-row:1; width:66px; height:66px; flex:0 0 auto; transition:width .22s ease, height .22s ease; }
-.site-header.is-compact .brand{ width:58px; height:58px; }
+.site-header.is-compact{
+  background:rgba(255,253,252,.98);
+  box-shadow:0 1px 12px rgba(74,46,42,.10);
+}
+.brand{ grid-column:1; grid-row:1; width:66px; height:66px; flex:0 0 auto; }
 .nav-backdrop{ display:none; }
 .brand img{ width:100%; height:100%; border-radius:50%; object-fit:contain; background:var(--surface); box-shadow:0 5px 16px rgba(57,38,26,.14); }
 .nav{ grid-column:2; grid-row:1; justify-self:center; display:flex; align-items:center; flex-wrap:nowrap; gap:clamp(12px,1.5vw,28px); font-family:var(--sans); font-size:15px; font-weight:500; line-height:1.25; }
@@ -975,8 +978,11 @@ a{ color:inherit; text-decoration:none; }
   padding:10px 12px; font:inherit; font-size:16px; background:var(--page); color:var(--text);
 }
 .field textarea{ min-height:120px; resize:vertical; }
-.field-error{ color:#A83E3E; font-size:.8rem; }
+.field-hint{ color:var(--muted); font-size:.78rem; }
+.field-error{ color:#A83E3E; font-size:.8rem; margin:0; }
 .form-actions{ margin-top:16px; }
+.encomenda-submit{ min-height:48px; width:100%; }
+.encomenda-submit .ico{ width:18px; height:18px; }
 .form-success{ margin-top:12px; color:#4F7A5A; }
 .feature-tag-btn{
   font-size:.8rem; font-weight:500; color:var(--primary); background:rgba(122,62,72,.08);
@@ -1143,7 +1149,15 @@ body { min-height: 100dvh; }
   .dialog-close { position: sticky; top: 8px; float: right; }
 }
 
-@media (min-width: 1025px) {
+@media (min-width:1025px){
   .app-bottom-nav,
   .app-more-sheet { display: none !important; }
+  .encomenda-submit{ min-height:46px; max-width:320px; }
+  .content-copy{ max-width:var(--content-max); }
+}
+@media (min-width:1920px){
+  .page{ width:min(100%, var(--page-max)); }
+}
+@media (min-width:2560px){
+  .hero-copy h1, .section-sub, .content-copy p{ max-width:72ch; }
 }

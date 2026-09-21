@@ -16,6 +16,13 @@ import {
   activeAppNavId,
   isAppShellViewport,
   isPhoneViewport,
+  maskWhatsAppPtBr,
+  parseBrDateToIso,
+  isSimpleEmail,
+  minQuantidadeForTipo,
+  QUANTIDADE_MINIMA_DEFAULT,
+  buildEncomendaWhatsAppMessage,
+  formatWhatsAppMaskDisplay,
 } from '../../ui-core.js';
 
 test('sidebar collapsed preference uses a visual-only localStorage key', () => {
@@ -150,4 +157,83 @@ test('admin header user mount and dialog close contract exist', () => {
   assert.match(css, /--bordo:\s*#7A3E48/);
   assert.match(css, /--serif:\s*"Fraunces"/);
   assert.match(css, /--sans:\s*"Inter"/);
+});
+
+test('encomenda helpers mask phone, parse BR date and validate email', () => {
+  assert.equal(maskWhatsAppPtBr('18999999999'), '(18) 99999-9999');
+  assert.equal(maskWhatsAppPtBr('1833334444'), '(18) 3333-4444');
+  assert.equal(formatWhatsAppMaskDisplay('5518999999999'), '(18) 99999-9999');
+  assert.equal(parseBrDateToIso('25/12/2026'), '2026-12-25');
+  assert.equal(parseBrDateToIso('31/02/2026'), null);
+  assert.equal(isSimpleEmail(''), true);
+  assert.equal(isSimpleEmail('ana@email.com'), true);
+  assert.equal(isSimpleEmail('texto sem arroba'), false);
+  assert.equal(isSimpleEmail('ana@dominio'), false);
+  assert.equal(minQuantidadeForTipo({ ANIVERSARIO: 30 }, 'ANIVERSARIO'), 30);
+  assert.equal(minQuantidadeForTipo(null, 'ENCOMENDA'), QUANTIDADE_MINIMA_DEFAULT.ENCOMENDA);
+});
+
+test('public encomenda has a single Enviar pedido CTA without WhatsApp continuation', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../../encomenda-form.js', import.meta.url), 'utf8');
+  assert.match(html, />\s*Enviar pedido\s*</);
+  assert.equal((html.match(/id="encomendaSubmit"/g) || []).length, 1);
+  assert.doesNotMatch(html, /Continuar pelo WhatsApp/);
+  assert.doesNotMatch(js, /Continuar pelo WhatsApp/);
+  assert.match(js, /Enviando\.\.\./);
+  assert.match(html, /placeholder="DD\/MM\/AAAA"/);
+  assert.match(html, /type="email"/);
+  assert.match(html, /inputmode="tel"/);
+});
+
+test('is-compact and active nav do not change desktop header metrics', () => {
+  const css = readFileSync(new URL('../../styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /\.site-header\.is-compact\{[^}]*--header-h:\s*72px/);
+  assert.doesNotMatch(css, /\.site-header\.is-compact \.brand\{[^}]*width:\s*58px/);
+  assert.match(css, /\.nav a\{[^}]*font-weight:inherit/);
+  assert.match(css, /\.nav a\.active\{ color:var\(--primary\); \}/);
+  assert.doesNotMatch(css, /\.nav a\.active\{[^}]*font-weight:\s*700/);
+  assert.match(css, /--page-max:\s*1680px/);
+  assert.match(css, /--content-max:\s*1400px/);
+});
+
+test('admin dialogs and full width layout contracts exist', () => {
+  const css = readFileSync(new URL('../../admin.css', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../../admin.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../../admin.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /--admin-content-max:\s*1180px/);
+  assert.match(css, /\.admin-main \{[\s\S]*max-width:\s*none;/);
+  assert.match(css, /\.admin-dialog \{[\s\S]*inset:\s*0;/);
+  assert.match(css, /\.admin-dialog \{[\s\S]*margin:\s*auto;/);
+  assert.match(css, /\.admin-dialog\.is-small/);
+  assert.match(css, /\.admin-dialog\.is-medium/);
+  assert.match(css, /\.admin-dialog\.is-large/);
+  assert.match(css, /\.brand-preview-shell/);
+  assert.match(css, /object-fit:\s*contain/);
+  assert.match(js, /function dialogFrame/);
+  assert.match(js, /size = 'medium'/);
+  assert.match(js, /Nova categoria/);
+  assert.match(js, /Editar categoria/);
+  assert.match(js, /Atualizar categoria/);
+  assert.match(js, /Novo produto/);
+  assert.match(js, /Editar produto/);
+  assert.match(js, /btn-create/);
+  assert.match(js, /btn-edit/);
+  assert.match(js, /content-admin-grid/);
+  assert.match(js, /Quantidades mínimas/);
+  assert.doesNotMatch(html, /id="logoutButton"/);
+  assert.match(js, /text: 'Sair'/);
+  assert.match(js, /Recolher menu/);
+  assert.match(css, /height:\s*100dvh/);
+  assert.match(css, /\.admin-nav \{[\s\S]*overflow-y:\s*auto;/);
+});
+
+test('whatsapp formatted message omits empty optional fields', () => {
+  const message = buildEncomendaWhatsAppMessage({
+    nome: 'Ana',
+    tipo: 'PRESENTE',
+    telefone: '(18) 98888-0000',
+  });
+  assert.match(message, /\*Tipo:\* Presente/);
+  assert.doesNotMatch(message, /E-mail/);
 });

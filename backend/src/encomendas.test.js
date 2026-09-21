@@ -16,13 +16,84 @@ test('encomenda form validation accepts a complete payload and rejects html', ()
   assert.equal(data.nome_cliente, 'Maria Silva');
   assert.equal(data.telefone_cliente, '5511988887777');
   assert.equal(data.tipo_solicitacao, 'ANIVERSARIO');
+  assert.equal(data.data_evento, '2026-12-01');
 });
 
 test('encomenda form validation rejects missing required fields and oversized payload', () => {
-  assert.throws(() => validateEncomendaPayload({ telefone: '11988887777', tipo: 'ENCOMENDA', descricao: 'x' }), AdminError);
-  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', tipo: 'ENCOMENDA', descricao: 'x' }), AdminError);
-  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', telefone: '11988887777', tipo: 'FOO', descricao: 'x' }), AdminError);
-  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', telefone: '11988887777', tipo: 'ENCOMENDA', email: 'nao-email' }), AdminError);
+  assert.throws(() => validateEncomendaPayload({ telefone: '11988887777', tipo: 'ENCOMENDA', descricao: 'x', quantidade: 1 }), AdminError);
+  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', tipo: 'ENCOMENDA', descricao: 'x', quantidade: 1 }), AdminError);
+  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', telefone: '11988887777', tipo: 'FOO', descricao: 'x', quantidade: 1 }), AdminError);
+  assert.throws(() => validateEncomendaPayload({ nome: 'Ana', telefone: '11988887777', tipo: 'ENCOMENDA', email: 'nao-email', quantidade: 1, descricao: 'x' }), AdminError);
+});
+
+test('email invalido bloqueia envio da encomenda', () => {
+  assert.throws(
+    () => validateEncomendaPayload({
+      nome: 'Ana',
+      telefone: '18999999999',
+      tipo: 'ENCOMENDA',
+      email: 'texto-sem-arroba',
+      quantidade: 1,
+      descricao: 'Pedido',
+    }),
+    (error) => error instanceof AdminError && error.message === 'E-mail inválido.',
+  );
+  assert.throws(
+    () => validateEncomendaPayload({
+      nome: 'Ana',
+      telefone: '18999999999',
+      tipo: 'ENCOMENDA',
+      email: 'ana@dominio',
+      quantidade: 1,
+      descricao: 'Pedido',
+    }),
+    AdminError,
+  );
+});
+
+test('data DD/MM/AAAA e convertida para ISO e data invalida bloqueia', () => {
+  const ok = validateEncomendaPayload({
+    nome: 'Ana',
+    telefone: '18999999999',
+    tipo: 'ENCOMENDA',
+    data_evento: '25/12/2026',
+    quantidade: 1,
+    descricao: 'Pedido',
+  });
+  assert.equal(ok.data_evento, '2026-12-25');
+  assert.throws(
+    () => validateEncomendaPayload({
+      nome: 'Ana',
+      telefone: '18999999999',
+      tipo: 'ENCOMENDA',
+      data_evento: '31/02/2026',
+      quantidade: 1,
+      descricao: 'Pedido',
+    }),
+    AdminError,
+  );
+});
+
+test('backend bloqueia quantidade abaixo do minimo e aceita o minimo exato', () => {
+  const minimos = { ANIVERSARIO: 30, ENCOMENDA: 1, PRESENTE: 1, CELEBRACAO: 1, EVENTO: 1, LEMBRANCA: 1, PERSONALIZADO: 1 };
+  assert.throws(
+    () => validateEncomendaPayload({
+      nome: 'Ana',
+      telefone: '18999999999',
+      tipo: 'ANIVERSARIO',
+      quantidade: 20,
+      descricao: 'Festa',
+    }, { minimos }),
+    (error) => error instanceof AdminError && error.message === 'Para Aniversário, a quantidade mínima é 30.',
+  );
+  const ok = validateEncomendaPayload({
+    nome: 'Ana',
+    telefone: '18999999999',
+    tipo: 'ANIVERSARIO',
+    quantidade: 30,
+    descricao: 'Festa',
+  }, { minimos });
+  assert.equal(ok.quantidade_estimada, 30);
 });
 
 test('create solicitacao persists NOVA status', async () => {
@@ -37,9 +108,9 @@ test('create solicitacao persists NOVA status', async () => {
     nome_cliente: 'Ana',
     telefone_cliente: '11999990000',
     tipo_solicitacao: 'ENCOMENDA',
+    quantidade_estimada: 1,
     descricao_pedido: 'Caixa de clássicos',
   });
   assert.equal(created.status_solicitacao, 'NOVA');
-  assert.match(calls[0].sql, /INSERT INTO app.tab_solicitacao_encomenda/);
-  assert.equal(calls[0].params[8], undefined);
+  assert.equal(calls.some((item) => /INSERT INTO app.tab_solicitacao_encomenda/.test(item.sql)), true);
 });

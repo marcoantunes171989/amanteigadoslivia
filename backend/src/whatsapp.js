@@ -1,3 +1,5 @@
+import { buildEncomendaWhatsAppMessage as buildSharedEncomendaWhatsAppMessage } from '../../ui-core.js';
+
 const DIGITS = /\D/g;
 
 export function normalizeWhatsAppPhone(raw) {
@@ -45,23 +47,8 @@ export function buildCartWhatsAppMessage({ items = [], total, nome, telefone } =
   return lines.join('\n');
 }
 
-export function buildEncomendaWhatsAppMessage({
-  nome,
-  tipo,
-  dataEvento,
-  quantidade,
-  descricao,
-} = {}) {
-  const lines = [
-    'Olá! Acabei de enviar uma solicitação pelo site e gostaria de continuar pelo WhatsApp.',
-    '',
-    `Nome: ${String(nome || '').trim()}`,
-    `Tipo: ${String(tipo || '').trim()}`,
-  ];
-  if (dataEvento) lines.push(`Data do evento: ${String(dataEvento).trim()}`);
-  if (quantidade) lines.push(`Quantidade estimada: ${String(quantidade).trim()}`);
-  lines.push('', 'Pedido:', String(descricao || '').trim());
-  return lines.join('\n');
+export function buildEncomendaWhatsAppMessage(payload = {}) {
+  return buildSharedEncomendaWhatsAppMessage(payload);
 }
 
 export function buildWhatsAppUrl(phone, message) {
