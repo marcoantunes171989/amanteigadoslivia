@@ -7,7 +7,7 @@
 // Checkout (V10): Nome e Telefone obrigatórios; o botão principal valida,
 // registra o pedido em /api/vendas e só então abre o WhatsApp comercial
 // (fluxo em cart-checkout.js). Sem pagamento/entrega nesta fase.
-import { applyPhoneMaskEdit } from './ui-core.js';
+import { applyPhoneMaskEdit, digitsOnly } from './ui-core.js';
 import { openWhatsAppUrl, runCartCheckout } from './cart-checkout.js';
 
 (function () {
@@ -392,7 +392,7 @@ import { openWhatsAppUrl, runCartCheckout } from './cart-checkout.js';
       // alguns tipos de input não expõem seleção
     }
     if (input.getAttribute('aria-invalid') === 'true'
-      && (edit.value.replace(/D/g, '').length === 10 || edit.value.replace(/D/g, '').length === 11)) {
+      && [10, 11].includes(digitsOnly(edit.value).length)) {
       setFieldError('telefone', '');
     }
   });

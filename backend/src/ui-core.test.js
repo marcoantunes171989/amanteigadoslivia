@@ -343,6 +343,8 @@ test('carrinho.js: checkout único, sem alert(), sem número hardcoded, WhatsApp
   assert.match(js, /addEventListener\('submit', handleCheckout\)/);
   assert.match(js, /window\.AmanteigadosSite\?\.loadFromApi/);
   assert.match(js, /whatsapp_telefone/);
+  assert.doesNotMatch(js, /replace\(\/D\/g/, 'regex de dígitos sem barra invertida');
+  assert.match(js, /digitsOnly\(edit\.value\)/);
   assert.ok(flow.indexOf('deps.postVenda(') < flow.indexOf('deps.openWhatsApp('), 'openWhatsApp só depois do POST');
   assert.match(css, /\.required-mark\s*\{[^}]*var\(--error\)/);
   assert.match(css, /\.cart-summary\s*\{\s*position:\s*static;/);
