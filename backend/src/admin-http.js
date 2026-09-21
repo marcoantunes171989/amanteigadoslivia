@@ -266,6 +266,7 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
       email: user.email_usuario,
       perfil: user.perfil_usuario,
       protegido: user.protegido === true,
+      nome_usuario: user.nome_usuario || null,
     });
     response.setHeader('Set-Cookie', buildSessionCookie(token, {
       secure: isSecureRequest(request),
@@ -335,6 +336,7 @@ export async function handleAdminSessao(request, response) {
         email: session.email,
         perfil: session.perfil,
         protegido: session.protegido === true,
+        nome_usuario: session.nome_usuario || null,
       },
     });
   } catch (error) {
@@ -358,6 +360,7 @@ export async function handleAdminCatalog(request, response, deps = {}) {
           email: session.email || null,
           perfil: session.perfil || null,
           protegido: session.protegido === true,
+          nome_usuario: session.nome_usuario || null,
         },
       });
       return;

@@ -125,3 +125,29 @@ test('app shell navigation exposes phone items and more menu', () => {
     assert.match(html, /viewport-fit=cover/);
   }
 });
+
+test('mobile cart summary stays in document flow and desktop sticky is preserved', () => {
+  const css = readFileSync(new URL('../../styles.css', import.meta.url), 'utf8');
+  assert.match(css, /@media \(min-width:\s*900px\)\{[\s\S]{0,280}?\.cart-summary\{[^}]*position:\s*sticky/);
+  assert.match(css, /\.cart-summary \{\s*position: static;/);
+  assert.doesNotMatch(css, /position:\s*sticky;\s*bottom:\s*calc\(64px/);
+  assert.match(css, /app-bottom-nav[\s\S]{0,800}?safe-area-inset-bottom/);
+});
+
+test('admin header user mount and dialog close contract exist', () => {
+  const html = readFileSync(new URL('../../admin.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('../../admin.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../../admin.css', import.meta.url), 'utf8');
+  assert.match(html, /id="adminUser"/);
+  assert.match(html, /class="admin-user"/);
+  assert.match(html, /id="confirmDialog"/);
+  assert.match(js, /className: 'dialog-close'/);
+  assert.match(js, /'aria-label': DIALOG_CLOSE_LABEL/);
+  assert.match(js, /type: 'button'/);
+  assert.match(js, /shouldCloseDialogOnBackdrop/);
+  assert.match(css, /\.dialog-close\s*\{/);
+  assert.match(css, /width:\s*44px/);
+  assert.match(css, /--bordo:\s*#7A3E48/);
+  assert.match(css, /--serif:\s*"Fraunces"/);
+  assert.match(css, /--sans:\s*"Inter"/);
+});

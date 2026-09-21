@@ -53,6 +53,7 @@ export function signSession(secret, claimsOrNow, maybeNow) {
     email: claims.email || null,
     perfil: claims.perfil || 'ADMIN',
     protegido: claims.protegido === true,
+    nome_usuario: typeof claims.nome_usuario === 'string' ? claims.nome_usuario : null,
     exp: now + SESSION_TTL_SECONDS * 1000,
   });
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
@@ -90,6 +91,7 @@ export function readSession(token, secret, now = Date.now()) {
       email: data.email || null,
       perfil: data.perfil || 'ADMIN',
       protegido: data.protegido === true,
+      nome_usuario: typeof data.nome_usuario === 'string' ? data.nome_usuario : null,
       exp: data.exp,
     };
   } catch {

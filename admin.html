@@ -121,12 +121,13 @@
         <button type="button" class="icon-btn" id="menuToggle" aria-label="Abrir menu" aria-controls="adminSidebar" aria-expanded="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
         </button>
-        <div>
+        <div class="admin-header-copy">
           <p class="eyebrow" id="viewEyebrow">Painel</p>
           <h1 id="viewTitle">Visão Geral</h1>
           <p class="view-subtitle" id="viewSubtitle">Acompanhe o painel da loja em homologação.</p>
           <p class="breadcrumb" id="viewBreadcrumb">Início / Visão Geral</p>
         </div>
+        <div class="admin-user" id="adminUser" hidden></div>
       </header>
       <div id="dataErrorBanner" class="data-error-banner hidden" role="alert">
         <p>Não foi possível carregar os dados agora.</p>
@@ -153,6 +154,9 @@
 
   <dialog id="formDialog" class="admin-dialog">
     <form id="resourceForm" method="dialog"></form>
+  </dialog>
+  <dialog id="confirmDialog" class="admin-dialog">
+    <form id="confirmForm" method="dialog"></form>
   </dialog>
 
   <script type="module" src="admin.js"></script>

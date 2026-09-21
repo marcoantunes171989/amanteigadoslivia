@@ -31,13 +31,27 @@ test('preserves SUPER_ADMIN in signed session without secrets', () => {
     email: 'super@example.com',
     perfil: 'SUPER_ADMIN',
     protegido: true,
+    nome_usuario: 'Marco Antônio',
   }, 1_000_000);
   const session = readSession(token, SECRET, 1_000_000);
   assert.equal(session.perfil, 'SUPER_ADMIN');
   assert.equal(session.email, 'super@example.com');
   assert.equal(session.id_usuario_admin, 'u-super');
   assert.equal(session.protegido, true);
+  assert.equal(session.nome_usuario, 'Marco Antônio');
   assert.doesNotMatch(token, /senha|hash|salt/i);
+});
+
+test('readSession accepts cookies without nome_usuario', () => {
+  const token = signSession(SECRET, {
+    id_usuario_admin: 'u-old',
+    email: 'old@example.com',
+    perfil: 'ADMIN',
+  }, 1_000_000);
+  const session = readSession(token, SECRET, 1_000_000);
+  assert.equal(session.email, 'old@example.com');
+  assert.equal(session.nome_usuario, null);
+  assert.equal(session.perfil, 'ADMIN');
 });
 
 test('rejects expired sessions', () => {

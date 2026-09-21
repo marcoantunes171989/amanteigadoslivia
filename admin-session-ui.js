@@ -58,3 +58,76 @@ export function perfilFormLabel(perfil) {
 }
 
 export const DATA_LOAD_ERROR_MESSAGE = 'Não foi possível carregar os dados agora.';
+export const DIALOG_CLOSE_LABEL = 'Fechar';
+
+export function sessionEmail(session) {
+  return String(session?.email || session?.email_usuario || '').trim();
+}
+
+export function sessionDisplayName(session) {
+  const nome = String(session?.nome_usuario || '').trim();
+  if (nome) return nome;
+  return sessionEmail(session) || 'Usuário';
+}
+
+export function sessionInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'U';
+  const first = parts[0];
+  if (parts.length === 1) {
+    return first.slice(0, 2).toUpperCase();
+  }
+  return `${first[0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+export function sessionFirstName(name) {
+  return String(name || '').trim().split(/\s+/).filter(Boolean)[0] || 'Conta';
+}
+
+export function truncateEmail(email, max = 28) {
+  const value = String(email || '');
+  if (value.length <= max) return value;
+  const at = value.indexOf('@');
+  if (at <= 0) return `${value.slice(0, Math.max(1, max - 1))}…`;
+  const user = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  const keepUser = Math.max(3, max - domain.length - 2);
+  return `${user.slice(0, keepUser)}…@${domain}`;
+}
+
+export function shouldCloseDialogOnBackdrop(isDirty) {
+  return isDirty !== true;
+}
+
+export function requestStatusLabel(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'NOVA') return 'Nova';
+  if (value === 'EM_ATENDIMENTO') return 'Em atendimento';
+  if (value === 'CONCLUIDA') return 'Concluída';
+  if (value === 'CANCELADA') return 'Cancelada';
+  return status || '—';
+}
+
+export function saleStatusLabel(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'PENDENTE') return 'Pendente';
+  if (value === 'CONFIRMADA') return 'Confirmada';
+  if (value === 'CANCELADA') return 'Cancelada';
+  return status || '—';
+}
+
+export function requestStatusBadgeClass(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'NOVA') return 'badge-warn';
+  if (value === 'EM_ATENDIMENTO') return 'badge-root';
+  if (value === 'CONCLUIDA') return 'badge-ok';
+  if (value === 'CANCELADA') return 'badge-off';
+  return 'badge-warn';
+}
+
+export function saleStatusBadgeClass(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'CONFIRMADA') return 'badge-ok';
+  if (value === 'CANCELADA') return 'badge-off';
+  return 'badge-warn';
+}

@@ -355,6 +355,28 @@ test('GET /api/admin/sessao returns 200 for a valid cookie without catalog', asy
   assert.equal(response.body.usuario.protegido, true);
   assert.equal(response.body.usuario.senha_hash, undefined);
   assert.equal(response.body.usuario.senha_salt, undefined);
+  assert.equal(response.body.usuario.nome_usuario, null);
+});
+
+test('GET /api/admin/sessao returns nome_usuario from signed cookie', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const response = mockResponse();
+  await handleAdminSessao({
+    method: 'GET',
+    headers: {
+      cookie: `${COOKIE_NAME}=${signSession(SECRET, {
+        id_usuario_admin: 'u-root',
+        email: 'super@example.com',
+        perfil: 'SUPER_ADMIN',
+        protegido: true,
+        nome_usuario: 'Marco Antônio',
+      })}`,
+    },
+  }, response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.usuario.nome_usuario, 'Marco Antônio');
+  assert.equal(response.body.usuario.email, 'super@example.com');
+  assert.equal(response.body.usuario.senha, undefined);
 });
 
 test('GET /api/admin/sessao returns 401 without a cookie', async () => {

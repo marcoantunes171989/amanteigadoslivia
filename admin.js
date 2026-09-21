@@ -1,11 +1,22 @@
 import { readSidebarCollapsed, writeSidebarCollapsed } from './ui-core.js';
 import {
   DATA_LOAD_ERROR_MESSAGE,
+  DIALOG_CLOSE_LABEL,
   canAccessUsuarios,
   creatablePerfisFor,
   decideSessionErrorAction,
   perfilBadgeLabel,
   perfilFormLabel,
+  requestStatusBadgeClass,
+  requestStatusLabel,
+  saleStatusBadgeClass,
+  saleStatusLabel,
+  sessionDisplayName,
+  sessionEmail,
+  sessionFirstName,
+  sessionInitials,
+  shouldCloseDialogOnBackdrop,
+  truncateEmail,
 } from './admin-session-ui.js';
 
   const loginView = document.getElementById('loginView');
@@ -81,6 +92,7 @@ import {
     slugManual: false,
     pendingFile: null,
     sessao: null,
+    formDirty: false,
   };
 
   function el(tag, props = {}, children = []) {
@@ -97,6 +109,103 @@ import {
       if (child) node.append(child);
     }
     return node;
+  }
+
+  function svgIcon(d) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linecap', 'round');
+    svg.append(path);
+    return svg;
+  }
+
+  function closeIconBtn(onClose) {
+    return el('button', {
+      type: 'button',
+      className: 'dialog-close',
+      'aria-label': DIALOG_CLOSE_LABEL,
+      onClick: onClose,
+    }, [svgIcon('M6 6l12 12M18 6 6 18')]);
+  }
+
+  function dialogFrame({ eyebrow, title, description, children, cancelLabel = 'Cancelar', submitLabel = 'Salvar', onClose }) {
+    const close = onClose || (() => formDialog.close());
+    return el('div', { className: 'dialog-body' }, [
+      el('div', { className: 'dialog-header' }, [
+        el('div', { className: 'dialog-heading' }, [
+          eyebrow ? el('p', { className: 'eyebrow', text: eyebrow }) : null,
+          el('h2', { text: title }),
+          description ? el('p', { className: 'dialog-description', text: description }) : null,
+        ]),
+        closeIconBtn(close),
+      ]),
+      el('div', { className: 'dialog-fields' }, children),
+      el('p', { id: 'formError', className: 'form-error', hidden: true }),
+      el('div', { className: 'dialog-actions' }, [
+        el('button', { className: 'btn btn-ghost', type: 'button', text: cancelLabel, onClick: close }),
+        el('button', { className: 'btn btn-primary', type: 'submit', text: submitLabel }),
+      ]),
+    ]);
+  }
+
+  function pageHeading(view, actions = []) {
+    const titles = TITLES[view] || TITLES.overview;
+    return el('div', { className: 'page-heading' }, [
+      el('div', { className: 'page-heading-copy' }, [
+        el('p', { className: 'eyebrow', text: titles[0] }),
+        el('h2', { text: titles[1] }),
+        el('p', { className: 'muted', text: titles[2] || '' }),
+      ]),
+      actions.filter(Boolean).length ? el('div', { className: 'page-heading-actions' }, actions.filter(Boolean)) : null,
+    ]);
+  }
+
+  function markFormPristine() {
+    state.formDirty = false;
+  }
+
+  function bindFormDirty() {
+    markFormPristine();
+  }
+
+  function askConfirm({ title, description, confirmLabel = 'Confirmar', danger = false }) {
+    const dialog = document.getElementById('confirmDialog');
+    const form = document.getElementById('confirmForm');
+    if (!dialog || !form) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const finish = (value) => {
+        dialog.close();
+        resolve(value);
+      };
+      form.replaceChildren(el('div', { className: 'dialog-body' }, [
+        el('div', { className: 'dialog-header' }, [
+          el('div', { className: 'dialog-heading' }, [
+            el('p', { className: 'eyebrow', text: 'Confirmação' }),
+            el('h2', { text: title }),
+            description ? el('p', { className: 'dialog-description', text: description }) : null,
+          ]),
+          closeIconBtn(() => finish(false)),
+        ]),
+        el('div', { className: 'dialog-fields' }),
+        el('div', { className: 'dialog-actions' }, [
+          el('button', { className: 'btn btn-ghost', type: 'button', value: 'cancel', text: 'Cancelar', onClick: () => finish(false) }),
+          el('button', { className: danger ? 'btn btn-danger' : 'btn btn-primary', type: 'submit', value: 'confirm', text: confirmLabel }),
+        ]),
+      ]));
+      const onSubmit = (event) => {
+        event.preventDefault();
+        form.removeEventListener('submit', onSubmit);
+        finish(true);
+      };
+      form.addEventListener('submit', onSubmit);
+      dialog.showModal();
+    });
   }
 
   function toast(message, success = true) {
@@ -188,6 +297,78 @@ import {
     if (!allowed && state.view === 'users') {
       state.view = 'overview';
     }
+    renderAdminUser();
+  }
+
+  async function logout() {
+    closeUserSheet();
+    try { await request('/api/admin/logout', { method: 'POST' }); } catch { /* still return */ }
+    showLogin();
+  }
+
+  function closeUserSheet() {
+    const sheet = document.getElementById('adminUserSheet');
+    const trigger = document.getElementById('adminUserTrigger');
+    if (sheet) sheet.hidden = true;
+    trigger?.setAttribute('aria-expanded', 'false');
+  }
+
+  function isPhoneAdmin() {
+    return window.matchMedia('(max-width: 720px)').matches;
+  }
+
+  function renderAdminUser() {
+    const mount = document.getElementById('adminUser');
+    if (!mount) return;
+    const session = currentSession();
+    if (!session.id_usuario_admin && !session.email) {
+      mount.hidden = true;
+      mount.replaceChildren();
+      return;
+    }
+    mount.hidden = false;
+    const name = sessionDisplayName(session);
+    const email = sessionEmail(session);
+    const perfil = session.perfil;
+    mount.replaceChildren(
+      el('button', {
+        type: 'button',
+        className: 'admin-user-trigger',
+        id: 'adminUserTrigger',
+        'aria-haspopup': 'dialog',
+        'aria-expanded': 'false',
+        'aria-controls': 'adminUserSheet',
+        'aria-label': `Conta de ${name}`,
+        onClick: () => {
+          if (!isPhoneAdmin()) return;
+          const sheet = document.getElementById('adminUserSheet');
+          const trigger = document.getElementById('adminUserTrigger');
+          const open = Boolean(sheet && sheet.hidden);
+          if (sheet) sheet.hidden = !open;
+          trigger?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        },
+      }, [
+        el('span', { className: 'admin-user-avatar', text: sessionInitials(name) }),
+        el('span', { className: 'admin-user-meta' }, [
+          el('strong', { className: 'admin-user-name', text: name }),
+          el('span', { className: 'admin-user-compact', text: sessionFirstName(name) }),
+          email ? el('span', { className: 'admin-user-email', text: truncateEmail(email) }) : null,
+          el('span', { className: 'admin-user-badges' }, [
+            el('span', { className: `badge ${perfil === 'SUPER_ADMIN' ? 'badge-root' : perfil === 'ADMIN' ? 'badge-ok' : 'badge-warn'}`, text: perfilBadgeLabel(perfil) }),
+            session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
+          ]),
+        ]),
+      ]),
+      el('div', { className: 'admin-user-sheet', id: 'adminUserSheet', hidden: true, role: 'dialog', 'aria-label': 'Conta logada' }, [
+        el('strong', { text: name }),
+        email ? el('p', { className: 'muted', text: email }) : null,
+        el('div', { className: 'user-flags' }, [
+          el('span', { className: `badge ${perfil === 'SUPER_ADMIN' ? 'badge-root' : perfil === 'ADMIN' ? 'badge-ok' : 'badge-warn'}`, text: perfilBadgeLabel(perfil) }),
+          session.protegido ? el('span', { className: 'badge badge-ok', text: 'PROTEGIDO' }) : null,
+        ]),
+        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Sair', onClick: logout }),
+      ]),
+    );
   }
 
   function closeDrawer() {
@@ -423,6 +604,7 @@ import {
     const dash = state.reports?.dashboard || {};
     const hoje = dash.hoje || {};
     views.overview.replaceChildren(
+      pageHeading('overview'),
       el('div', { className: 'kpi-grid' }, [
         metric('Produtos ativos', dash.produtos_ativos),
         metric('Categorias ativas', dash.categorias_ativas),
@@ -468,9 +650,11 @@ import {
   function renderCategories() {
     const rows = state.catalog.categorias || [];
     views.categories.replaceChildren(
-      el('div', { className: 'toolbar' }, [
-        el('p', { text: `${rows.length} categoria(s)` }),
+      pageHeading('categories', [
         el('button', { className: 'btn btn-primary', type: 'button', text: '+ Nova categoria', onClick: () => openCategoryForm() }),
+      ]),
+      el('div', { className: 'toolbar' }, [
+        el('p', { className: 'muted', text: `${rows.length} categoria(s)` }),
       ]),
       el('div', { className: 'table-wrap' }, [
         rows.length ? simpleTable(['Nome', 'Slug', 'Ordem', 'Ativo'], rows.map((item) => [item.nome_categoria, item.slug_categoria, item.ordem_exibicao, item.ativo ? 'Ativo' : 'Inativo'])) : emptyState('Nenhuma categoria cadastrada.'),
@@ -510,12 +694,14 @@ import {
   function renderProducts() {
     const rows = filteredProducts();
     views.products.replaceChildren(
+      pageHeading('products', [
+        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo produto', onClick: () => openProductForm() }),
+      ]),
       el('div', { className: 'toolbar' }, [
         el('input', { className: 'search-input', type: 'search', placeholder: 'Buscar por nome', value: state.productQuery, onInput: (event) => { state.productQuery = event.target.value; renderProducts(); } }),
         el('div', { className: 'filters' }, ['todos', 'ativos', 'inativos', 'destaques'].map((filter) => (
           el('button', { className: `chip${state.productFilter === filter ? ' is-active' : ''}`, type: 'button', text: filter[0].toUpperCase() + filter.slice(1), onClick: () => { state.productFilter = filter; renderProducts(); } })
         ))),
-        el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo produto', onClick: () => openProductForm() }),
       ]),
       el('div', { className: 'table-wrap' }, [
         rows.length ? el('table', {}, [
@@ -564,7 +750,7 @@ import {
       item.descricao ? el('p', { text: item.descricao }) : null,
       el('div', { className: 'image-slot' }, [
         el('span', { className: 'muted', text: 'Imagem principal' }),
-        principal ? thumb(principal.url_imagem, principal.texto_alternativo) : el('span', { className: 'muted', text: 'Sem imagem no slot' }),
+        principal ? el('img', { className: 'branding-preview', src: principal.url_imagem, alt: principal.texto_alternativo || item.titulo || '' }) : el('span', { className: 'muted', text: 'Sem imagem no slot' }),
         el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Substituir imagem', onClick: () => openPrincipalImageForm(item, principal) }),
       ]),
       item.tipo_conteudo === 'GALERIA' ? el('div', { className: 'image-slot' }, [
@@ -584,6 +770,7 @@ import {
     if (!target) return;
     if (view === 'branding') {
       target.replaceChildren(
+        pageHeading('branding'),
         el('div', { className: 'cards' }, [
           brandingEditor('logo_topo_url', 'Logo do topo', configValue('logo_topo_url')),
           brandingEditor('logo_rodape_url', 'Logo do rodapé', configValue('logo_rodape_url')),
@@ -601,7 +788,7 @@ import {
       ]
       : [];
     target.replaceChildren(
-      el('div', { className: 'toolbar' }, [
+      pageHeading(view, [
         el('button', { className: 'btn btn-primary', type: 'button', text: 'Novo bloco', onClick: () => openContentForm({ secao, tipo_conteudo: secao === 'FESTAS' ? 'CARD' : 'CHAMADA' }) }),
       ]),
       el('div', { className: 'cards' }, homeImages.concat(items.length ? items.map(contentCard) : [emptyState('Nenhum conteúdo nesta seção.')])),
@@ -611,7 +798,7 @@ import {
   function brandingEditor(chave, label, value, isImage = true) {
     return el('article', { className: 'card' }, [
       el('strong', { text: label }),
-      isImage && value ? el('img', { className: 'thumb', src: value, alt: label }) : null,
+      isImage && value ? el('img', { className: 'branding-preview', src: value, alt: label }) : null,
       field(chave, isImage ? 'URL da imagem' : 'Telefone com DDI', el('input', { id: chave, name: chave, value, type: 'text' })),
       isImage ? el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', onChange: async (event) => {
         const file = event.target.files?.[0];
@@ -644,24 +831,25 @@ import {
   }
 
   function openContentForm(item = {}) {
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: item.id_conteudo_site ? 'Editar conteúdo' : 'Novo conteúdo' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      field('secao', 'Seção', el('select', { id: 'secao' }, ['HOME', 'ENCOMENDAS', 'FESTAS', 'PERSONALIZADOS'].map((value) => el('option', { value, text: value, selected: (item.secao || '') === value })))),
-      field('tipo_conteudo', 'Tipo', el('select', { id: 'tipo_conteudo' }, ['CHAMADA', 'DESTAQUE', 'GALERIA', 'CARD'].map((value) => el('option', { value, text: value, selected: (item.tipo_conteudo || '') === value })))),
-      field('titulo', 'Título', input('titulo', { value: item.titulo || '' })),
-      field('subtitulo', 'Subtítulo', input('subtitulo', { value: item.subtitulo || '' })),
-      field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', text: item.descricao || '' })),
-      field('texto_botao', 'Texto do botão', input('texto_botao', { value: item.texto_botao || '' })),
-      field('url_destino', 'Destino / chave', input('url_destino', { value: item.url_destino || '' })),
-      field('ordem_exibicao', 'Ordem', input('ordem_exibicao', { type: 'number', value: String(item.ordem_exibicao ?? 0) })),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Conteúdo',
+      title: item.id_conteudo_site ? 'Editar conteúdo' : 'Novo conteúdo',
+      description: 'Atualize textos, ordem e destino do bloco.',
+      submitLabel: 'Salvar',
+      children: [
+        field('secao', 'Seção', el('select', { id: 'secao' }, ['HOME', 'ENCOMENDAS', 'FESTAS', 'PERSONALIZADOS'].map((value) => el('option', { value, text: value, selected: (item.secao || '') === value })))),
+        field('tipo_conteudo', 'Tipo', el('select', { id: 'tipo_conteudo' }, ['CHAMADA', 'DESTAQUE', 'GALERIA', 'CARD'].map((value) => el('option', { value, text: value, selected: (item.tipo_conteudo || '') === value })))),
+        field('titulo', 'Título', input('titulo', { value: item.titulo || '' })),
+        field('subtitulo', 'Subtítulo', input('subtitulo', { value: item.subtitulo || '' })),
+        field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', text: item.descricao || '' })),
+        field('texto_botao', 'Texto do botão', input('texto_botao', { value: item.texto_botao || '' })),
+        field('url_destino', 'Destino / chave', input('url_destino', { value: item.url_destino || '' })),
+        field('ordem_exibicao', 'Ordem', input('ordem_exibicao', { type: 'number', value: String(item.ordem_exibicao ?? 0) })),
+      ],
+    }));
     resourceForm.dataset.kind = 'conteudo';
     resourceForm.dataset.id = item.id_conteudo_site || '';
+    bindFormDirty(resourceForm);
     formDialog.showModal();
   }
 
@@ -688,23 +876,24 @@ import {
   }
 
   function openImageForm({ title, kind, item, url, alt, submitLabel }) {
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: title }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      field('url_imagem', 'URL da imagem', input('url_imagem', { value: url || '' })),
-      field('arquivo_imagem', 'Upload local', el('input', { id: 'arquivo_imagem', type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
-      field('texto_alternativo', 'Texto alternativo', input('texto_alternativo', { value: alt || '' })),
-      el('img', { id: 'imagePreview', className: 'thumb hidden', alt: '' }),
-      el('input', { type: 'hidden', id: 'origem_imagem', value: 'url' }),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: submitLabel }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Conteúdo',
+      title,
+      description: 'Envie um arquivo local ou informe uma URL segura.',
+      submitLabel,
+      children: [
+        field('url_imagem', 'URL da imagem', input('url_imagem', { value: url || '' })),
+        field('arquivo_imagem', 'Upload local', el('input', { id: 'arquivo_imagem', type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
+        field('texto_alternativo', 'Texto alternativo', input('texto_alternativo', { value: alt || '' })),
+        el('img', { id: 'imagePreview', className: 'preview hidden', alt: '' }),
+        el('input', { type: 'hidden', id: 'origem_imagem', value: 'url' }),
+      ],
+    }));
     resourceForm.dataset.kind = kind;
     resourceForm.dataset.id = item.id_conteudo_site;
     state.pendingFile = null;
     bindImagePreview();
+    bindFormDirty(resourceForm);
     formDialog.showModal();
   }
 
@@ -712,48 +901,59 @@ import {
     openPrincipalImageForm(item, item.imagem_principal || item.imagens?.[0]);
   }
 
+  function requestActions(item, statuses) {
+    return el('div', { className: 'actions' }, statuses.map((status) => el('button', {
+      className: 'btn btn-ghost btn-small',
+      type: 'button',
+      text: requestStatusLabel(status),
+      onClick: async () => {
+        await request('/api/admin/solicitacoes', { method: 'POST', body: JSON.stringify({ id_solicitacao_encomenda: item.id_solicitacao_encomenda, status_solicitacao: status }) });
+        toast('Status atualizado.');
+        refreshView();
+      },
+    })));
+  }
+
   function renderRequests() {
     const statuses = ['NOVA', 'EM_ATENDIMENTO', 'CONCLUIDA', 'CANCELADA'];
     views.requests.replaceChildren(
+      pageHeading('requests'),
       el('div', { className: 'filters' }, statuses.map((status) => el('button', {
         className: `chip${state.requestStatus === status ? ' is-active' : ''}`,
         type: 'button',
-        text: status.replace('_', ' '),
+        text: requestStatusLabel(status),
         onClick: () => { state.requestStatus = status; refreshView(); },
       }))),
       el('div', { className: 'table-wrap' }, [
         state.solicitacoes.length
-          ? simpleTable(['Data', 'Cliente', 'Telefone', 'Tipo', 'Data do evento', 'Resumo', 'Status'], state.solicitacoes.map((item) => [
-            formatDate(item.data_criacao),
-            item.nome_cliente,
-            item.telefone_cliente,
-            item.tipo_solicitacao,
-            item.data_evento || '—',
-            String(item.descricao_pedido || '').slice(0, 48),
-            item.status_solicitacao,
-          ]))
+          ? el('table', {}, [
+            el('thead', {}, [el('tr', {}, ['Data', 'Cliente', 'Telefone', 'Tipo', 'Evento', 'Resumo', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
+            el('tbody', {}, state.solicitacoes.map((item) => el('tr', {}, [
+              el('td', { text: formatDate(item.data_criacao) }),
+              el('td', { text: item.nome_cliente }),
+              el('td', { text: item.telefone_cliente }),
+              el('td', { text: item.tipo_solicitacao }),
+              el('td', { text: item.data_evento || '—' }),
+              el('td', { text: String(item.descricao_pedido || '').slice(0, 48) }),
+              el('td', {}, [el('span', { className: `badge ${requestStatusBadgeClass(item.status_solicitacao)}`, text: requestStatusLabel(item.status_solicitacao) })]),
+              el('td', {}, [requestActions(item, statuses)]),
+            ]))),
+          ])
           : emptyState('Nenhuma solicitação neste filtro.'),
+        state.solicitacoes.length ? el('div', { className: 'request-cards' }, state.solicitacoes.map((item) => el('article', { className: 'mobile-card' }, [
+          el('strong', { text: item.nome_cliente }),
+          el('span', { className: 'muted', text: `${item.tipo_solicitacao} · ${item.telefone_cliente}` }),
+          el('span', { className: `badge ${requestStatusBadgeClass(item.status_solicitacao)}`, text: requestStatusLabel(item.status_solicitacao) }),
+          el('p', { text: item.descricao_pedido }),
+          requestActions(item, statuses),
+        ]))) : null,
       ]),
-      el('div', { className: 'cards' }, state.solicitacoes.map((item) => el('article', { className: 'card' }, [
-        el('strong', { text: item.nome_cliente }),
-        el('span', { className: 'muted', text: `${item.tipo_solicitacao} · ${item.telefone_cliente}` }),
-        el('p', { text: item.descricao_pedido }),
-        el('div', { className: 'actions' }, statuses.map((status) => el('button', {
-          className: 'btn btn-ghost btn-small',
-          type: 'button',
-          text: status.replace('_', ' '),
-          onClick: async () => {
-            await request('/api/admin/solicitacoes', { method: 'POST', body: JSON.stringify({ id_solicitacao_encomenda: item.id_solicitacao_encomenda, status_solicitacao: status }) });
-            toast('Status atualizado.');
-            refreshView();
-          },
-        }))),
-      ]))),
     );
   }
 
   function renderSales() {
     views.sales.replaceChildren(
+      pageHeading('sales'),
       el('div', { className: 'toolbar' }, [
         el('div', { className: 'filters' }, ['hoje', '7d', '30d'].map((period) => el('button', {
           className: `chip${state.salesPeriod === period ? ' is-active' : ''}`,
@@ -764,7 +964,7 @@ import {
         el('div', { className: 'filters' }, ['todos', 'PENDENTE', 'CONFIRMADA', 'CANCELADA'].map((status) => el('button', {
           className: `chip${state.salesStatus === status ? ' is-active' : ''}`,
           type: 'button',
-          text: status[0] + status.slice(1).toLowerCase(),
+          text: status === 'todos' ? 'Todos' : saleStatusLabel(status),
           onClick: () => { state.salesStatus = status; refreshView(); },
         }))),
       ]),
@@ -777,7 +977,7 @@ import {
             el('td', { text: venda.nome_cliente || '—' }),
             el('td', { text: String(venda.quantidade_itens || 0) }),
             el('td', { text: money(venda.valor_total_centavos) }),
-            el('td', { text: venda.status_venda }),
+            el('td', {}, [el('span', { className: `badge ${saleStatusBadgeClass(venda.status_venda)}`, text: saleStatusLabel(venda.status_venda) })]),
             el('td', {}, venda.status_venda === 'PENDENTE' ? [
               el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
               el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
@@ -788,7 +988,7 @@ import {
           el('strong', { text: venda.nome_cliente || String(venda.id_venda).slice(0, 8) }),
           el('span', { text: formatDate(venda.data_venda) }),
           el('span', { text: money(venda.valor_total_centavos) }),
-          el('span', { className: 'muted', text: venda.status_venda }),
+          el('span', { className: `badge ${saleStatusBadgeClass(venda.status_venda)}`, text: saleStatusLabel(venda.status_venda) }),
           venda.status_venda === 'PENDENTE' ? el('div', { className: 'actions' }, [
             el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
             el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
@@ -799,7 +999,13 @@ import {
   }
 
   async function changeSale(id, status) {
-    if (!window.confirm(status === 'CONFIRMADA' ? 'Confirmar esta venda?' : 'Cancelar esta venda?')) return;
+    const confirmed = await askConfirm({
+      title: status === 'CONFIRMADA' ? 'Confirmar esta venda?' : 'Cancelar esta venda?',
+      description: status === 'CONFIRMADA' ? 'O pedido passará para Confirmada.' : 'O pedido será marcado como Cancelada.',
+      confirmLabel: status === 'CONFIRMADA' ? 'Confirmar venda' : 'Cancelar venda',
+      danger: status !== 'CONFIRMADA',
+    });
+    if (!confirmed) return;
     await request('/api/admin/vendas', { method: 'POST', body: JSON.stringify({ id_venda: id, status_venda: status }) });
     toast('Venda atualizada.');
     refreshView();
@@ -816,6 +1022,7 @@ import {
       ['auditoria', 'Auditoria'],
     ];
     views.reports.replaceChildren(
+      pageHeading('reports'),
       periodFilters(() => refreshView()),
       el('div', { className: 'toolbar' }, [
         el('div', { className: 'tabs', role: 'tablist', 'aria-label': 'Seções de relatórios' }, tabs.map(([id, label]) => el('button', {
@@ -882,6 +1089,7 @@ import {
     const data = state.publicacoes || {};
     const homologOnline = Boolean(data.homolog?.database_status || data.homolog?.git_sha);
     views.publications.replaceChildren(
+      pageHeading('publications'),
       el('div', { className: 'env-grid' }, [
         el('article', { className: 'card' }, [
           el('div', { className: 'env-status' }, [
@@ -928,7 +1136,12 @@ import {
   }
 
   async function publishNow() {
-    if (!window.confirm('Produção ainda não habilitada. Configure e aprove o ambiente antes de publicar.')) return;
+    const confirmed = await askConfirm({
+      title: 'Publicar em produção?',
+      description: 'Produção ainda não habilitada. Configure e aprove o ambiente antes de publicar.',
+      confirmLabel: 'Entendi',
+    });
+    if (!confirmed) return;
     try {
       await request('/api/admin/publicacoes', { method: 'POST', body: JSON.stringify({ acao: 'publicar', tipo_publicacao: 'CATALOGO' }) });
     } catch (error) {
@@ -937,23 +1150,24 @@ import {
   }
 
   async function schedulePublish() {
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Agendar publicação' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      field('data_agendada', 'Data', input('data_agendada', { type: 'date', required: true })),
-      field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time', required: true })),
-      el('p', { className: 'muted', text: 'A publicação em produção permanece bloqueada até a configuração do ambiente.' }),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Agendar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Gestão',
+      title: 'Agendar publicação',
+      description: 'A publicação em produção permanece bloqueada até a configuração do ambiente.',
+      submitLabel: 'Agendar',
+      children: [
+        field('data_agendada', 'Data', input('data_agendada', { type: 'date', required: true })),
+        field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time', required: true })),
+      ],
+    }));
     resourceForm.dataset.kind = 'publicacao';
+    bindFormDirty(resourceForm);
     formDialog.showModal();
   }
 
   function renderAudit() {
     views.audit.replaceChildren(
+      pageHeading('audit'),
       el('div', { className: 'audit-filters' }, [
         field('auditPeriod', 'Período', el('select', {
           id: 'auditPeriod', value: state.auditPeriod,
@@ -1015,7 +1229,7 @@ import {
   function renderUsers() {
     const canCreate = creatablePerfisFor(currentSession()).length > 0;
     views.users.replaceChildren(
-      el('div', { className: 'toolbar' }, [
+      pageHeading('users', [
         canCreate
           ? el('button', { className: 'btn btn-primary', type: 'button', text: '+ Novo usuário', onClick: () => openUserForm() })
           : null,
@@ -1024,7 +1238,10 @@ import {
         state.usuarios.length ? el('table', {}, [
           el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Status', 'Protegido', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
           el('tbody', {}, state.usuarios.map((user) => el('tr', {}, [
-            el('td', { text: user.nome_usuario }),
+            el('td', {}, [
+              el('span', { text: user.nome_usuario }),
+              isSelfUser(user) ? el('span', { className: 'badge badge-you', text: 'Você' }) : null,
+            ]),
             el('td', { text: user.email_usuario }),
             el('td', {}, [userBadges(user)]),
             el('td', {}, [badge(user.ativo)]),
@@ -1035,6 +1252,7 @@ import {
         ]) : emptyState('Nenhum usuário cadastrado.'),
         state.usuarios.length ? el('div', { className: 'user-cards' }, state.usuarios.map((user) => el('article', { className: 'mobile-card' }, [
           el('strong', { text: user.nome_usuario }),
+          isSelfUser(user) ? el('span', { className: 'badge badge-you', text: 'Você' }) : null,
           el('span', { text: user.email_usuario }),
           userBadges(user),
           badge(user.ativo),
@@ -1103,23 +1321,24 @@ import {
 
   function openCategoryForm(category) {
     state.slugManual = Boolean(category?.slug_categoria);
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: category ? 'Editar categoria' : 'Nova categoria' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      el('input', { type: 'hidden', name: 'id_categoria', value: category?.id_categoria || '' }),
-      field('nome', 'Nome *', input('nome', { required: true, value: category?.nome_categoria || '' })),
-      field('slug', 'Slug *', input('slug', { required: true, value: category?.slug_categoria || '' })),
-      field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' })),
-      field('ordem', 'Ordem', input('ordem', { type: 'number', min: '0', value: String(category?.ordem_exibicao ?? 0) })),
-      checkbox('ativo', 'Ativo', category ? category.ativo : true),
-      category ? scheduleFields() : null,
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Catálogo',
+      title: category ? 'Editar categoria' : 'Nova categoria',
+      description: category ? 'Atualize os dados da categoria do cardápio.' : 'Crie uma categoria para organizar o cardápio.',
+      submitLabel: 'Salvar categoria',
+      children: [
+        el('input', { type: 'hidden', name: 'id_categoria', value: category?.id_categoria || '' }),
+        field('nome', 'Nome *', input('nome', { required: true, value: category?.nome_categoria || '' })),
+        field('slug', 'Slug *', input('slug', { required: true, value: category?.slug_categoria || '' })),
+        field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' })),
+        field('ordem', 'Ordem', input('ordem', { type: 'number', min: '0', value: String(category?.ordem_exibicao ?? 0) })),
+        checkbox('ativo', 'Ativo', category ? category.ativo : true),
+        category ? scheduleFields() : null,
+      ],
+    }));
     resourceForm.descricao.value = category?.descricao_categoria || '';
     bindSlugSync(resourceForm.nome, resourceForm.slug);
+    bindFormDirty(resourceForm);
     resourceForm.dataset.kind = 'categoria';
     formDialog.showModal();
   }
@@ -1132,40 +1351,62 @@ import {
       text: category.nome_categoria,
       selected: product?.id_categoria === category.id_categoria,
     }));
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: product ? 'Editar produto' : 'Novo produto' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      el('input', { type: 'hidden', name: 'id_produto', value: product?.id_produto || '' }),
-      el('div', { className: 'form-grid' }, [
-        field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [el('option', { value: '', text: 'Selecione' }), ...options]), true),
-        field('nome', 'Nome *', input('nome', { required: true, value: product?.nome_produto || '' }), true),
-        field('slug', 'Slug *', input('slug', { required: true, value: product?.slug_produto || '' })),
-        field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
-        field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' }), true),
-        field('preco_normal', 'Preço normal *', input('preco_normal', { required: true, inputmode: 'decimal', placeholder: '24,90', value: product?.preco_normal || '' })),
-        field('preco_promocional', 'Preço promocional', input('preco_promocional', { inputmode: 'decimal', placeholder: '21,90', value: product?.preco_promocional || '' })),
-        field('origem_imagem', 'Imagem', el('select', { id: 'origem_imagem', name: 'origem_imagem' }, [
-          el('option', { value: 'url', text: 'Informar URL' }),
-          el('option', { value: 'arquivo', text: 'Enviar arquivo' }),
-        ]), true),
-        field('url_imagem', 'URL da imagem', input('url_imagem', { placeholder: 'https://... ou assets/...', value: product?.url_imagem_principal || '' }), true),
-        field('arquivo_imagem', 'Selecionar imagem do computador', input('arquivo_imagem', { type: 'file', accept: 'image/jpeg,image/png,image/webp' }), true),
-      ]),
-      el('img', { id: 'imagePreview', className: 'preview hidden', alt: 'Pré-visualização da imagem' }),
-      el('div', { className: 'checkboxes' }, [
-        checkbox('promocao_ativa', 'Promoção ativa', Boolean(product?.promocao_ativa)),
-        checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
-        checkbox('ativo', 'Ativo', product ? product.ativo : true),
-      ]),
-      product ? scheduleFields() : null,
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Catálogo',
+      title: product ? 'Editar produto' : 'Novo produto',
+      description: product ? 'Atualize informações, imagem, preço e disponibilidade.' : 'Cadastre um produto do cardápio.',
+      submitLabel: product ? 'Salvar produto' : 'Salvar produto',
+      children: [
+        el('input', { type: 'hidden', name: 'id_produto', value: product?.id_produto || '' }),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Informações' }),
+          el('div', { className: 'form-grid' }, [
+            field('id_categoria', 'Categoria *', el('select', { id: 'id_categoria', name: 'id_categoria', required: true }, [el('option', { value: '', text: 'Selecione' }), ...options]), true),
+            field('nome', 'Nome *', input('nome', { required: true, value: product?.nome_produto || '' }), true),
+            field('slug', 'Slug *', input('slug', { required: true, value: product?.slug_produto || '' })),
+            field('ordem', 'Ordem de exibição', input('ordem', { type: 'number', min: '0', value: String(product?.ordem_exibicao ?? 0) })),
+            field('descricao', 'Descrição', el('textarea', { id: 'descricao', name: 'descricao', rows: '3' }), true),
+          ]),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Imagem' }),
+          field('origem_imagem', 'Origem', el('select', { id: 'origem_imagem', name: 'origem_imagem' }, [
+            el('option', { value: 'url', text: 'Informar URL' }),
+            el('option', { value: 'arquivo', text: 'Enviar arquivo' }),
+          ])),
+          field('url_imagem', 'URL da imagem', input('url_imagem', { placeholder: 'https://... ou assets/...', value: product?.url_imagem_principal || '' })),
+          field('arquivo_imagem', 'Selecionar imagem do computador', input('arquivo_imagem', { type: 'file', accept: 'image/jpeg,image/png,image/webp' })),
+          el('img', { id: 'imagePreview', className: 'preview hidden', alt: 'Pré-visualização da imagem' }),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Preço' }),
+          el('div', { className: 'form-grid' }, [
+            field('preco_normal', 'Preço normal *', input('preco_normal', { required: true, inputmode: 'decimal', placeholder: '24,90', value: product?.preco_normal || '' })),
+          ]),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Disponibilidade' }),
+          el('div', { className: 'checkboxes' }, [
+            checkbox('destaque', 'Destaque', Boolean(product?.destaque)),
+            checkbox('ativo', 'Ativo', product ? product.ativo : true),
+          ]),
+        ]),
+        el('section', { className: 'form-section' }, [
+          el('h3', { text: 'Promoção' }),
+          el('div', { className: 'form-grid' }, [
+            field('preco_promocional', 'Preço promocional', input('preco_promocional', { inputmode: 'decimal', placeholder: '21,90', value: product?.preco_promocional || '' })),
+          ]),
+          el('div', { className: 'checkboxes' }, [
+            checkbox('promocao_ativa', 'Promoção ativa', Boolean(product?.promocao_ativa)),
+          ]),
+        ]),
+        product ? scheduleFields() : null,
+      ],
+    }));
     resourceForm.descricao.value = product?.descricao_produto || '';
     bindSlugSync(resourceForm.nome, resourceForm.slug);
     bindImagePreview();
+    bindFormDirty(resourceForm);
     resourceForm.dataset.kind = 'produto';
     formDialog.showModal();
   }
@@ -1178,32 +1419,33 @@ import {
       ? ['SUPER_ADMIN']
       : (isRootSuperAdminSession(session) ? ['SUPER_ADMIN', 'ADMIN', 'GESTOR'] : creatablePerfisFor(session));
     const perfis = user ? editPerfis : createPerfis;
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: user ? 'Editar usuário' : 'Novo usuário' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
-      field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
-      field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
-      protectedUser
-        ? el('p', { className: 'muted', text: 'SUPER ADMIN protegido. Perfil, proteção e status não podem ser alterados.' })
-        : field('perfil', 'Perfil *', el('select', { id: 'perfil', name: 'perfil', required: true }, perfis.map((perfil) => el('option', {
-          value: perfil,
-          text: perfilFormLabel(perfil),
-          selected: (user?.perfil_usuario || perfis[0]) === perfil,
-        })))),
-      user
-        ? null
-        : field('senha', 'Senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-      user
-        ? null
-        : field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-      protectedUser ? null : checkbox('ativo', 'Status ativo', user ? user.ativo : true),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Gestão',
+      title: user ? 'Editar usuário' : 'Novo usuário',
+      description: user ? 'Atualize os dados de acesso.' : 'Crie um acesso para o painel.',
+      submitLabel: 'Salvar',
+      children: [
+        el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
+        field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
+        field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
+        protectedUser
+          ? el('p', { className: 'muted', text: 'SUPER ADMIN protegido. Perfil, proteção e status não podem ser alterados.' })
+          : field('perfil', 'Perfil *', el('select', { id: 'perfil', name: 'perfil', required: true }, perfis.map((perfil) => el('option', {
+            value: perfil,
+            text: perfilFormLabel(perfil),
+            selected: (user?.perfil_usuario || perfis[0]) === perfil,
+          })))),
+        user
+          ? null
+          : field('senha', 'Senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+        user
+          ? null
+          : field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+        protectedUser ? null : checkbox('ativo', 'Status ativo', user ? user.ativo : true),
+      ],
+    }));
     resourceForm.dataset.kind = 'usuario';
+    bindFormDirty(resourceForm);
     formDialog.showModal();
   }
 
@@ -1212,19 +1454,19 @@ import {
   }
 
   function openPasswordResetForm(user) {
-    resourceForm.replaceChildren(el('div', { className: 'dialog-body' }, [
-      el('div', { className: 'dialog-header' }, [el('h2', { text: 'Redefinir senha' }), el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Fechar', onClick: () => formDialog.close() })]),
-      el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
-      el('p', { className: 'muted', text: user?.email_usuario || '' }),
-      field('senha', 'Nova senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-      field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-      el('p', { id: 'formError', className: 'form-error', hidden: true }),
-      el('div', { className: 'dialog-actions' }, [
-        el('button', { className: 'btn btn-ghost', type: 'button', text: 'Cancelar', onClick: () => formDialog.close() }),
-        el('button', { className: 'btn btn-primary', type: 'submit', text: 'Salvar' }),
-      ]),
-    ]));
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Gestão',
+      title: 'Redefinir senha',
+      description: user?.email_usuario || '',
+      submitLabel: 'Salvar senha',
+      children: [
+        el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
+        field('senha', 'Nova senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+        field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+      ],
+    }));
     resourceForm.dataset.kind = 'reset-senha';
+    bindFormDirty(resourceForm);
     formDialog.showModal();
   }
 
@@ -1308,6 +1550,8 @@ import {
     return signed.public_url;
   }
 
+  resourceForm.addEventListener('input', () => { state.formDirty = true; });
+  resourceForm.addEventListener('change', () => { state.formDirty = true; });
   resourceForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     formError('');
@@ -1448,6 +1692,7 @@ import {
         await refreshView();
       }
       formDialog.close();
+      markFormPristine();
     } catch (error) {
       formError(error.message || 'Não foi possível salvar.');
     } finally {
@@ -1491,10 +1736,7 @@ import {
     }
   });
 
-  logoutButton.addEventListener('click', async () => {
-    try { await request('/api/admin/logout', { method: 'POST' }); } catch { /* still return */ }
-    showLogin();
-  });
+  logoutButton.addEventListener('click', logout);
 
   document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));
@@ -1507,6 +1749,16 @@ import {
   sidebarBackdrop?.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && adminSidebar.classList.contains('is-open')) closeDrawer();
+    if (event.key === 'Escape') closeUserSheet();
+  });
+  document.addEventListener('click', (event) => {
+    const user = document.getElementById('adminUser');
+    if (user && !user.contains(event.target)) closeUserSheet();
+  });
+  formDialog.addEventListener('click', (event) => {
+    if (event.target !== formDialog) return;
+    if (!shouldCloseDialogOnBackdrop(state.formDirty)) return;
+    formDialog.close();
   });
   document.getElementById('sidebarCollapse')?.addEventListener('click', () => {
     const collapsed = !document.getElementById('appView').classList.contains('is-collapsed');
@@ -1536,8 +1788,9 @@ import {
       email: usuario.email || usuario.email_usuario,
       perfil: usuario.perfil || usuario.perfil_usuario,
       protegido: usuario.protegido === true,
-      nome_usuario: usuario.nome_usuario,
+      nome_usuario: usuario.nome_usuario || state.sessao?.nome_usuario || null,
     };
+    renderAdminUser();
   }
 
   async function boot() {
