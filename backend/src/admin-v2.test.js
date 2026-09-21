@@ -9,7 +9,7 @@ import {
   handleAdminUploadUrl,
   handlePublicVenda,
 } from './admin-http.js';
-import { computeFaturamento } from './admin-sales.js';
+import { captureVenda, computeFaturamento } from './admin-sales.js';
 import { cancelScheduledChange, parseSaoPauloDateTime } from './admin-schedule.js';
 import { MAX_IMAGE_BYTES, validateImageUploadMeta } from './admin-storage.js';
 import { getReports } from './admin-reports.js';
@@ -284,12 +284,17 @@ test('venda is idempotent and totals are recalculated server-side', async () => 
     headers: {},
     body: {
       chave_idempotencia: 'idem-1',
+      nome_cliente: '  Ana   Paula  ',
+      telefone_cliente: '(18) 99999-8888',
       itens: [{ id_produto: 'prod-1', quantidade: 2, valor_unitario_centavos: 1 }],
     },
   }, first, { getPool: () => pool });
   assert.equal(first.statusCode, 200);
   assert.equal(first.body.venda.valor_total_centavos, 2000);
   assert.equal(first.body.duplicated, false);
+  assert.equal(first.body.venda.nome_cliente, 'Ana Paula');
+  assert.equal(first.body.venda.telefone_cliente, '18999998888');
+  assert.equal(first.body.venda.status_venda, 'PENDENTE');
 
   const second = mockResponse();
   await handlePublicVenda({
@@ -297,12 +302,49 @@ test('venda is idempotent and totals are recalculated server-side', async () => 
     headers: {},
     body: {
       chave_idempotencia: 'idem-1',
+      nome_cliente: 'Ana Paula',
+      telefone_cliente: '18999998888',
       itens: [{ id_produto: 'prod-1', quantidade: 9 }],
     },
   }, second, { getPool: () => pool });
   assert.equal(second.body.duplicated, true);
   assert.equal(second.body.venda.valor_total_centavos, 2000);
   assert.equal(vendas.length, 1);
+});
+
+test('captureVenda exige nome e telefone válidos antes de tocar o banco', async () => {
+  const untouchedPool = {
+    async query() { throw new Error('banco não deve ser consultado'); },
+    async connect() { throw new Error('banco não deve ser consultado'); },
+  };
+  const base = { chave_idempotencia: 'idem-cliente', itens: [{ id_produto: 'prod-1', quantidade: 1 }] };
+  const cases = [
+    ['sem nome', { telefone_cliente: '18999998888' }, 'Informe seu nome.'],
+    ['nome vazio', { nome_cliente: '', telefone_cliente: '18999998888' }, 'Informe seu nome.'],
+    ['nome só espaços', { nome_cliente: '    ', telefone_cliente: '18999998888' }, 'Informe seu nome.'],
+    ['nome de 1 caractere', { nome_cliente: 'A', telefone_cliente: '18999998888' }, 'Informe seu nome.'],
+    ['nome não string', { nome_cliente: { x: 1 }, telefone_cliente: '18999998888' }, 'Informe seu nome.'],
+    ['sem telefone', { nome_cliente: 'Ana' }, 'Informe um telefone válido.'],
+    ['telefone vazio', { nome_cliente: 'Ana', telefone_cliente: '   ' }, 'Informe um telefone válido.'],
+    ['telefone com 9 dígitos', { nome_cliente: 'Ana', telefone_cliente: '999998888' }, 'Informe um telefone válido.'],
+    ['telefone com letras', { nome_cliente: 'Ana', telefone_cliente: 'abc' }, 'Informe um telefone válido.'],
+    ['telefone iniciando em 0', { nome_cliente: 'Ana', telefone_cliente: '0899998888' }, 'Informe um telefone válido.'],
+  ];
+  for (const [label, extra, message] of cases) {
+    await assert.rejects(
+      () => captureVenda(untouchedPool, { ...base, ...extra }),
+      (error) => error instanceof AdminError && error.status === 400 && error.message === message,
+      label,
+    );
+  }
+
+  const res = mockResponse();
+  await handlePublicVenda({
+    method: 'POST',
+    headers: {},
+    body: { ...base, telefone_cliente: '18999998888' },
+  }, res, { getPool: () => untouchedPool });
+  assert.equal(res.statusCode, 400);
 });
 
 test('faturamento considera somente vendas CONFIRMADA', () => {

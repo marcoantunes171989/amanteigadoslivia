@@ -187,6 +187,156 @@ export function formatWhatsAppMaskDisplay(raw) {
   return maskWhatsAppPtBr(digits);
 }
 
+// ===================== CHECKOUT DO CARRINHO (V10) =====================
+// Helpers puros compartilhados entre navegador (carrinho.js / cart-checkout.js)
+// e backend (admin-sales.js). Sem DOM, sem fetch, sem módulos Node.
+export const CHECKOUT_NAME_MIN = 2;
+export const CHECKOUT_NAME_MAX = 120;
+
+export const CHECKOUT_MESSAGES = Object.freeze({
+  nameRequired: 'Informe seu nome.',
+  phoneRequired: 'Informe seu telefone.',
+  phoneInvalid: 'Informe um telefone válido.',
+  destinationUnavailable: 'WhatsApp comercial indisponível no momento. Tente novamente em instantes.',
+  rateLimited: 'Muitas tentativas. Aguarde um momento.',
+  serverError: 'Não foi possível registrar o pedido agora. Tente novamente.',
+  registered: 'Pedido registrado. Continue no WhatsApp para concluir.',
+  registeredDuplicated: 'Este pedido já estava registrado. Continue no WhatsApp para concluir.',
+});
+
+// Remove controles/quebras de linha (evita injeção de linhas na mensagem do
+// WhatsApp), colapsa espaços e aplica o limite seguro de comprimento.
+export function normalizeCustomerName(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, CHECKOUT_NAME_MAX)
+    .trim();
+}
+
+export function validateCheckoutName(value) {
+  const name = normalizeCustomerName(value);
+  if (name.length < CHECKOUT_NAME_MIN) {
+    return { ok: false, value: name, message: CHECKOUT_MESSAGES.nameRequired };
+  }
+  return { ok: true, value: name, message: '' };
+}
+
+// Telefone nacional: 10 (fixo) ou 11 (celular) dígitos. Aceita colar com
+// +55/55 na frente. Retorna somente dígitos normalizados.
+export function nationalPhoneDigits(value) {
+  let digits = digitsOnly(value);
+  if (digits.length > 11 && digits.startsWith('55')) digits = digits.slice(2);
+  return digits;
+}
+
+export function validateCheckoutPhone(value) {
+  const raw = String(value || '');
+  if (!digitsOnly(raw)) {
+    return { ok: false, value: '', message: CHECKOUT_MESSAGES.phoneRequired };
+  }
+  const digits = nationalPhoneDigits(raw);
+  if ((digits.length !== 10 && digits.length !== 11) || digits.startsWith('0')) {
+    return { ok: false, value: digits, message: CHECKOUT_MESSAGES.phoneInvalid };
+  }
+  return { ok: true, value: digits, message: '' };
+}
+
+export function maskCheckoutPhone(value) {
+  return maskWhatsAppPtBr(nationalPhoneDigits(value).slice(0, 11));
+}
+
+// Posição do cursor logo após o n-ésimo dígito de um valor já mascarado.
+export function caretAfterDigits(masked, digitCount) {
+  const text = String(masked || '');
+  if (digitCount <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\d/.test(text[i])) {
+      seen += 1;
+      if (seen === digitCount) return i + 1;
+    }
+  }
+  return text.length;
+}
+
+// Reaplica a máscara preservando o cursor (colar, apagar, editar no meio).
+// Se Backspace apagou só um caractere de formatação — "(18) |9" → "(18|9" —,
+// a máscara restauraria o mesmo texto e o cursor travaria; nesse caso remove
+// o dígito anterior ao cursor.
+export function applyPhoneMaskEdit({ previous = '', next = '', caret = null, inputType = '' } = {}) {
+  const nextText = String(next || '');
+  const pos = Number.isInteger(caret) ? Math.min(Math.max(caret, 0), nextText.length) : nextText.length;
+  let digits = digitsOnly(nextText);
+  let digitsBeforeCaret = digitsOnly(nextText.slice(0, pos)).length;
+  const removedOnlyFormatting = inputType === 'deleteContentBackward'
+    && digits === digitsOnly(previous)
+    && digitsBeforeCaret > 0;
+  if (removedOnlyFormatting) {
+    digits = digits.slice(0, digitsBeforeCaret - 1) + digits.slice(digitsBeforeCaret);
+    digitsBeforeCaret -= 1;
+  }
+  const fromPaste = digits.length > 11 && digits.startsWith('55');
+  if (fromPaste) {
+    digits = digits.slice(2);
+    digitsBeforeCaret = Math.max(0, digitsBeforeCaret - 2);
+  }
+  const value = maskWhatsAppPtBr(digits.slice(0, 11));
+  return { value, caret: caretAfterDigits(value, Math.min(digitsBeforeCaret, 11)) };
+}
+
+export function moneyPtBr(value) {
+  const amount = Number(value);
+  const safe = Number.isFinite(amount) ? amount : 0;
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+    .format(safe)
+    .replace(/ /g, ' ');
+}
+
+// Identificador curto e amigável (nunca o UUID completo) para a mensagem.
+export function shortOrderId(id) {
+  const compact = String(id ?? '').replace(/[^0-9a-zA-Z]/g, '');
+  return compact ? compact.slice(0, 8).toUpperCase() : '';
+}
+
+// Placeholder/inválido nunca é destino de checkout (ex.: 5500000000000).
+export function isPlaceholderWhatsAppDigits(digits) {
+  const value = String(digits || '');
+  const rest = value.startsWith('55') ? value.slice(2) : value;
+  return !rest || /^0+$/.test(rest) || /^(\d)\1+$/.test(rest);
+}
+
+// Mensagem do pedido. Valores em reais (Number); itens: {quantity, name,
+// subtotal} ou {quantity, name, unitPrice}.
+export function buildCartWhatsAppMessage({ items = [], total, nome, telefone, pedidoId } = {}) {
+  const lines = ['Olá! Gostaria de fazer um pedido na Amanteigados Lívia.'];
+  const cliente = normalizeCustomerName(nome);
+  const telefoneFmt = telefone ? formatWhatsAppMaskDisplay(telefone) : '';
+  const customer = [
+    cliente ? `*Cliente:* ${cliente}` : '',
+    telefoneFmt ? `*Telefone:* ${telefoneFmt}` : '',
+  ].filter(Boolean);
+  if (customer.length) lines.push('', ...customer);
+
+  lines.push('', '*Pedido:*');
+  for (const item of items) {
+    const qty = Number(item.quantity) || 0;
+    const name = String(item.name || 'Produto').replace(/\s+/g, ' ').trim() || 'Produto';
+    const unit = Number(item.unitPrice);
+    const subtotal = item.subtotal != null && Number.isFinite(Number(item.subtotal))
+      ? Number(item.subtotal)
+      : unit * qty;
+    lines.push(`${qty}x ${name} — ${moneyPtBr(subtotal)}`);
+  }
+  lines.push('', `*Total:* ${moneyPtBr(total)}`);
+  const code = shortOrderId(pedidoId);
+  if (code) lines.push('', `*Código do pedido:* #${code}`);
+  lines.push('', 'Aguardo a confirmação. Obrigado!');
+  return lines.join('\n');
+}
+
 export function isValidIsoDate(iso) {
   const match = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;

@@ -195,6 +195,8 @@ async function main() {
 
     const vendaDup = await captureVenda(pool, {
       chave_idempotencia: venda1.venda.chave_idempotencia,
+      nome_cliente: 'Cliente teste HML V2',
+      telefone_cliente: '11999999999',
       itens: [{ id_produto: produto.id_produto, quantidade: 2 }],
     });
     log('venda_idempotente', vendaDup.duplicated === true && vendaDup.venda.id_venda === venda1.venda.id_venda);

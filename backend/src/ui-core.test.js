@@ -23,6 +23,10 @@ import {
   QUANTIDADE_MINIMA_DEFAULT,
   buildEncomendaWhatsAppMessage,
   formatWhatsAppMaskDisplay,
+  applyPhoneMaskEdit,
+  maskCheckoutPhone,
+  validateCheckoutName,
+  validateCheckoutPhone,
 } from '../../ui-core.js';
 
 test('sidebar collapsed preference uses a visual-only localStorage key', () => {
@@ -256,4 +260,90 @@ test('whatsapp formatted message omits empty optional fields', () => {
   });
   assert.match(message, /\*Tipo:\* Presente/);
   assert.doesNotMatch(message, /E-mail/);
+});
+
+test('checkout: validação de nome (frontend/backend compartilhada)', () => {
+  assert.equal(validateCheckoutName('').ok, false);
+  assert.equal(validateCheckoutName('     ').ok, false);
+  assert.equal(validateCheckoutName('A').ok, false);
+  assert.equal(validateCheckoutName('Marco').ok, true);
+  assert.equal(validateCheckoutName('  Marco   Antônio ').value, 'Marco Antônio');
+  assert.equal(validateCheckoutName('x'.repeat(300)).value.length, 120);
+});
+
+test('checkout: validação de telefone (9 falha; 10 e 11 passam)', () => {
+  assert.equal(validateCheckoutPhone('').message, 'Informe seu telefone.');
+  assert.equal(validateCheckoutPhone('(  )    -').message, 'Informe seu telefone.');
+  assert.equal(validateCheckoutPhone('999998888').ok, false);
+  assert.equal(validateCheckoutPhone('999998888').message, 'Informe um telefone válido.');
+  assert.equal(validateCheckoutPhone('1833334444').ok, true);
+  assert.equal(validateCheckoutPhone('18999998888').ok, true);
+  assert.equal(validateCheckoutPhone('(18) 99999-8888').value, '18999998888');
+  assert.equal(validateCheckoutPhone('123456789012').ok, false);
+});
+
+test('checkout: máscara de telefone com 10 e 11 dígitos, sem letras', () => {
+  assert.equal(maskCheckoutPhone('1833334444'), '(18) 3333-4444');
+  assert.equal(maskCheckoutPhone('18999998888'), '(18) 99999-8888');
+  assert.equal(maskCheckoutPhone('18abc99999x8888'), '(18) 99999-8888');
+  assert.equal(maskCheckoutPhone('+55 18 99999-8888'), '(18) 99999-8888');
+  assert.equal(maskCheckoutPhone('189999988889999'), '(18) 99999-8888');
+  assert.equal(maskCheckoutPhone(''), '');
+});
+
+test('checkout: edição da máscara preserva cursor (colar, apagar, editar no meio)', () => {
+  // digitando
+  assert.deepEqual(applyPhoneMaskEdit({ previous: '(18) 9999', next: '(18) 99998', caret: 10, inputType: 'insertText' }), { value: '(18) 9999-8', caret: 11 });
+  // colar número completo
+  assert.equal(applyPhoneMaskEdit({ previous: '', next: '+55 (18) 99999-8888', caret: 19, inputType: 'insertFromPaste' }).value, '(18) 99999-8888');
+  // apagar último dígito
+  assert.equal(applyPhoneMaskEdit({ previous: '(18) 99999-8888', next: '(18) 99999-888', caret: 14, inputType: 'deleteContentBackward' }).value, '(18) 9999-9888');
+  // Backspace sobre caractere de formatação apaga o dígito anterior (não trava)
+  const backspace = applyPhoneMaskEdit({ previous: '(18) 99999-8888', next: '(18 99999-8888', caret: 3, inputType: 'deleteContentBackward' });
+  assert.equal(backspace.value, '(19) 9999-8888');
+  assert.equal(backspace.caret, 2);
+  // editar no meio mantém o cursor no mesmo dígito
+  const middle = applyPhoneMaskEdit({ previous: '(18) 99999-8888', next: '(18) 979999-8888', caret: 8, inputType: 'insertText' });
+  assert.equal(middle.value, '(18) 97999-9888');
+  assert.equal(middle.caret, 8);
+});
+
+test('carrinho.html: Nome e Telefone obrigatórios, sem "(opcional)", com aria e erro inline', () => {
+  const html = readFileSync(new URL('../../carrinho.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /\(opcional\)/i);
+  assert.match(html, /Nome\s*<span class="required-mark">\*<\/span>/);
+  assert.match(html, /Telefone\s*<span class="required-mark">\*<\/span>/);
+  const name = html.match(/<input id="checkoutName"[^>]*>/)[0];
+  const phone = html.match(/<input id="checkoutPhone"[^>]*>/)[0];
+  for (const attr of [/name="nome_cliente"/, /type="text"/, /autocomplete="name"/, /maxlength="120"/, /\srequired\s/, /aria-required="true"/]) {
+    assert.match(name, attr);
+  }
+  for (const attr of [/name="telefone_cliente"/, /type="tel"/, /autocomplete="tel"/, /inputmode="tel"/, /\srequired\s/, /aria-required="true"/]) {
+    assert.match(phone, attr);
+  }
+  assert.match(html, /id="checkoutNameError"[^>]*role="alert"/);
+  assert.match(html, /id="checkoutPhoneError"[^>]*role="alert"/);
+  assert.equal((html.match(/id="checkoutBtn"/g) || []).length, 1);
+  assert.match(html, /<button type="submit" class="btn btn-primary" id="checkoutBtn">Finalizar pelo WhatsApp<\/button>/);
+  assert.doesNotMatch(html, />\s*Validar\s*</);
+  assert.match(html, /<script type="module" src="carrinho.js">/);
+});
+
+test('carrinho.js: checkout único, sem alert(), sem número hardcoded, WhatsApp só após a API', () => {
+  const js = readFileSync(new URL('../../carrinho.js', import.meta.url), 'utf8');
+  const flow = readFileSync(new URL('../../cart-checkout.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../../styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(js, /\balert\(/);
+  assert.doesNotMatch(js, /5500000000000/);
+  assert.doesNotMatch(flow, /5500000000000/);
+  assert.match(js, /Enviando\.\.\./);
+  assert.match(js, /checkoutBusy/);
+  assert.match(js, /aria-invalid/);
+  assert.match(js, /aria-describedby/);
+  assert.match(js, /addEventListener\('submit', handleCheckout\)/);
+  assert.match(js, /window\.AmanteigadosSite\?\.loadFromApi/);
+  assert.match(js, /whatsapp_telefone/);
+  assert.ok(flow.indexOf('deps.postVenda(') < flow.indexOf('deps.openWhatsApp('), 'openWhatsApp só depois do POST');
+  assert.match(css, /\.required-mark\s*\{[^}]*var\(--error\)/);
+  assert.match(css, /\.cart-summary\s*\{\s*position:\s*static;/);
 });

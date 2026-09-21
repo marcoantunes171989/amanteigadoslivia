@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { getCatalogPayload } from './catalog.js';
 import { AdminError, mapDatabaseError } from './admin-errors.js';
 import { withTransaction } from './db-tx.js';
+import { CHECKOUT_MESSAGES, CHECKOUT_NAME_MIN, normalizeCustomerName } from '../../ui-core.js';
+import { normalizeWhatsAppPhone } from './whatsapp.js';
 
 function toCentavos(value) {
   if (value === null || value === undefined) return null;
@@ -43,6 +45,19 @@ export async function captureVenda(pool, payload = {}) {
   const itensEntrada = Array.isArray(payload.itens) ? payload.itens : [];
   if (itensEntrada.length === 0) {
     throw new AdminError(400, 'validation_error', 'Informe ao menos um item.');
+  }
+  // Dados do cliente são obrigatórios: não confiar somente no frontend.
+  const nomeCliente = normalizeCustomerName(payload.nome_cliente);
+  if (nomeCliente.length < CHECKOUT_NAME_MIN) {
+    throw new AdminError(400, 'validation_error', CHECKOUT_MESSAGES.nameRequired);
+  }
+  const telefoneCliente = normalizeWhatsAppPhone(
+    typeof payload.telefone_cliente === 'string' || typeof payload.telefone_cliente === 'number'
+      ? payload.telefone_cliente
+      : '',
+  );
+  if (!telefoneCliente) {
+    throw new AdminError(400, 'validation_error', CHECKOUT_MESSAGES.phoneInvalid);
   }
 
   try {
@@ -112,8 +127,8 @@ export async function captureVenda(pool, payload = {}) {
           idVenda,
           chave,
           payload.origem_venda || 'SITE',
-          typeof payload.nome_cliente === 'string' ? payload.nome_cliente.trim() || null : null,
-          typeof payload.telefone_cliente === 'string' ? payload.telefone_cliente.trim() || null : null,
+          nomeCliente,
+          telefoneCliente,
           total,
         ],
       );

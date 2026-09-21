@@ -4,8 +4,12 @@
 // (cart.js) — nunca reimplementa preço/promoção/quantidade e nunca toca
 // sessionStorage diretamente. Contrato completo em docs/cart-spec.md.
 //
-// Ainda sem checkout: nesta fase o carrinho é puramente demonstrativo —
-// sem dados pessoais, entrega, retirada, pagamento ou pedido real.
+// Checkout (V10): Nome e Telefone obrigatórios; o botão principal valida,
+// registra o pedido em /api/vendas e só então abre o WhatsApp comercial
+// (fluxo em cart-checkout.js). Sem pagamento/entrega nesta fase.
+import { applyPhoneMaskEdit } from './ui-core.js';
+import { openWhatsAppUrl, runCartCheckout } from './cart-checkout.js';
+
 (function () {
   const Catalog = window.AmanteigadosCatalog;
   const Cart = window.AmanteigadosCart;
@@ -20,8 +24,11 @@
     subtotalValue: document.getElementById('cartSubtotalValue'),
     clearBtn: document.getElementById('clearCartBtn'),
     checkoutBtn: document.getElementById('checkoutBtn'),
+    checkoutForm: document.getElementById('checkoutForm'),
     checkoutName: document.getElementById('checkoutName'),
     checkoutPhone: document.getElementById('checkoutPhone'),
+    checkoutNameError: document.getElementById('checkoutNameError'),
+    checkoutPhoneError: document.getElementById('checkoutPhoneError'),
     checkoutMessage: document.getElementById('checkoutMessage'),
     liveRegion: document.getElementById('cartLiveRegion'),
   };
@@ -303,9 +310,11 @@
     els.emptyTitle?.focus();
   });
 
-  function cartIdempotencyKey() {
+  // Mesma compra + mesmo cliente = mesma chave (clique duplo / reabrir o
+  // WhatsApp não cria outra venda). Cliente diferente = venda diferente.
+  function cartIdempotencyKey({ nome, telefone }) {
     const items = Cart.getCartItems().map((item) => `${item.productId}:${item.quantity}`).join('|');
-    const storageKey = 'amanteigadosLivia.orderKey.' + items;
+    const storageKey = 'amanteigadosLivia.orderKey.' + items + '|' + nome.toLowerCase() + '|' + telefone;
     try {
       const existing = sessionStorage.getItem(storageKey);
       if (existing) return existing;
@@ -317,59 +326,152 @@
     }
   }
 
-  els.checkoutBtn?.addEventListener('click', async () => {
-    const items = Cart.getCartItems();
-    if (!items.length) return;
-    els.checkoutBtn.disabled = true;
-    if (els.checkoutMessage) els.checkoutMessage.hidden = true;
-    try {
-      const payload = {
-        chave_idempotencia: cartIdempotencyKey(),
-        nome_cliente: els.checkoutName?.value?.trim() || null,
-        telefone_cliente: els.checkoutPhone?.value?.trim() || null,
-        itens: items.map((item) => ({
-          id_produto: item.productId,
-          quantidade: item.quantity,
-        })),
-      };
-      const response = await fetch('/api/vendas', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(data?.message || 'Não foi possível registrar o pedido.');
-      }
-      const total = items.reduce((sum, item) => sum + item.subtotal, 0);
-      const lines = ['Olá! Gostaria de fazer este pedido:', ''];
-      items.forEach((item) => {
-        const name = item.product?.name || item.name || 'Produto';
-        lines.push(`${item.quantity}x ${name} — ${Catalog.formatPrice(item.subtotal)}`);
-      });
-      lines.push('', `Total: ${Catalog.formatPrice(total)}`);
-      if (payload.nome_cliente) lines.push('', `Nome: ${payload.nome_cliente}`);
-      if (payload.telefone_cliente) lines.push(`Telefone: ${payload.telefone_cliente}`);
-      const phone = window.AmanteigadosWhatsApp?.phone || window.AmanteigadosSite?.get?.()?.configuracao?.whatsapp_telefone;
-      if (phone) {
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener');
-      }
-      if (els.checkoutMessage) {
-        els.checkoutMessage.hidden = false;
-        els.checkoutMessage.textContent = data?.duplicated
-          ? 'Este pedido já havia sido registrado. O WhatsApp foi aberto novamente.'
-          : 'Pedido registrado. Continue pelo WhatsApp se desejar.';
-      }
-      announce('Pedido registrado.');
-    } catch (error) {
-      if (els.checkoutMessage) {
-        els.checkoutMessage.hidden = false;
-        els.checkoutMessage.textContent = error.message || 'Não foi possível registrar o pedido. Seu carrinho foi mantido.';
-      }
-    } finally {
-      els.checkoutBtn.disabled = false;
+  // ===================== CAMPOS OBRIGATÓRIOS (erro inline acessível) =====================
+  const fieldRefs = {
+    nome: { input: els.checkoutName, error: els.checkoutNameError },
+    telefone: { input: els.checkoutPhone, error: els.checkoutPhoneError },
+  };
+
+  function setFieldError(name, message) {
+    const { input, error } = fieldRefs[name] || {};
+    if (!input || !error) return;
+    if (message) {
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', error.id);
+      error.textContent = message;
+      error.hidden = false;
+    } else {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+      error.textContent = '';
+      error.hidden = true;
+    }
+  }
+
+  function clearFieldErrors() {
+    setFieldError('nome', '');
+    setFieldError('telefone', '');
+  }
+
+  function showCheckoutMessage(message, { error = false } = {}) {
+    if (!els.checkoutMessage) return;
+    els.checkoutMessage.classList.toggle('is-error', error);
+    els.checkoutMessage.setAttribute('role', error ? 'alert' : 'status');
+    els.checkoutMessage.textContent = message;
+    els.checkoutMessage.hidden = false;
+  }
+
+  function hideCheckoutMessage() {
+    if (!els.checkoutMessage) return;
+    els.checkoutMessage.hidden = true;
+    els.checkoutMessage.textContent = '';
+  }
+
+  // Ao corrigir, o erro do campo some sem esperar novo clique.
+  els.checkoutName?.addEventListener('input', () => {
+    if (els.checkoutName.getAttribute('aria-invalid') === 'true'
+      && els.checkoutName.value.trim().length >= 2) {
+      setFieldError('nome', '');
     }
   });
+
+  let lastPhoneValue = '';
+  els.checkoutPhone?.addEventListener('input', (event) => {
+    const input = els.checkoutPhone;
+    const edit = applyPhoneMaskEdit({
+      previous: lastPhoneValue,
+      next: input.value,
+      caret: input.selectionStart,
+      inputType: event.inputType || '',
+    });
+    input.value = edit.value;
+    lastPhoneValue = edit.value;
+    try {
+      input.setSelectionRange(edit.caret, edit.caret);
+    } catch {
+      // alguns tipos de input não expõem seleção
+    }
+    if (input.getAttribute('aria-invalid') === 'true'
+      && (edit.value.replace(/D/g, '').length === 10 || edit.value.replace(/D/g, '').length === 11)) {
+      setFieldError('telefone', '');
+    }
+  });
+
+  function readCommercialPhone() {
+    return window.AmanteigadosWhatsApp?.phone
+      || window.AmanteigadosSite?.get?.()?.configuracao?.whatsapp_telefone;
+  }
+
+  async function postVenda(payload) {
+    const response = await fetch('/api/vendas', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
+  }
+
+  let checkoutBusy = false;
+
+  // Único CTA: valida → registra → abre o WhatsApp. O listener é do submit do
+  // formulário (clique no botão e Enter nos campos passam pelo mesmo caminho).
+  async function handleCheckout(event) {
+    event.preventDefault();
+    if (checkoutBusy) return;
+    checkoutBusy = true;
+    const button = els.checkoutBtn;
+    const idleLabel = button?.textContent || 'Finalizar pelo WhatsApp';
+    hideCheckoutMessage();
+    clearFieldErrors();
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Enviando...';
+    }
+    announce('Enviando...');
+    try {
+      const result = await runCartCheckout({
+        fields: { nome: els.checkoutName?.value, telefone: els.checkoutPhone?.value },
+        items: Cart.getCartItems(),
+        idempotencyKey: cartIdempotencyKey,
+        readPhone: readCommercialPhone,
+        refreshPhone: () => window.AmanteigadosSite?.loadFromApi?.(),
+        postVenda,
+        openWhatsApp: (url) => openWhatsAppUrl(url, {
+          win: window,
+          userAgent: navigator.userAgent,
+        }),
+      });
+      if (result.ok) {
+        showCheckoutMessage(result.message);
+        announce(result.message);
+        return;
+      }
+      if (result.code === 'empty') return;
+      if (result.code === 'validation') {
+        Object.entries(result.errors).forEach(([name, message]) => setFieldError(name, message));
+        const first = result.errors.nome ? els.checkoutName : els.checkoutPhone;
+        first?.focus();
+        announce(Object.values(result.errors)[0]);
+        return;
+      }
+      if (result.field && fieldRefs[result.field]) {
+        setFieldError(result.field, result.message);
+        fieldRefs[result.field].input?.focus();
+      } else {
+        showCheckoutMessage(result.message, { error: true });
+      }
+      announce(result.message);
+    } finally {
+      checkoutBusy = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = idleLabel;
+      }
+    }
+  }
+
+  els.checkoutForm?.addEventListener('submit', handleCheckout);
 
   // ===================== INICIALIZAÇÃO =====================
   Cart.loadCart();

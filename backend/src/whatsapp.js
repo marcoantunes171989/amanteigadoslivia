@@ -1,4 +1,11 @@
-import { buildEncomendaWhatsAppMessage as buildSharedEncomendaWhatsAppMessage } from '../../ui-core.js';
+import {
+  buildCartWhatsAppMessage as buildSharedCartWhatsAppMessage,
+  buildEncomendaWhatsAppMessage as buildSharedEncomendaWhatsAppMessage,
+  isPlaceholderWhatsAppDigits,
+  moneyPtBr,
+} from '../../ui-core.js';
+
+export { moneyPtBr };
 
 const DIGITS = /\D/g;
 
@@ -26,25 +33,16 @@ export function formatWhatsAppDisplay(raw) {
   return `+${digits}`;
 }
 
-export function moneyPtBr(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return 'R$ 0,00';
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+export function buildCartWhatsAppMessage(payload = {}) {
+  return buildSharedCartWhatsAppMessage(payload);
 }
 
-export function buildCartWhatsAppMessage({ items = [], total, nome, telefone } = {}) {
-  const lines = ['Olá! Gostaria de fazer este pedido:', ''];
-  for (const item of items) {
-    const qty = Number(item.quantity) || 0;
-    const name = String(item.name || 'Produto').trim() || 'Produto';
-    const unit = Number(item.unitPrice);
-    const subtotal = Number.isFinite(unit) ? unit * qty : Number(item.subtotal);
-    lines.push(`${qty}x ${name} — ${moneyPtBr(subtotal)}`);
-  }
-  lines.push('', `Total: ${moneyPtBr(total)}`);
-  if (nome) lines.push('', `Nome: ${String(nome).trim()}`);
-  if (telefone) lines.push(`Telefone: ${String(telefone).trim()}`);
-  return lines.join('\n');
+// Destino comercial do checkout: número normalizado, nunca placeholder
+// (ex.: 5500000000000). Retorna null quando ausente/inválido.
+export function resolveCommercialWhatsAppPhone(raw) {
+  const digits = normalizeWhatsAppPhone(raw);
+  if (!digits || isPlaceholderWhatsAppDigits(digits)) return null;
+  return digits;
 }
 
 export function buildEncomendaWhatsAppMessage(payload = {}) {
