@@ -61,6 +61,8 @@ afterEach(() => {
   delete process.env.VERCEL_TEAM_ID;
   delete process.env.VERCEL_PROD_PROJECT_ID;
   delete process.env.VERCEL_PROD_PROJECT_NAME;
+  delete process.env.VERCEL_RELEASE_GIT_OWNER;
+  delete process.env.VERCEL_RELEASE_GIT_REPO;
   delete process.env.VERCEL;
 });
 
@@ -613,6 +615,8 @@ test('promoteToProduction so chama cliente mock quando o gate passa', async () =
   process.env.VERCEL_RELEASE_TOKEN = 'token';
   process.env.VERCEL_TEAM_ID = 'team';
   process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
   process.env.VERCEL = '1';
   const pool = publishPool();
   let vercelCalls = 0;
@@ -627,11 +631,157 @@ test('promoteToProduction so chama cliente mock quando o gate passa', async () =
       vercelCalls += 1;
       assert.equal(sha, 'sha-hml-exato');
       assert.equal(target, 'production');
+      // PUBLICADA exige evidencia explicita READY (V15).
+      return { ok: true, state: 'READY', deploymentId: 'dpl_mock', attempts: 1 };
     },
   });
   assert.equal(result.ok, true);
   assert.equal(result.status, 'PUBLICADA');
   assert.equal(vercelCalls, 1);
+});
+
+async function promoteWithClient(vercelReleaseClient) {
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL = '1';
+  return promoteToProduction(publishPool(), {
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+    tipo_publicacao: 'CATALOGO',
+  }, { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'Marco' }, {
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient,
+  });
+}
+
+test('promoteToProduction nao publica sem evidencia READY (criado, erro, timeout, sem estado)', async () => {
+  for (const state of ['CREATED', 'BUILDING', 'ERROR', 'CANCELED', 'TIMEOUT', undefined]) {
+    const result = await promoteWithClient(async () => (state ? { ok: false, state, deploymentId: 'dpl_x' } : undefined));
+    assert.equal(result.ok, false, String(state));
+    assert.notEqual(result.status, 'PUBLICADA', String(state));
+    assert.equal(result.status, 'ERRO', String(state));
+    assert.equal(result.publicacao.status_publicacao, 'ERRO', String(state));
+  }
+});
+
+test('promoteToProduction: falha do cliente nao vira PUBLICADA e nao vaza detalhes', async () => {
+  const notConfigured = await promoteWithClient(async () => {
+    throw new AdminError(409, 'release_not_configured', 'Bearer super-secret-token');
+  });
+  assert.equal(notConfigured.ok, false);
+  assert.equal(notConfigured.status, 'BLOQUEADA');
+  assert.equal(notConfigured.error, 'release_not_configured');
+  assert.doesNotMatch(JSON.stringify(notConfigured), /super-secret-token/);
+
+  const failed = await promoteWithClient(async () => {
+    throw Object.assign(new Error('Bearer super-secret-token boom'), { called: true });
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.status, 'ERRO');
+  assert.equal(failed.error, 'release_failed');
+  assert.equal(failed.vercelCalled, true);
+  assert.doesNotMatch(JSON.stringify(failed), /super-secret-token/);
+});
+
+test('release config incompleta (sem git owner/repo) mantem release_config BLOCK', () => {
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  delete process.env.VERCEL_RELEASE_GIT_REPO;
+  const evaluation = validatePromotionDryRun({ session: { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true } });
+  assert.equal(evaluation.checks.find((item) => item.id === 'release_config').status, 'BLOCK');
+});
+
+const ROOT = { perfil: 'SUPER_ADMIN', protegido: true };
+
+function checkStatus(body, id) {
+  return body.checks.find((item) => item.id === id)?.status;
+}
+
+test('V15 wiring: dry run "validar" usa readiness do servidor e ignora o body do browser', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'false';
+  process.env.GIT_SHA = '89d0a9152a2604d71e5898040fb95b5783e5e3d0';
+
+  // Servidor sem readiness (default) + browser tentando forcar => BLOCK.
+  const forced = await postPublicacao(ROOT, {
+    acao: 'validar',
+    git_sha: '89d0a9152a2604d71e5898040fb95b5783e5e3d0',
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    prod_database_ready: true,
+    prod_env_ready: true,
+  });
+  assert.equal(forced.response.statusCode, 200);
+  assert.equal(checkStatus(forced.response.body, 'prod_database'), 'BLOCK');
+  assert.equal(checkStatus(forced.response.body, 'prod_env'), 'BLOCK');
+  assert.equal(checkStatus(forced.response.body, 'feature_flag'), 'BLOCK');
+
+  // Readiness real do servidor (deps) => PASS.
+  const ready = await postPublicacao(ROOT, {
+    acao: 'validar',
+    git_sha: '89d0a9152a2604d71e5898040fb95b5783e5e3d0',
+  }, { prodDatabaseReady: true, prodEnvReady: true });
+  assert.equal(checkStatus(ready.response.body, 'prod_database'), 'PASS');
+  assert.equal(checkStatus(ready.response.body, 'prod_env'), 'PASS');
+});
+
+test('V15 wiring: publicar nao e liberado por prodDatabaseReady/prodEnvReady vindos do body', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  const result = await postPublicacao(ROOT, {
+    acao: 'publicar',
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+  });
+  assert.equal(result.response.statusCode, 409);
+  assert.equal(result.response.body.status, 'BLOQUEADA');
+  assert.equal(checkStatus(result.response.body, 'prod_database'), 'BLOCK');
+  assert.equal(checkStatus(result.response.body, 'prod_env'), 'BLOCK');
+  assert.equal(result.vercelCalls, 0);
+});
+
+test('V15 wiring: GET publicacoes usa readiness do servidor (BLOCK por padrao, PASS quando deps ready)', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'false';
+  const get = async (deps) => {
+    const response = mockResponse();
+    await handleAdminPublicacoes({
+      method: 'GET',
+      headers: sessionHeadersFor(ROOT),
+      url: '/api/admin/publicacoes',
+    }, response, { getPool: () => publishPool(), ...deps });
+    return response;
+  };
+
+  const blocked = await get({});
+  assert.equal(blocked.statusCode, 200);
+  assert.equal(blocked.body.producao.pronta, false);
+  assert.equal(blocked.body.producao.bloqueios.includes('Banco PROD não preparado.'), true);
+  assert.equal(blocked.body.producao.bloqueios.includes('Env PROD incompleto.'), true);
+
+  const ready = await get({ prodDatabaseReady: true, prodEnvReady: true });
+  assert.equal(ready.body.producao.bloqueios.includes('Banco PROD não preparado.'), false);
+  assert.equal(ready.body.producao.bloqueios.includes('Env PROD incompleto.'), false);
+  // Flag continua false: producao nao fica pronta.
+  assert.equal(ready.body.producao.pronta, false);
+  assert.equal(ready.body.producao.habilitada, false);
 });
 
 test('GET publicacoes status permanece disponivel', async () => {

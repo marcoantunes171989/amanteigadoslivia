@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { handlePublicCatalog } from '../backend/src/admin-http.js';
 import { safeDatabaseErrorLog } from '../backend/src/admin-errors.js';
+import { resolvePoolConfig } from '../backend/src/db-config.js';
 
 const { Pool } = pg;
 
@@ -14,43 +15,14 @@ export const POOL_LIMITS = Object.freeze({
 
 let pool = null;
 
-function createPoolFromDiscreteEnv() {
-  return new Pool({
-    host: process.env.DATABASE_HOST,
-    port: Number(process.env.DATABASE_PORT || 5432),
-    database: process.env.DATABASE_NAME,
-    user: process.env.DATABASE_USER,
-    password: process.env.DATABASE_PASSWORD,
-    ssl: { rejectUnauthorized: false },
-    ...POOL_LIMITS,
-    application_name: 'amanteigados-livia-api-homolog',
-  });
-}
-
-function createPoolFromUrl() {
-  const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString || connectionString.trim() === '') {
-    throw new Error('DATABASE_HOST or DATABASE_URL is required');
-  }
-
-  return new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-    ...POOL_LIMITS,
-    application_name: 'amanteigados-livia-api-homolog',
-  });
-}
-
 export function getPool() {
   if (pool) {
     return pool;
   }
 
-  const host = process.env.DATABASE_HOST;
-  pool = host && host.trim() !== ''
-    ? createPoolFromDiscreteEnv()
-    : createPoolFromUrl();
+  // Fail-closed: configuração inválida lança ANTES de abrir o pool (sem fallback de porta).
+  const { options } = resolvePoolConfig(process.env);
+  pool = new Pool({ ...options, ...POOL_LIMITS });
 
   pool.on('error', (error) => {
     console.error('[catalog-api] unexpected database pool error', {

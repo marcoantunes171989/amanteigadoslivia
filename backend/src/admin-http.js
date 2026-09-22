@@ -11,7 +11,7 @@ import { AUDIT_ACTIONS, AUDIT_CSV_MAX_ROWS, auditPaginationMeta, parseAuditPagin
 import { executeAdminAction, getAdminCatalog } from './admin-catalog.js';
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
-import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, validatePromotionDryRun } from './admin-publish.js';
+import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, readinessFromDeps, validatePromotionDryRun } from './admin-publish.js';
 import { assertLoginRateLimit, assertPublicFormRateLimit } from './admin-rate-limit.js';
 import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
@@ -689,7 +689,7 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
-      sendJson(response, 200, await getPublicationStatus(pool, { session }));
+      sendJson(response, 200, await getPublicationStatus(pool, { session, ...readinessFromDeps(deps) }));
       return;
     }
     if (request.method !== 'POST') {
@@ -698,7 +698,8 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
     }
     const body = await readJsonBody(request);
     if (body.acao === 'validar' && !body.persistir) {
-      const dryRun = validatePromotionDryRun({ session, requestedSha: body.git_sha });
+      // Readiness so do servidor (deps); qualquer prodDatabaseReady/prodEnvReady no body e ignorado.
+      const dryRun = validatePromotionDryRun({ session, requestedSha: body.git_sha, ...readinessFromDeps(deps) });
       await recordAudit(pool, {
         id_usuario_admin: session.id_usuario_admin,
         acao: AUDIT_ACTIONS.VALIDAR_PUBLICACAO,
@@ -742,7 +743,7 @@ export async function handleAdminPublicacoes(request, response, deps = {}) {
       });
       return;
     }
-    const publicacao = await createPublicacao(pool, body, session);
+    const publicacao = await createPublicacao(pool, body, session, deps);
     await recordAudit(pool, {
       id_usuario_admin: session.id_usuario_admin,
       acao: AUDIT_ACTIONS.PUBLICACAO_HML_PROD,

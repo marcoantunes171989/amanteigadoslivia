@@ -14,6 +14,8 @@ import {
   handleAdminUsuarios,
   handleAdminVendas,
 } from '../backend/src/admin-http.js';
+import { getProdReadiness } from '../backend/src/prod-readiness.js';
+import { createVercelReleaseClient } from '../backend/src/vercel-release.js';
 
 export const ADMIN_ROUTES = {
   login: handleAdminLogin,
@@ -49,6 +51,19 @@ export function adminPathFromRequest(request) {
   return match ? match[1].replace(/\/+$/, '') : '';
 }
 
+// Readiness PROD e cliente de release vem SEMPRE do servidor, avaliados por requisicao.
+// Nada disso le body/query/header. `deps` explicitos (testes) tem precedencia.
+export function withServerReleaseDeps(deps = {}, env = process.env) {
+  const readiness = getProdReadiness(env);
+  return {
+    ...deps,
+    prodDatabaseReady: deps.prodDatabaseReady ?? readiness.prodDatabaseReady,
+    prodEnvReady: deps.prodEnvReady ?? readiness.prodEnvReady,
+    // Fail-closed: sem PROMOCAO_PROD_HABILITADA=true / config completa, o cliente nao faz fetch.
+    vercelReleaseClient: deps.vercelReleaseClient ?? createVercelReleaseClient({ env }),
+  };
+}
+
 export function createAdminHandler(deps = { getPool, logDatabaseError }) {
   return async function handler(request, response) {
     const pathName = adminPathFromRequest(request);
@@ -59,7 +74,7 @@ export function createAdminHandler(deps = { getPool, logDatabaseError }) {
       response.end(JSON.stringify({ error: 'not_found' }));
       return;
     }
-    await route(request, response, deps);
+    await route(request, response, withServerReleaseDeps(deps));
   };
 }
 

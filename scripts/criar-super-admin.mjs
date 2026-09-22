@@ -1,3 +1,7 @@
+// LEGACY/HML ONLY - NAO USAR PARA PRODUCAO.
+// Hardcoded para HOMOLOGACAO (ref/host/porta 5432/role *_app) e sem transacao.
+// Caminho recomendado: scripts/criar-super-admin-seguro.mjs (selecao explicita de ambiente,
+// validacao de project ref, pooler 6543, usuario administrativo, transacao com ROLLBACK).
 import { randomUUID } from 'node:crypto';
 import readline from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
@@ -56,6 +60,7 @@ function askHidden(question) {
 
 async function main() {
   console.log('AMANTEIGADOS LIVIA - SUPER ADMIN - HOMOLOGACAO');
+  console.log('[LEGACY/HML] Prefira scripts/criar-super-admin-seguro.mjs. Este script NUNCA deve ser usado em PRODUCAO.');
   console.log(`PROJECT REF esperado: ${EXPECTED_REF}`);
   console.log('Ambiente: HOMOLOG. PROD nao sera alterado.');
   console.log('');

@@ -38,13 +38,26 @@ export function releaseConfigPresence() {
     vercel_team_id: envPresent('VERCEL_TEAM_ID'),
     vercel_prod_project_id: envPresent('VERCEL_PROD_PROJECT_ID'),
     vercel_prod_project_name: envPresent('VERCEL_PROD_PROJECT_NAME'),
+    vercel_release_git_owner: envPresent('VERCEL_RELEASE_GIT_OWNER'),
+    vercel_release_git_repo: envPresent('VERCEL_RELEASE_GIT_REPO'),
   };
 }
 
 export function isReleaseConfigured(presence = releaseConfigPresence()) {
   return presence.vercel_release_token
     && presence.vercel_team_id
-    && (presence.vercel_prod_project_id || presence.vercel_prod_project_name);
+    && (presence.vercel_prod_project_id || presence.vercel_prod_project_name)
+    && presence.vercel_release_git_owner
+    && presence.vercel_release_git_repo;
+}
+
+// Readiness PROD vem SEMPRE do servidor (deps montadas em api/admin-router.js).
+// Nunca do body/query da requisicao. Ausente => false (fail-closed).
+export function readinessFromDeps(deps = {}) {
+  return {
+    prodDatabaseReady: deps?.prodDatabaseReady === true,
+    prodEnvReady: deps?.prodEnvReady === true,
+  };
 }
 
 function check(id, status, mensagem) {
@@ -293,6 +306,7 @@ async function insertPublicacao(queryable, dados = {}, session = {}, extra = {})
         nome_usuario: session.nome_usuario || null,
         checks: extra.checks || null,
         requested_sha: dados.git_sha || null,
+        release: extra.release || null,
       })),
       extra.mensagem || null,
     ],
@@ -300,7 +314,7 @@ async function insertPublicacao(queryable, dados = {}, session = {}, extra = {})
   return result.rows[0];
 }
 
-export async function createPublicacao(queryable, dados = {}, session = {}) {
+export async function createPublicacao(queryable, dados = {}, session = {}, deps = {}) {
   const tipo = String(dados.tipo_publicacao || dados.tipo || 'CATALOGO').toUpperCase();
   if (!['CATALOGO', 'ESTRUTURA', 'COMPLETA'].includes(tipo)) {
     throw new AdminError(400, 'validation_error', 'Tipo de publicação inválido.');
@@ -313,12 +327,16 @@ export async function createPublicacao(queryable, dados = {}, session = {}) {
   let mensagem = null;
   let checks = null;
   if (dados.acao === 'validar') {
-    const dryRun = validatePromotionDryRun({ session, requestedSha: dados.git_sha });
+    const dryRun = validatePromotionDryRun({
+      session,
+      requestedSha: dados.git_sha,
+      ...readinessFromDeps(deps),
+    });
     status = dryRun.status;
     mensagem = dryRun.motivo;
     checks = dryRun.checks;
   } else if (dados.acao === 'publicar') {
-    const promotion = await promoteToProduction(queryable, dados, session);
+    const promotion = await promoteToProduction(queryable, dados, session, deps);
     return promotion.publicacao;
   } else if (dados.acao === 'agendar') {
     status = 'AGENDADA';
@@ -333,6 +351,23 @@ async function callVercelProductionRelease({ sha, vercelReleaseClient }) {
     throw new AdminError(409, 'release_not_configured', 'Orquestração de produção não configurada.');
   }
   return vercelReleaseClient({ sha, target: 'production' });
+}
+
+// Mensagens fixas (nunca repassa texto de terceiros): sem token, sem corpo de resposta.
+const RELEASE_STATE_MESSAGE = Object.freeze({
+  ERROR: 'Deployment de produção terminou com erro.',
+  CANCELED: 'Deployment de produção foi cancelado.',
+  TIMEOUT: 'Deployment de produção sem confirmação READY no tempo limite.',
+});
+
+function releaseSummary(release) {
+  if (!release || typeof release !== 'object') return null;
+  return {
+    state: typeof release.state === 'string' ? release.state : null,
+    deployment_id: typeof release.deploymentId === 'string' ? release.deploymentId : null,
+    attempts: Number.isInteger(release.attempts) ? release.attempts : null,
+    reason: typeof release.reason === 'string' ? release.reason : null,
+  };
 }
 
 export async function promoteToProduction(queryable, dados = {}, session = {}, deps = {}) {
@@ -414,16 +449,68 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     };
   }
 
-  await callVercelProductionRelease({
-    sha: evaluation.git_sha,
-    vercelReleaseClient: deps.vercelReleaseClient,
-  });
+  let release;
+  try {
+    release = await callVercelProductionRelease({
+      sha: evaluation.git_sha,
+      vercelReleaseClient: deps.vercelReleaseClient,
+    });
+  } catch (error) {
+    // Falha do adapter: nunca PUBLICADA. Mensagem so do codigo controlado.
+    const notConfigured = ['release_not_configured', 'production_not_enabled', 'invalid_sha'].includes(error?.code);
+    const status = notConfigured ? 'BLOQUEADA' : 'ERRO';
+    const code = notConfigured ? error.code : 'release_failed';
+    const mensagem = notConfigured
+      ? 'Orquestração de produção não configurada.'
+      : 'Falha ao criar o deployment de produção.';
+    const publicacao = await insertPublicacao(queryable, dados, session, {
+      status,
+      mensagem,
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+    }).catch(() => null);
+    return {
+      ok: false,
+      httpStatus: notConfigured ? 409 : 502,
+      error: code,
+      status,
+      mensagem,
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: error?.called === true,
+    };
+  }
+
+  // PUBLICADA exige evidencia explicita READY. Aceitar o request (CREATED/BUILDING),
+  // erro, cancelamento, timeout ou retorno sem estado nao publica.
+  if (release?.state !== 'READY') {
+    const state = typeof release?.state === 'string' ? release.state : null;
+    const mensagem = RELEASE_STATE_MESSAGE[state] || 'Deployment de produção sem evidência READY.';
+    const publicacao = await insertPublicacao(queryable, dados, session, {
+      status: 'ERRO',
+      mensagem,
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+      release: releaseSummary(release),
+    }).catch(() => null);
+    return {
+      ok: false,
+      httpStatus: 502,
+      error: 'release_not_ready',
+      status: 'ERRO',
+      mensagem,
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: true,
+    };
+  }
 
   const publicacao = await insertPublicacao(queryable, dados, session, {
     status: 'PUBLICADA',
     mensagem: null,
     checks: evaluation.checks,
     git_sha: evaluation.git_sha,
+    release: releaseSummary(release),
   });
 
   return {
