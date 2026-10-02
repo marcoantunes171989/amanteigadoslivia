@@ -5,15 +5,18 @@
 // Garantias:
 //  - selecao explicita HOMOLOGACAO | PRODUCAO; PRODUCAO exige digitar "CRIAR SUPER ADMIN PRODUCAO";
 //  - project ref validado contra o ambiente escolhido (mismatch => PARA, sem conexao);
-//  - conexao administrativa via pooler Supabase, porta 6543, usuario postgres.<project_ref>;
+//  - conexao administrativa via pooler Supabase, porta 5432, usuario postgres.<project_ref>;
 //    roles de runtime (app) sao recusadas;
+//  - TLS com CA explicita e rejectUnauthorized:true; sem fallback inseguro;
 //  - nada hardcoded de host/porta/usuario/senha; nada de arquivo de env, variavel de ambiente, argumento CLI ou arquivo temporario;
 //  - senhas (Super Admin, confirmacao, PostgreSQL) lidas com input oculto;
-//  - BEGIN -> INSERT/UPDATE -> postcheck -> COMMIT; qualquer erro => ROLLBACK.
+//  - BEGIN -> advisory lock -> checagem global de SUPER_ADMIN -> INSERT/UPDATE -> postcheck -> COMMIT;
+//    qualquer erro => ROLLBACK.
 //
 // NAO e executado por testes nem pelo build (apenas `node --check`).
 
 import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import readline from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import pg from 'pg';
@@ -21,9 +24,12 @@ import { hashPassword, passwordPolicyError } from '../backend/src/password.js';
 import {
   ENVIRONMENTS,
   PROD_SUPER_ADMIN_CONFIRMATION,
+  SUPER_ADMIN_ADVISORY_LOCK_KEY,
+  evaluateSuperAdminState,
   isEnvironmentConfirmed,
   parseEnvironment,
   validateAdminConnection,
+  validateCaPath,
   validateEmail,
 } from '../backend/src/super-admin-safety.js';
 
@@ -102,14 +108,24 @@ async function main() {
 
   const projectRef = (await ask(rl, 'Project ref: ')).trim();
   const host = (await ask(rl, 'Host (pooler Supabase): ')).trim();
-  const port = (await ask(rl, 'Porta (6543): ')).trim();
+  const port = (await ask(rl, 'Porta (5432): ')).trim();
   const database = (await ask(rl, 'Database: ')).trim();
   const user = (await ask(rl, 'Usuario administrativo (postgres.<project_ref>): ')).trim();
+  const caPath = (await ask(rl, 'Caminho do certificado CA: ')).trim();
 
   const connectionErrors = validateAdminConnection({ environment, host, port, database, user, projectRef });
-  if (connectionErrors.length > 0) {
+  const caPathErrors = validateCaPath(caPath);
+  if (connectionErrors.length > 0 || caPathErrors.length > 0) {
     rl.close();
-    fail(`Conexao recusada (${connectionErrors.join(', ')}). Nenhuma conexao foi aberta e nada foi alterado.`);
+    fail(`Conexao recusada (${[...connectionErrors, ...caPathErrors].join(', ')}). Nenhuma conexao foi aberta e nada foi alterado.`);
+    return;
+  }
+
+  // Verificacao de existencia/tipo do CA ANTES de qualquer conexao (client.connect() so ocorre
+  // muito depois, apos todos os prompts). Conteudo so e lido mais tarde, perto do uso real.
+  if (!existsSync(caPath) || !statSync(caPath).isFile()) {
+    rl.close();
+    fail('Certificado CA nao encontrado ou nao e um arquivo regular. Nenhuma conexao foi aberta e nada foi alterado.');
     return;
   }
 
@@ -146,13 +162,15 @@ async function main() {
   }
 
   const hashed = await hashPassword(senha);
+  // CA lida somente agora, imediatamente antes do uso real na conexao. Nao e logada nem persistida.
+  const caContent = readFileSync(caPath, 'utf8');
   const client = new pg.Client({
     host,
     port: Number(port),
     database,
     user,
     password: pgPassword,
-    ssl: { rejectUnauthorized: false },
+    ssl: { ca: caContent, rejectUnauthorized: true },
     application_name: 'amanteigados-livia-criar-super-admin',
   });
 
@@ -165,20 +183,35 @@ async function main() {
     await client.query('BEGIN');
     inTransaction = true;
 
+    // Timeouts conservadores para uma operacao administrativa curta e pontual (apenas nesta transacao).
+    await client.query("SET LOCAL statement_timeout = '15s'");
+    await client.query("SET LOCAL lock_timeout = '3s'");
+    await client.query("SET LOCAL idle_in_transaction_session_timeout = '30s'");
+    // Defesa extra: todo SQL deste script qualifica tabelas com app., entao restringir o
+    // search_path a pg_catalog nao quebra nada e remove ambiguidade de resolucao de objetos.
+    await client.query('SET LOCAL search_path = pg_catalog');
+
     const identity = await client.query('SELECT current_database() AS db');
     if (identity.rows[0]?.db !== database) {
       throw new Error('database_mismatch');
     }
 
-    const existing = await client.query(
-      'SELECT id_usuario_admin FROM app.tab_usuario_admin WHERE lower(email_usuario) = lower($1)',
-      [email],
+    // Lock de transacao (liberado automaticamente no COMMIT/ROLLBACK) para serializar
+    // qualquer criacao/manutencao concorrente do SUPER_ADMIN.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [SUPER_ADMIN_ADVISORY_LOCK_KEY]);
+
+    const existingSuperAdmins = await client.query(
+      "SELECT id_usuario_admin, email_usuario FROM app.tab_usuario_admin WHERE perfil_usuario = 'SUPER_ADMIN'",
     );
+    const decision = evaluateSuperAdminState(existingSuperAdmins.rows, email);
+    if (decision.action === 'block') {
+      throw new Error(decision.reason);
+    }
 
     let id;
     let acao;
-    if (existing.rows[0]) {
-      id = existing.rows[0].id_usuario_admin;
+    if (decision.action === 'update') {
+      id = decision.id;
       acao = 'promovido';
       await client.query(
         `UPDATE app.tab_usuario_admin

@@ -7,9 +7,15 @@ export const ENVIRONMENTS = Object.freeze({
 });
 
 export const PROD_SUPER_ADMIN_CONFIRMATION = 'CRIAR SUPER ADMIN PRODUCAO';
-export const REQUIRED_PORT = 6543;
+export const REQUIRED_PORT = 5432;
 export const POOLER_SUFFIX = '.pooler.supabase.com';
 export const REQUIRED_DATABASE = 'postgres';
+
+// Chave fixa e documentada, reservada exclusivamente para serializar via
+// pg_advisory_xact_lock a criacao/manutencao do SUPER_ADMIN. Nao reutilizar
+// para nenhum outro proposito no projeto. Liberada automaticamente no fim
+// da transacao (xact lock), sem necessidade de unlock manual.
+export const SUPER_ADMIN_ADVISORY_LOCK_KEY = 802871455;
 
 // Somente as duas strings exatas. Qualquer outra coisa => null (script sai sem conexao).
 export function parseEnvironment(input) {
@@ -49,7 +55,7 @@ export function validateAdminConnection({ environment, host, port, database, use
   }
 
   if (String(port ?? '').trim() !== String(REQUIRED_PORT)) {
-    errors.push('port_must_be_6543');
+    errors.push('port_must_be_5432');
   }
 
   if (String(database ?? '').trim() !== REQUIRED_DATABASE) {
@@ -67,4 +73,38 @@ export function validateAdminConnection({ environment, host, port, database, use
 
 export function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email ?? ''));
+}
+
+// So valida que um caminho foi informado (string nao vazia). A verificacao de
+// existencia/tipo de arquivo e I/O e fica no script, executada apenas antes
+// de client.connect() no momento real de execucao.
+export function validateCaPath(caPath) {
+  return typeof caPath === 'string' && caPath.trim() ? [] : ['ca_path_required'];
+}
+
+// Decide a acao sobre o SUPER_ADMIN a partir de TODOS os registros existentes
+// com perfil_usuario='SUPER_ADMIN' (nao apenas o email solicitado), para evitar
+// a criacao de um segundo SUPER_ADMIN com email diferente.
+//
+// 0 existentes            -> create
+// 1 existente, mesmo email -> update (reconciliacao do mesmo registro)
+// 1 existente, email diff. -> block (different_email_super_admin_exists)
+// >1 existentes            -> block (multiple_super_admin_exists)
+export function evaluateSuperAdminState(existingSuperAdmins, email) {
+  const rows = Array.isArray(existingSuperAdmins) ? existingSuperAdmins : [];
+  const targetEmail = String(email ?? '').trim().toLowerCase();
+
+  if (rows.length === 0) {
+    return { action: 'create' };
+  }
+  if (rows.length > 1) {
+    return { action: 'block', reason: 'multiple_super_admin_exists' };
+  }
+
+  const [only] = rows;
+  const existingEmail = String(only?.email_usuario ?? '').trim().toLowerCase();
+  if (existingEmail === targetEmail) {
+    return { action: 'update', id: only?.id_usuario_admin };
+  }
+  return { action: 'block', reason: 'different_email_super_admin_exists' };
 }
