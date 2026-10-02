@@ -330,9 +330,13 @@ deste documento).
 
 ### Como funciona
 
-- `produtos.js` lê os dados através de `window.CATALOG_DATA`, uma fonte
-  externa carregada por `catalog-demo-data.js` (script incluído antes de
-  `produtos.js` em `produtos.html`).
+- **Atualizado:** o catálogo atual é carregado via `GET /api/catalogo`
+  (consumido por `catalog-core.js`), não mais por um script estático. O
+  antigo `catalog-demo-data.js` — que populava `window.CATALOG_DATA` e era
+  incluído antes de `produtos.js` em `produtos.html` — foi removido do
+  repositório após a migração para o catálogo real; a descrição abaixo
+  ("Dados demonstrativos atuais", checklist) documenta esse estado
+  histórico anterior à migração, não o comportamento em produção.
 - `CATALOG_DATA.mode = 'demo'` identifica explicitamente a origem dos
   dados como demonstrativa (distinta de um futuro modo `'live'`/`'api'`).
 - Cada produto demonstrativo carrega `demo: true`, e a interface usa essa

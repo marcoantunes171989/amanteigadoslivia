@@ -16,9 +16,11 @@
 ## 1. Objetivo desta fase
 
 Criar o **núcleo estrutural** do catálogo no schema `app`, alinhado aos
-campos que o frontend atual realmente usa (`catalog-demo-data.js`,
-`catalog-core.js`, `produtos.js`), sem inventar entidades de pedido,
-estoque, fiscal, publicação ou administração.
+campos que o frontend usava no momento desta fase (`catalog-demo-data.js`
+— fonte demonstrativa histórica, removida do repositório após a migração
+do catálogo para `GET /api/catalogo` — `catalog-core.js`, `produtos.js`),
+sem inventar entidades de pedido, estoque, fiscal, publicação ou
+administração.
 
 Artefato DDL: `backend/database/migrations/0002_criar_nucleo_catalogo.sql`.
 
@@ -65,7 +67,10 @@ imutável.
 
 ## 3. Inventário do catálogo atual (somente leitura)
 
-Fonte demonstrativa (`window.CATALOG_DATA` em `catalog-demo-data.js`):
+Fonte demonstrativa histórica (`window.CATALOG_DATA` em
+`catalog-demo-data.js` — arquivo removido do repositório após a migração
+do catálogo para `GET /api/catalogo`; mantido aqui apenas como referência
+do shape de dados usado nesta fase):
 
 ### Category (frontend)
 

@@ -205,8 +205,8 @@ catálogo recarregado com produtos diferentes (ex.: dados demo trocados).
 O preço de cada item no carrinho é **sempre** `getEffectivePrice(product)`
 recalculado a partir do produto resolvido pela fonte atual — nunca um
 valor lido do storage. Isso significa que, se a página for recarregada
-após uma mudança no catálogo (por exemplo, uma troca de `catalog-demo-data.js`
-ou, futuramente, um novo preço vindo de API), **o carrinho reflete o preço
+após uma mudança no catálogo (por exemplo, um novo preço vindo de
+`GET /api/catalogo`), **o carrinho reflete o preço
 atual, não o preço no momento em que o item foi adicionado**. Isso é
 aceitável e correto para um carrinho demonstrativo, que não é um pedido
 confirmado (ver seção 21 sobre o motivo disso mudar em um pedido real).
@@ -599,7 +599,9 @@ mesmos helpers seguros já em uso em `produtos.js` desde a Fase 3.
 
 ## 24. Arquitetura compartilhada
 
-**Situação atual:** `catalog-demo-data.js` define `window.CATALOG_DATA`;
+**[HISTÓRICO — situação na Fase 3.2.1, anterior à extração de
+`catalog-core.js` e à migração para `GET /api/catalogo`; não reflete o
+runtime atual.]** `catalog-demo-data.js` define `window.CATALOG_DATA`;
 `produtos.js` é o único consumidor, e contém tanto os helpers de dados
 (`getEffectivePrice`, `isValidPrice`, `formatPrice`, `getQuantityMin/Step/Max`,
 `clampQuantity`, `loadCatalogSource`) quanto toda a lógica de renderização
@@ -643,6 +645,12 @@ que devolve dados, não elementos de página.
 
 ### Cadeia de camadas — arquitetura final documentada (Fase 4A.0.2)
 
+**[HISTÓRICO — diagrama desenhado na Fase 4A.0.2, quando `catalog-demo-data.js`
+ainda era a fonte de dados. O arquivo foi removido do repositório após a
+migração do catálogo para `GET /api/catalogo`; `catalog-core.js` hoje
+carrega os dados diretamente da API (com `window.CATALOG_DATA` mantido
+apenas como fallback defensivo), não mais de um script estático.]**
+
 ```
 catalog-demo-data.js   (dados temporários — window.CATALOG_DATA)
         ↓
@@ -654,7 +662,9 @@ produtos.js   cart.js  (UI de /produtos)   (serviço do carrinho — sem DOM)
                        carrinho.js         (UI de /carrinho, Fase 4A.2)
 ```
 
-- `catalog-demo-data.js` — fonte de dados demonstrativa temporária.
+- `catalog-demo-data.js` — fonte de dados demonstrativa temporária
+  (histórico; removida do repositório após a migração para o catálogo
+  real via `GET /api/catalogo`).
 - `catalog-core.js` — regras puras do catálogo (preço, quantidade,
   resolução de produto por id). Sem DOM.
 - `produtos.js` — UI exclusiva de `/produtos`. Continua responsável só
@@ -680,7 +690,9 @@ produtos.js   cart.js  (UI de /produtos)   (serviço do carrinho — sem DOM)
   Move os helpers listados na seção 24 de `produtos.js` para
   `catalog-core.js` **sem alterar seu comportamento**, atualiza
   `produtos.js` para consumir a nova camada (import via `<script>` na
-  mesma ordem: `catalog-demo-data.js` → `catalog-core.js` → `produtos.js`),
+  mesma ordem: `catalog-demo-data.js` → `catalog-core.js` → `produtos.js`
+  — ordem histórica desta fase; `catalog-demo-data.js` foi posteriormente
+  removido quando o catálogo migrou para `GET /api/catalogo`),
   e testa exaustivamente que `/produtos` continua idêntico (regressão
   completa: busca, filtro, ordenação, dialog, total, responsividade,
   console). Cria `cart.js` (funções da seção 26) consumindo
@@ -743,7 +755,7 @@ getCartSubtotal()      // soma dos subtotais válidos, apenas itens que sobreviv
 `window` para ser consumido por `carrinho.js`/`produtos.js`, deve expor
 um único namespace explícito — por exemplo `window.AmanteigadosCart` — e
 não funções soltas no escopo global. Isso segue o mesmo padrão que
-`catalog-demo-data.js` já usa hoje com `window.CATALOG_DATA` (um único
+`catalog-core.js` já usa hoje com `window.CATALOG_DATA` (um único
 ponto de entrada nomeado, não dados espalhados).
 
 ## 27. Testes (a executar quando a Fase 4A for implementada)
