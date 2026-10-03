@@ -146,6 +146,111 @@ function evaluateDeployment(body, sha) {
   return { state, reason: null };
 }
 
+export const ACCESS_CHECK_DEFAULTS = Object.freeze({
+  timeoutMs: 10000,
+});
+
+function defaultScheduleTimeout(fn, ms) {
+  return setTimeout(fn, ms);
+}
+
+function defaultClearTimeout(handle) {
+  clearTimeout(handle);
+}
+
+// Config minima para o preflight read-only: token, team e projeto (id OU name).
+// Nao exige git owner/repo/ref: isso e exclusivo do fluxo de deployment.
+function hasProjectAccessConfig(config) {
+  return Boolean(
+    config.token
+    && ID_PATTERN.test(config.teamId)
+    && (ID_PATTERN.test(config.projectId) || ID_PATTERN.test(config.projectName)),
+  );
+}
+
+// Request PUBLICO de leitura do projeto (sem token). GET puro, sem body.
+export function buildProjectAccessRequest(config, baseUrl = VERCEL_API_BASE) {
+  const projectRef = config.projectId || config.projectName;
+  return {
+    method: 'GET',
+    url: `${baseUrl}/v9/projects/${encodeURIComponent(projectRef)}?teamId=${encodeURIComponent(config.teamId)}`,
+  };
+}
+
+// Preflight READ-ONLY: confirma autenticacao + team + projeto sem criar deployment.
+// GET exclusivo. Nunca faz fallback para POST nem toca /deployments.
+export async function verifyVercelProjectAccess(options = {}) {
+  const {
+    env = process.env,
+    fetchImpl = globalThis.fetch,
+    baseUrl = VERCEL_API_BASE,
+    scheduleTimeout = defaultScheduleTimeout,
+    clearTimeoutImpl = defaultClearTimeout,
+  } = options;
+  const timeoutMs = positiveInt(options.timeoutMs, ACCESS_CHECK_DEFAULTS.timeoutMs);
+
+  // 1) Config minima presente e valida. Fail-closed antes de qualquer fetch.
+  const config = readReleaseConfig(env);
+  if (!hasProjectAccessConfig(config) || typeof fetchImpl !== 'function') {
+    throw new ReleaseError(409, 'release_not_configured', 'Verificação de acesso ao projeto não configurada.');
+  }
+
+  const request = buildProjectAccessRequest(config, baseUrl);
+  const headers = { Authorization: `Bearer ${config.token}` };
+
+  let res;
+  let timedOut = false;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = scheduleTimeout(() => {
+    timedOut = true;
+    if (controller) controller.abort();
+  }, timeoutMs);
+  try {
+    res = await fetchImpl(request.url, {
+      method: request.method,
+      headers,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch {
+    if (timedOut) {
+      throw new ReleaseError(504, 'release_api_timeout', 'Timeout ao verificar acesso ao projeto na API Vercel.', { called: true });
+    }
+    throw new ReleaseError(502, 'release_api_error', 'Falha de rede ao verificar acesso ao projeto na API Vercel.', { called: true });
+  } finally {
+    clearTimeoutImpl(timer);
+  }
+
+  let payload = null;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!res.ok) {
+    throw new ReleaseError(
+      502,
+      'release_api_error',
+      `API Vercel retornou HTTP ${Number(res.status) || 0} ao verificar acesso ao projeto.`,
+      { called: true },
+    );
+  }
+
+  const projectId = typeof payload?.id === 'string' ? payload.id : '';
+  const projectName = typeof payload?.name === 'string' ? payload.name : '';
+  if (!projectId && !projectName) {
+    throw new ReleaseError(502, 'release_api_error', 'API Vercel não retornou identificação do projeto.', { called: true });
+  }
+  if (config.projectId && projectId && projectId !== config.projectId) {
+    throw new ReleaseError(502, 'release_project_mismatch', 'Projeto retornado não corresponde à configuração.', { called: true });
+  }
+  if (config.projectName && projectName && projectName !== config.projectName) {
+    throw new ReleaseError(502, 'release_project_mismatch', 'Projeto retornado não corresponde à configuração.', { called: true });
+  }
+
+  return { ok: true, projectId, projectName };
+}
+
 export function createVercelReleaseClient(options = {}) {
   const {
     env = process.env,

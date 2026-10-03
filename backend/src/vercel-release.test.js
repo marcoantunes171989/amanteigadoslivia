@@ -3,11 +3,13 @@ import { test } from 'node:test';
 import {
   ReleaseError,
   buildDeploymentRequest,
+  buildProjectAccessRequest,
   createVercelReleaseClient,
   isValidSha,
   mapReadyState,
   readReleaseConfig,
   redactSecrets,
+  verifyVercelProjectAccess,
 } from './vercel-release.js';
 
 const SHA = 'a22fbf22e907c8179e28f113b07d5f260aa0ce03';
@@ -307,6 +309,183 @@ test('config e ref do Git: ref default homologacao, override opcional, com sha s
   assert.equal(buildDeploymentRequest(config, SHA).body.gitSource.ref, 'release-1');
   assert.equal(buildDeploymentRequest(config, SHA).body.gitSource.sha, SHA);
   assert.equal(buildDeploymentRequest(readReleaseConfig(fullEnv()), SHA).body.gitSource.ref, 'homologacao');
+});
+
+function accessEnv(extra = {}) {
+  return {
+    VERCEL_RELEASE_TOKEN: TOKEN,
+    VERCEL_TEAM_ID: 'team_abc123',
+    VERCEL_PROD_PROJECT_ID: 'prj_prod123',
+    VERCEL_PROD_PROJECT_NAME: 'amanteigados-livia',
+    ...extra,
+  };
+}
+
+function immediateTimer(fn) {
+  fn();
+  return 'timer';
+}
+
+function hangFetchUntilAbort() {
+  return async (url, init) => new Promise((resolve, reject) => {
+    const signal = init.signal;
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
+    signal.addEventListener('abort', () => reject(new Error('aborted')));
+  });
+}
+
+test('verifyVercelProjectAccess: config valida -> GET correto no v9/projects com Bearer', async () => {
+  const fetchImpl = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'amanteigados-livia' })]);
+  const result = await verifyVercelProjectAccess({ env: accessEnv(), fetchImpl });
+
+  assert.equal(fetchImpl.calls.length, 1);
+  const { url, init } = fetchImpl.calls[0];
+  assert.equal(url, 'https://api.vercel.com/v9/projects/prj_prod123?teamId=team_abc123');
+  assert.equal(init.method, 'GET');
+  assert.equal(init.body, undefined);
+  assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
+  assert.equal(result.ok, true);
+  assert.equal(result.projectId, 'prj_prod123');
+  assert.equal(result.projectName, 'amanteigados-livia');
+});
+
+test('verifyVercelProjectAccess: usa projectName quando projectId ausente, URL e teamId codificados', async () => {
+  const env = accessEnv({ VERCEL_TEAM_ID: 'team x/1' });
+  delete env.VERCEL_PROD_PROJECT_ID;
+  const fetchImpl = fakeFetch([jsonResponse(200, { id: 'prj_x', name: 'amanteigados-livia' })]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env, fetchImpl }),
+    (error) => error.code === 'release_not_configured',
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('verifyVercelProjectAccess: caracteres perigosos em project/team sao codificados na URL', async () => {
+  const config = readReleaseConfig(accessEnv({ VERCEL_PROD_PROJECT_ID: 'prj_prod123' }));
+  const request = buildProjectAccessRequest({ ...config, teamId: 'team&x=1' });
+  assert.equal(request.url, 'https://api.vercel.com/v9/projects/prj_prod123?teamId=team%26x%3D1');
+  const request2 = buildProjectAccessRequest({ ...config, projectId: 'prj/../x' });
+  assert.equal(request2.url, 'https://api.vercel.com/v9/projects/prj%2F..%2Fx?teamId=team_abc123');
+});
+
+test('verifyVercelProjectAccess: token nunca aparece no resultado nem em erros', async () => {
+  const okFetch = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'amanteigados-livia' })]);
+  const result = await verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: okFetch });
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(TOKEN));
+
+  const echoFetch = fakeFetch([jsonResponse(403, { error: { code: 'forbidden', message: `bad token ${TOKEN}` } })]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: echoFetch }),
+    (error) => {
+      assert.doesNotMatch(String(error.message), new RegExp(TOKEN));
+      return error.code === 'release_api_error';
+    },
+  );
+
+  const netFetch = fakeFetch([new Error(`connect failed Bearer ${TOKEN}`)]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: netFetch }),
+    (error) => error.code === 'release_api_error' && !String(error.message).includes(TOKEN),
+  );
+});
+
+test('verifyVercelProjectAccess: ausencia de token/team/project -> fail-closed antes do fetch', async () => {
+  for (const missing of ['VERCEL_RELEASE_TOKEN', 'VERCEL_TEAM_ID']) {
+    const env = accessEnv();
+    delete env[missing];
+    const fetchImpl = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'amanteigados-livia' })]);
+    await assert.rejects(
+      () => verifyVercelProjectAccess({ env, fetchImpl }),
+      (error) => error.code === 'release_not_configured',
+      missing,
+    );
+    assert.equal(fetchImpl.calls.length, 0, missing);
+  }
+
+  const noProject = accessEnv();
+  delete noProject.VERCEL_PROD_PROJECT_ID;
+  delete noProject.VERCEL_PROD_PROJECT_NAME;
+  const fetchImpl = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'amanteigados-livia' })]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: noProject, fetchImpl }),
+    (error) => error.code === 'release_not_configured',
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('verifyVercelProjectAccess: HTTP nao-2xx resulta em falha segura (401/403/404/429/500)', async () => {
+  for (const status of [401, 403, 404, 429, 500]) {
+    const fetchImpl = fakeFetch([jsonResponse(status, { error: { code: 'x' } })]);
+    await assert.rejects(
+      () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl }),
+      (error) => error.code === 'release_api_error' && error.called === true && /HTTP/.test(error.message),
+      String(status),
+    );
+    assert.equal(fetchImpl.calls.length, 1, String(status));
+  }
+});
+
+test('verifyVercelProjectAccess: JSON invalido ou sem id/name necessarios -> falha', async () => {
+  const badJson = fakeFetch([{ ok: true, status: 200, json: async () => { throw new Error('bad json'); } }]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: badJson }),
+    (error) => error.code === 'release_api_error',
+  );
+
+  const noIds = fakeFetch([jsonResponse(200, {})]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: noIds }),
+    (error) => error.code === 'release_api_error',
+  );
+});
+
+test('verifyVercelProjectAccess: mismatch de projeto retornado -> falha segura', async () => {
+  const wrongId = fakeFetch([jsonResponse(200, { id: 'prj_outro', name: 'amanteigados-livia' })]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: wrongId }),
+    (error) => error.code === 'release_project_mismatch',
+  );
+
+  const wrongName = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'outro-nome' })]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl: wrongName }),
+    (error) => error.code === 'release_project_mismatch',
+  );
+});
+
+test('verifyVercelProjectAccess: timeout limitado nunca espera para sempre', async () => {
+  const fetchImpl = hangFetchUntilAbort();
+  await assert.rejects(
+    () => verifyVercelProjectAccess({
+      env: accessEnv(),
+      fetchImpl,
+      scheduleTimeout: immediateTimer,
+      clearTimeoutImpl: () => {},
+      timeoutMs: 5,
+    }),
+    (error) => error.code === 'release_api_timeout' && error.called === true,
+  );
+});
+
+test('verifyVercelProjectAccess: erro de rede generico (sem timeout) -> release_api_error', async () => {
+  const fetchImpl = fakeFetch([new Error('ECONNRESET')]);
+  await assert.rejects(
+    () => verifyVercelProjectAccess({ env: accessEnv(), fetchImpl }),
+    (error) => error.code === 'release_api_error' && error.called === true,
+  );
+});
+
+test('verifyVercelProjectAccess: nunca faz POST nem toca endpoint /deployments', async () => {
+  const fetchImpl = fakeFetch([jsonResponse(200, { id: 'prj_prod123', name: 'amanteigados-livia' })]);
+  await verifyVercelProjectAccess({ env: accessEnv(), fetchImpl });
+  for (const call of fetchImpl.calls) {
+    assert.equal(call.init.method, 'GET');
+    assert.doesNotMatch(call.url, /\/deployments/);
+  }
 });
 
 test('identificadores com caracteres perigosos (path/query injection) sao rejeitados sem fetch', async () => {
