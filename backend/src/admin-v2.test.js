@@ -61,6 +61,7 @@ afterEach(() => {
   delete process.env.VERCEL_TEAM_ID;
   delete process.env.VERCEL_PROD_PROJECT_ID;
   delete process.env.VERCEL_PROD_PROJECT_NAME;
+  delete process.env.VERCEL_PROD_DOMAIN;
   delete process.env.VERCEL_RELEASE_GIT_OWNER;
   delete process.env.VERCEL_RELEASE_GIT_REPO;
   delete process.env.VERCEL;
@@ -446,6 +447,11 @@ function publishPool() {
         inserted.push(row);
         return { rows: [row] };
       }
+      if (text.includes('finalize_publicacao')) {
+        const row = { id_publicacao: params[0], status_publicacao: params[1], mensagem_erro: params[2] };
+        inserted.push(row);
+        return { rows: [row] };
+      }
       if (text.includes('insert_auditoria')) {
         audits.push({ acao: params[2], sucesso: params[5] });
         return { rows: [] };
@@ -617,6 +623,7 @@ test('promoteToProduction so chama cliente mock quando o gate passa', async () =
   process.env.VERCEL_PROD_PROJECT_ID = 'proj';
   process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
   process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
   process.env.VERCEL = '1';
   const pool = publishPool();
   let vercelCalls = 0;
@@ -641,7 +648,7 @@ test('promoteToProduction so chama cliente mock quando o gate passa', async () =
   assert.equal(vercelCalls, 1);
 });
 
-async function promoteWithVerify(verifyPostRelease, vercelReleaseClient = async () => ({ ok: true, state: 'READY', deploymentId: 'dpl_mock', attempts: 1 })) {
+async function promoteWithVerify(verifyPostRelease, vercelReleaseClient = async () => ({ ok: true, state: 'READY', deploymentId: 'dpl_mock', projectId: 'prj_mock', attempts: 1 })) {
   process.env.PROMOCAO_PROD_HABILITADA = 'true';
   process.env.GIT_SHA = 'sha-hml-exato';
   process.env.VERCEL_RELEASE_TOKEN = 'token';
@@ -649,6 +656,7 @@ async function promoteWithVerify(verifyPostRelease, vercelReleaseClient = async 
   process.env.VERCEL_PROD_PROJECT_ID = 'proj';
   process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
   process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
   process.env.VERCEL = '1';
   const pool = publishPool();
   const result = await promoteToProduction(pool, {
@@ -673,7 +681,8 @@ test('B4 READY + verificacao pos-release PASS => PUBLICADA, verificador chamado 
   assert.equal(result.ok, true);
   assert.equal(result.status, 'PUBLICADA');
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], { deploymentId: 'dpl_mock', sha: 'sha-hml-exato' });
+  // B7: a identidade do projeto comprovada pelo cliente chega ao verificador.
+  assert.deepEqual(calls[0], { deploymentId: 'dpl_mock', sha: 'sha-hml-exato', expectedProjectId: 'prj_mock' });
 });
 
 test('B4 READY + verificacao pos-release FAIL => ERRO, nunca PUBLICADA', async () => {
@@ -721,6 +730,7 @@ async function promoteWithClient(vercelReleaseClient) {
   process.env.VERCEL_PROD_PROJECT_ID = 'proj';
   process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
   process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
   process.env.VERCEL = '1';
   return promoteToProduction(publishPool(), {
     git_sha: 'sha-hml-exato',
@@ -816,6 +826,7 @@ test('V15 wiring: publicar nao e liberado por prodDatabaseReady/prodEnvReady vin
   process.env.VERCEL_PROD_PROJECT_ID = 'proj';
   process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
   process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
   const result = await postPublicacao(ROOT, {
     acao: 'publicar',
     git_sha: 'sha-hml-exato',
@@ -864,6 +875,252 @@ test('GET publicacoes status permanece disponivel', async () => {
   assert.equal(Boolean(status.homolog), true);
   assert.equal(status.producao.habilitada, false);
   assert.equal(status.permissoes.pode_atualizar_producao, false);
+});
+
+// ---------------------------------------------------------------------------
+// P10-L1: B3 (reserva persistente por SHA), B6 (recuperacao manual), B7 (identidade).
+// Pool stateful: pg_advisory_xact_lock simulado com mutex por transacao (liberado no COMMIT/ROLLBACK).
+// ---------------------------------------------------------------------------
+
+function statefulPublicationPool() {
+  const rows = [];
+  let tail = Promise.resolve();
+
+  function makeQuery(tx) {
+    return async (sql, params = []) => {
+      const text = String(sql);
+      if (/^\s*BEGIN\s*$/.test(text)) return { rows: [] };
+      if (/^\s*(COMMIT|ROLLBACK)\s*$/.test(text)) {
+        if (tx?.unlock) {
+          tx.unlock();
+          tx.unlock = null;
+        }
+        return { rows: [] };
+      }
+      if (text.includes('op:lock_publicacao_sha')) {
+        const previous = tail;
+        let unlock;
+        tail = new Promise((resolve) => { unlock = resolve; });
+        await previous;
+        tx.unlock = unlock;
+        return { rows: [] };
+      }
+      if (text.includes('op:select_publicacoes_sha')) {
+        const [sha] = params;
+        const found = rows.filter((row) => row.git_sha === sha
+          && ['PUBLICADA', 'EM_EXECUCAO', 'ERRO'].includes(row.status_publicacao));
+        return { rows: found.map((row) => ({ status_publicacao: row.status_publicacao, resumo_json: row.resumo_json })) };
+      }
+      if (text.includes('op:insert_publicacao')) {
+        const row = {
+          id_publicacao: params[0],
+          id_usuario_admin: params[1],
+          tipo_publicacao: params[2],
+          git_sha: params[3],
+          status_publicacao: params[4],
+          resumo_json: params[6],
+          mensagem_erro: params[7],
+        };
+        rows.push(row);
+        return { rows: [row] };
+      }
+      if (text.includes('op:finalize_publicacao')) {
+        const row = rows.find((item) => item.id_publicacao === params[0]);
+        if (!row) return { rows: [] };
+        row.status_publicacao = params[1];
+        row.mensagem_erro = params[2];
+        // Mesmo efeito do `resumo_json || $4::jsonb` (merge de topo).
+        row.resumo_json = JSON.stringify({ ...JSON.parse(row.resumo_json || '{}'), ...JSON.parse(params[3]) });
+        return { rows: [row] };
+      }
+      return { rows: [] };
+    };
+  }
+
+  return {
+    rows,
+    query: makeQuery(null),
+    connect: async () => {
+      const tx = { unlock: null };
+      return { query: makeQuery(tx), release() {} };
+    },
+  };
+}
+
+async function promoteStateful(pool, vercelReleaseClient, verifyPostRelease = async () => ({ ok: true, state: 'READY' })) {
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
+  process.env.VERCEL = '1';
+  return promoteToProduction(pool, {
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+    tipo_publicacao: 'CATALOGO',
+  }, { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'Marco' }, {
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient,
+    verifyPostRelease,
+  });
+}
+
+function readyRelease(calls = { count: 0 }, extra = {}) {
+  return async () => {
+    calls.count += 1;
+    return { ok: true, state: 'READY', deploymentId: 'dpl_mock', projectId: 'prj_mock', attempts: 1, ...extra };
+  };
+}
+
+test('B3 duas liberacoes concorrentes do mesmo SHA => um unico POST (reserva persistente antes do POST)', async () => {
+  const pool = statefulPublicationPool();
+  let vercelCalls = 0;
+  const client = async () => {
+    vercelCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    return { ok: true, state: 'READY', deploymentId: 'dpl_mock', projectId: 'prj_mock', attempts: 1 };
+  };
+  const [a, b] = await Promise.all([promoteStateful(pool, client), promoteStateful(pool, client)]);
+  assert.equal(vercelCalls, 1);
+  assert.deepEqual([a, b].map((result) => result.error ?? result.status).sort(), ['PUBLICADA', 'release_already_attempted']);
+});
+
+test('B3 estado PUBLICADA ou EM_EXECUCAO existente bloqueia nova liberacao sem nenhum POST', async () => {
+  for (const status of ['PUBLICADA', 'EM_EXECUCAO']) {
+    const pool = statefulPublicationPool();
+    pool.rows.push({ id_publicacao: 'pub_prev', git_sha: 'sha-hml-exato', status_publicacao: status, resumo_json: '{}' });
+    const calls = { count: 0 };
+    const result = await promoteStateful(pool, readyRelease(calls));
+    assert.equal(calls.count, 0, status);
+    assert.equal(result.error, 'release_already_attempted', status);
+    assert.equal(result.vercelCalled, false, status);
+  }
+});
+
+test('B3 ERRO com POST enviado bloqueia; ERRO sem POST (falha antes do POST) nao bloqueia', async () => {
+  const blocking = statefulPublicationPool();
+  blocking.rows.push({ id_publicacao: 'pub_a', git_sha: 'sha-hml-exato', status_publicacao: 'ERRO', resumo_json: JSON.stringify({ release: { post_sent: true } }) });
+  const blockedCalls = { count: 0 };
+  const blocked = await promoteStateful(blocking, readyRelease(blockedCalls));
+  assert.equal(blockedCalls.count, 0);
+  assert.equal(blocked.error, 'release_already_attempted');
+
+  const allowing = statefulPublicationPool();
+  allowing.rows.push({ id_publicacao: 'pub_b', git_sha: 'sha-hml-exato', status_publicacao: 'ERRO', resumo_json: JSON.stringify({ release: { post_sent: false } }) });
+  const allowedCalls = { count: 0 };
+  const allowed = await promoteStateful(allowing, readyRelease(allowedCalls));
+  assert.equal(allowedCalls.count, 1);
+  assert.equal(allowed.status, 'PUBLICADA');
+});
+
+test('B3 falha antes do POST: linha final BLOQUEADA sem post_sent, e nova tentativa permitida', async () => {
+  const pool = statefulPublicationPool();
+  const failing = async () => {
+    throw Object.assign(new Error('Bearer super-secret-token'), { code: 'release_previous_unproven', called: true });
+  };
+  const first = await promoteStateful(pool, failing);
+  assert.equal(first.status, 'BLOQUEADA');
+  assert.equal(first.error, 'release_previous_unproven');
+  assert.equal(first.vercelCalled, true);
+  assert.equal(pool.rows.length, 1);
+  assert.equal(pool.rows[0].status_publicacao, 'BLOQUEADA');
+  assert.equal(JSON.parse(pool.rows[0].resumo_json).release.post_sent, false);
+
+  const calls = { count: 0 };
+  const second = await promoteStateful(pool, readyRelease(calls));
+  assert.equal(calls.count, 1);
+  assert.equal(second.status, 'PUBLICADA');
+});
+
+test('B3 falha depois do POST (resultado desconhecido): ERRO com post_sent, anterior e recuperacao; nova tentativa bloqueada', async () => {
+  const pool = statefulPublicationPool();
+  const unknown = async () => {
+    throw Object.assign(new Error('timeout'), { code: 'release_post_outcome_unknown', called: true, previousProductionDeploymentId: 'dpl_old' });
+  };
+  const first = await promoteStateful(pool, unknown);
+  assert.equal(first.status, 'ERRO');
+  assert.equal(first.error, 'release_post_outcome_unknown');
+  const record = JSON.parse(pool.rows[0].resumo_json).release;
+  assert.equal(record.post_sent, true);
+  assert.equal(record.previous_production_deployment_id, 'dpl_old');
+  assert.equal(record.rollback, 'ROLLBACK_MANUAL_REQUIRED');
+
+  const calls = { count: 0 };
+  const retry = await promoteStateful(pool, readyRelease(calls));
+  assert.equal(calls.count, 0);
+  assert.equal(retry.error, 'release_already_attempted');
+});
+
+test('P10-L1C B3 linhas legadas com evidencia pos-POST bloqueiam (UNKNOWN e deployment_id), sem post_sent', async () => {
+  const legacyRows = [
+    { status_publicacao: 'ERRO', resumo_json: JSON.stringify({ release: { state: 'UNKNOWN', reason: 'release_post_outcome_unknown' } }) },
+    { status_publicacao: 'ERRO', resumo_json: JSON.stringify({ release: { state: 'ERROR', deployment_id: 'dpl_legacy' } }) },
+  ];
+  for (const row of legacyRows) {
+    const pool = statefulPublicationPool();
+    pool.rows.push({ id_publicacao: 'pub_legacy', git_sha: 'sha-hml-exato', ...row });
+    const calls = { count: 0 };
+    const result = await promoteStateful(pool, readyRelease(calls));
+    assert.equal(calls.count, 0, row.resumo_json);
+    assert.equal(result.error, 'release_already_attempted', row.resumo_json);
+  }
+});
+
+test('P10-L1C B6/B3 falha generica apos POST: post_sent, recuperacao manual, anterior preservado, retry bloqueado', async () => {
+  const pool = statefulPublicationPool();
+  const generic = async () => {
+    throw Object.assign(new Error('Bearer super-secret-token boom'), { postSent: true, previousProductionDeploymentId: 'dpl_old' });
+  };
+  const first = await promoteStateful(pool, generic);
+  assert.equal(first.status, 'ERRO');
+  assert.equal(first.error, 'release_failed');
+  assert.doesNotMatch(JSON.stringify(first), /super-secret-token/);
+  const record = JSON.parse(pool.rows[0].resumo_json).release;
+  assert.equal(record.post_sent, true);
+  assert.equal(record.previous_production_deployment_id, 'dpl_old');
+  assert.equal(record.rollback, 'ROLLBACK_MANUAL_REQUIRED');
+  assert.equal(record.rollback_manual_required, true);
+
+  const calls = { count: 0 };
+  const retry = await promoteStateful(pool, readyRelease(calls));
+  assert.equal(calls.count, 0);
+  assert.equal(retry.error, 'release_already_attempted');
+});
+
+test('B6 READY + verificacao pos-release falha: ERRO, nunca PUBLICADA, ROLLBACK_MANUAL_REQUIRED com novo e anterior, sem rollback automatico', async () => {
+  const pool = statefulPublicationPool();
+  const calls = { count: 0 };
+  const result = await promoteStateful(pool, readyRelease(calls, { previousProductionDeploymentId: 'dpl_old' }),
+    async () => ({ ok: false, state: 'READY', reason: 'alias_mismatch' }));
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.error, 'post_release_verify_failed');
+  assert.match(result.mensagem, /ROLLBACK_MANUAL_REQUIRED/);
+  assert.notEqual(pool.rows[0].status_publicacao, 'PUBLICADA');
+  const record = JSON.parse(pool.rows[0].resumo_json).release;
+  assert.equal(record.deployment_id, 'dpl_mock');
+  assert.equal(record.previous_production_deployment_id, 'dpl_old');
+  assert.equal(record.post_verify, 'FAIL');
+  assert.equal(record.rollback, 'ROLLBACK_MANUAL_REQUIRED');
+  assert.equal(record.rollback_manual_required, true);
+  // Nenhum segundo POST nem rollback automatico: exatamente uma chamada ao cliente de release.
+  assert.equal(calls.count, 1);
+});
+
+test('B7 expectedProjectId do cliente chega ao verificador; mismatch falha fechado (status ERRO)', async () => {
+  const pool = statefulPublicationPool();
+  const seen = [];
+  const result = await promoteStateful(pool, readyRelease({ count: 0 }), async (args) => {
+    seen.push(args);
+    return { ok: false, state: 'READY', reason: 'project_mismatch' };
+  });
+  assert.equal(seen[0].expectedProjectId, 'prj_mock');
+  assert.equal(result.status, 'ERRO');
+  assert.notEqual(pool.rows[0].status_publicacao, 'PUBLICADA');
 });
 
 test('admin APIs without session return 401', async () => {

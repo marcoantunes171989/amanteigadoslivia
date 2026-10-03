@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { AdminError } from './admin-errors.js';
 import { isRootSuperAdmin } from './admin-users.js';
+import { withTransaction } from './db-tx.js';
 import { verifyPostReleaseDeployment } from './vercel-release.js';
 
 export const PROD_PUBLISH_CONFIRMATION = 'PUBLICAR PRODUCAO';
 export const BLOCK_REASON = 'Credenciais/ambiente de produção ainda não habilitados.';
+export const ROLLBACK_MANUAL_REQUIRED = 'ROLLBACK_MANUAL_REQUIRED';
 
 const CHECK = Object.freeze({
   PASS: 'PASS',
@@ -39,6 +41,7 @@ export function releaseConfigPresence() {
     vercel_team_id: envPresent('VERCEL_TEAM_ID'),
     vercel_prod_project_id: envPresent('VERCEL_PROD_PROJECT_ID'),
     vercel_prod_project_name: envPresent('VERCEL_PROD_PROJECT_NAME'),
+    vercel_prod_domain: envPresent('VERCEL_PROD_DOMAIN'),
     vercel_release_git_owner: envPresent('VERCEL_RELEASE_GIT_OWNER'),
     vercel_release_git_repo: envPresent('VERCEL_RELEASE_GIT_REPO'),
   };
@@ -48,6 +51,7 @@ export function isReleaseConfigured(presence = releaseConfigPresence()) {
   return presence.vercel_release_token
     && presence.vercel_team_id
     && (presence.vercel_prod_project_id || presence.vercel_prod_project_name)
+    && presence.vercel_prod_domain
     && presence.vercel_release_git_owner
     && presence.vercel_release_git_repo;
 }
@@ -315,6 +319,67 @@ async function insertPublicacao(queryable, dados = {}, session = {}, extra = {})
   return result.rows[0];
 }
 
+// B3: atualiza a reserva EM_EXECUCAO com o resultado final. Grava em resumo_json.release (sem migration).
+async function finalizePublicacao(queryable, idPublicacao, { status, mensagem, release }) {
+  const result = await queryable.query(
+    `-- op:finalize_publicacao
+      UPDATE app.tab_publicacao
+      SET status_publicacao = $2,
+          mensagem_erro = $3,
+          data_fim = now(),
+          resumo_json = COALESCE(resumo_json, '{}'::jsonb) || $4::jsonb
+      WHERE id_publicacao = $1
+      RETURNING id_publicacao, id_usuario_admin, tipo_publicacao, ambiente_origem, ambiente_destino,
+                git_sha, status_publicacao, data_agendada, data_criacao, resumo_json, mensagem_erro
+    `,
+    [idPublicacao, status, mensagem || null, JSON.stringify({ release: release || null })],
+  );
+  return result.rows[0] || null;
+}
+
+// B3: um registro pode ter POST enviado se marca post_sent, ou se tem evidencia pos-POST
+// (deployment_id ou state). Registros pre-POST gravam so post_sent=false e nao bloqueiam.
+// Cobre tambem linhas gravadas antes do campo post_sent existir.
+function releaseMayExist(resumoJson) {
+  const release = parseResumo(resumoJson)?.release;
+  if (!release || typeof release !== 'object') return false;
+  if (release.post_sent === true) return true;
+  return Boolean(release.deployment_id || release.state);
+}
+
+// B3: reserva persistente por SHA ANTES de qualquer POST.
+// Lock transacional por SHA, checagem de estados existentes e INSERT EM_EXECUCAO, com COMMIT antes do POST.
+// Bloqueia: PUBLICADA, EM_EXECUCAO, ou ERRO com POST enviado (resultado remoto pode existir; conciliar manualmente).
+export async function reserveProductionRelease(queryable, dados = {}, session = {}, evaluation) {
+  return withTransaction(queryable, async (tx) => {
+    await tx.query(
+      `-- op:lock_publicacao_sha
+        SELECT pg_advisory_xact_lock(hashtext($1))`,
+      [evaluation.git_sha],
+    );
+    const existing = await tx.query(
+      `-- op:select_publicacoes_sha
+        SELECT status_publicacao, resumo_json
+        FROM app.tab_publicacao
+        WHERE git_sha = $1
+          AND status_publicacao IN ('PUBLICADA', 'EM_EXECUCAO', 'ERRO')`,
+      [evaluation.git_sha],
+    );
+    const blocked = (existing.rows || []).some((row) => {
+      if (row.status_publicacao === 'PUBLICADA' || row.status_publicacao === 'EM_EXECUCAO') return true;
+      return releaseMayExist(row.resumo_json);
+    });
+    if (blocked) return { blocked: true, publicacao: null };
+    const publicacao = await insertPublicacao(tx, dados, session, {
+      status: 'EM_EXECUCAO',
+      mensagem: null,
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+    });
+    return { blocked: false, publicacao };
+  });
+}
+
 export async function createPublicacao(queryable, dados = {}, session = {}, deps = {}) {
   const tipo = String(dados.tipo_publicacao || dados.tipo || 'CATALOGO').toUpperCase();
   if (!['CATALOGO', 'ESTRUTURA', 'COMPLETA'].includes(tipo)) {
@@ -361,6 +426,17 @@ const RELEASE_STATE_MESSAGE = Object.freeze({
   TIMEOUT: 'Deployment de produção sem confirmação READY no tempo limite.',
 });
 
+// B6: depois do POST o deployment pode existir e ate virar producao. Recuperacao manual em qualquer
+// estado diferente de ERROR/CANCELED (deployment que nunca serve trafego).
+function needsRecovery(state) {
+  return state !== 'ERROR' && state !== 'CANCELED';
+}
+
+// Campos canonicos de recuperacao manual (B6). Vazio quando nao aplicavel.
+function recoveryFields(enabled) {
+  return enabled ? { rollback: ROLLBACK_MANUAL_REQUIRED, rollback_manual_required: true } : {};
+}
+
 function releaseSummary(release) {
   if (!release || typeof release !== 'object') return null;
   return {
@@ -368,6 +444,26 @@ function releaseSummary(release) {
     deployment_id: typeof release.deploymentId === 'string' ? release.deploymentId : null,
     attempts: Number.isInteger(release.attempts) ? release.attempts : null,
     reason: typeof release.reason === 'string' ? release.reason : null,
+    previous_production_deployment_id: typeof release.previousProductionDeploymentId === 'string'
+      ? release.previousProductionDeploymentId
+      : null,
+    post_sent: true,
+  };
+}
+
+// Falha ocorrida com o POST ja enviado (resultado desconhecido OU falha nao classificada):
+// o deployment pode existir. Registra post_sent e recuperacao manual, preservando o anterior.
+function postFailureRecord(error) {
+  return {
+    state: 'UNKNOWN',
+    deployment_id: null,
+    attempts: null,
+    reason: typeof error?.code === 'string' ? error.code : 'release_failed',
+    previous_production_deployment_id: typeof error?.previousProductionDeploymentId === 'string'
+      ? error.previousProductionDeploymentId
+      : null,
+    post_sent: true,
+    ...recoveryFields(true),
   };
 }
 
@@ -450,6 +546,22 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     };
   }
 
+  // B3: reserva EM_EXECUCAO commitada ANTES do POST. SHA ja publicado, em execucao ou com POST enviado => zero POST.
+  const reservation = await reserveProductionRelease(queryable, dados, session, evaluation);
+  if (reservation.blocked) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      error: 'release_already_attempted',
+      status: 'BLOQUEADA',
+      mensagem: 'Release deste SHA já foi iniciado ou concluído. Não repetir automaticamente.',
+      checks: evaluation.checks,
+      publicacao: null,
+      vercelCalled: false,
+    };
+  }
+  const reservationId = reservation.publicacao.id_publicacao;
+
   let release;
   try {
     release = await callVercelProductionRelease({
@@ -460,22 +572,23 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     // Falha do adapter: nunca PUBLICADA. Mensagem so do codigo controlado.
     // Outcome unknown do POST: NAO e falha confirmada nem sucesso. Preserva o codigo e o resumo UNKNOWN.
     const notConfigured = ['release_not_configured', 'production_not_enabled', 'invalid_sha'].includes(error?.code);
+    const previousUnproven = error?.code === 'release_previous_unproven';
     const outcomeUnknown = error?.code === 'release_post_outcome_unknown';
-    const status = notConfigured ? 'BLOQUEADA' : 'ERRO';
-    const code = notConfigured || outcomeUnknown ? error.code : 'release_failed';
+    const status = notConfigured || previousUnproven ? 'BLOQUEADA' : 'ERRO';
+    const code = notConfigured || previousUnproven || outcomeUnknown ? error.code : 'release_failed';
     let mensagem = 'Falha ao criar o deployment de produção.';
     if (notConfigured) mensagem = 'Orquestração de produção não configurada.';
+    if (previousUnproven) mensagem = 'Não foi possível identificar o deployment de produção anterior. Release bloqueado antes do POST.';
     if (outcomeUnknown) mensagem = 'Não foi possível confirmar o resultado do POST: o deployment de produção pode ter sido criado. Não repetir automaticamente; verificar na Vercel antes de nova tentativa.';
-    const publicacao = await insertPublicacao(queryable, dados, session, {
-      status,
-      mensagem,
-      checks: evaluation.checks,
-      git_sha: evaluation.git_sha,
-      release: outcomeUnknown ? { state: 'UNKNOWN', reason: 'release_post_outcome_unknown' } : null,
-    }).catch(() => null);
+    // Pos-POST (incluindo falha generica) => post_sent + recuperacao manual. Pre-POST => post_sent=false.
+    const postMayExist = outcomeUnknown || error?.postSent === true;
+    const record = postMayExist
+      ? postFailureRecord(error)
+      : { post_sent: false, previous_production_deployment_id: typeof error?.previousProductionDeploymentId === 'string' ? error.previousProductionDeploymentId : null };
+    const publicacao = await finalizePublicacao(queryable, reservationId, { status, mensagem, release: record }).catch(() => null);
     return {
       ok: false,
-      httpStatus: notConfigured ? 409 : 502,
+      httpStatus: notConfigured || previousUnproven ? 409 : 502,
       error: code,
       status,
       mensagem,
@@ -490,12 +603,10 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
   if (release?.state !== 'READY') {
     const state = typeof release?.state === 'string' ? release.state : null;
     const mensagem = RELEASE_STATE_MESSAGE[state] || 'Deployment de produção sem evidência READY.';
-    const publicacao = await insertPublicacao(queryable, dados, session, {
+    const publicacao = await finalizePublicacao(queryable, reservationId, {
       status: 'ERRO',
       mensagem,
-      checks: evaluation.checks,
-      git_sha: evaluation.git_sha,
-      release: releaseSummary(release),
+      release: { ...releaseSummary(release), ...recoveryFields(needsRecovery(state)) },
     }).catch(() => null);
     return {
       ok: false,
@@ -509,25 +620,25 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     };
   }
 
-  // B4: PUBLICADA exige verificacao pos-release positiva (GET read-only do deployment).
-  // Excecao, falha ou resultado inconclusivo => fail-closed: nunca PUBLICADA.
+  // B4/B2/B7: PUBLICADA exige verificacao pos-release positiva (GET read-only do deployment).
+  // expectedProjectId = identidade comprovada pelo cliente (B7). Excecao, falha ou inconclusivo => fail-closed.
   let postVerify = null;
   try {
     postVerify = await (deps.verifyPostRelease || verifyPostReleaseDeployment)({
       deploymentId: release.deploymentId,
       sha: evaluation.git_sha,
+      expectedProjectId: release.projectId,
     });
   } catch {
     postVerify = null;
   }
   if (postVerify?.ok !== true) {
-    const mensagem = 'Verificação pós-release não confirmou o deployment de produção.';
-    const publicacao = await insertPublicacao(queryable, dados, session, {
+    // B6: READY sem verificacao positiva nao vira PUBLICADA. Novo deployment e anterior ficam registrados.
+    const mensagem = `Verificação pós-release não confirmou o deployment de produção. ${ROLLBACK_MANUAL_REQUIRED}: reverter manualmente conforme o runbook.`;
+    const publicacao = await finalizePublicacao(queryable, reservationId, {
       status: 'ERRO',
       mensagem,
-      checks: evaluation.checks,
-      git_sha: evaluation.git_sha,
-      release: { ...releaseSummary(release), post_verify: 'FAIL' },
+      release: { ...releaseSummary(release), post_verify: 'FAIL', ...recoveryFields(true) },
     }).catch(() => null);
     return {
       ok: false,
@@ -541,11 +652,9 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     };
   }
 
-  const publicacao = await insertPublicacao(queryable, dados, session, {
+  const publicacao = await finalizePublicacao(queryable, reservationId, {
     status: 'PUBLICADA',
     mensagem: null,
-    checks: evaluation.checks,
-    git_sha: evaluation.git_sha,
     release: { ...releaseSummary(release), post_verify: 'PASS' },
   });
 

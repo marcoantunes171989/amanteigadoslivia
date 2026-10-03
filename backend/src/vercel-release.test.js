@@ -8,6 +8,7 @@ import {
   createVercelReleaseClient,
   isValidSha,
   mapReadyState,
+  normalizeDomain,
   readReleaseConfig,
   redactSecrets,
   verifyPostReleaseDeployment,
@@ -18,6 +19,7 @@ const SHA = 'a22fbf22e907c8179e28f113b07d5f260aa0ce03';
 const TOKEN = 'vercel-token-super-secreto-123';
 const PROD_NAME = 'amanteigadoslivia';
 const HML_NAME = 'amanteigados-livia-homolog';
+const PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
 
 function fullEnv(extra = {}) {
   return {
@@ -26,6 +28,7 @@ function fullEnv(extra = {}) {
     VERCEL_TEAM_ID: 'team_abc123',
     VERCEL_PROD_PROJECT_ID: 'prj_prod123',
     VERCEL_PROD_PROJECT_NAME: PROD_NAME,
+    VERCEL_PROD_DOMAIN: PROD_DOMAIN,
     VERCEL_RELEASE_GIT_OWNER: 'owner-x',
     VERCEL_RELEASE_GIT_REPO: 'repo-y',
     ...extra,
@@ -42,6 +45,7 @@ const READY_BODY = {
   projectId: 'prj_prod123',
   name: PROD_NAME,
   meta: { githubCommitSha: SHA },
+  alias: [PROD_DOMAIN],
 };
 
 function jsonResponse(status, payload) {
@@ -63,7 +67,7 @@ function fakeFetch(responses) {
 
 // fetch do fluxo de release: GET /v9/projects (preflight) separado dos /deployments.
 // `calls` tem tudo na ordem real; `deploymentCalls` so os /deployments.
-function releaseFetch(responses, preflight = jsonResponse(200, PROD_PROJECT)) {
+function releaseFetch(responses, preflight = jsonResponse(200, PROD_PROJECT), previous = jsonResponse(200, { deployments: [] })) {
   const deployments = fakeFetch(responses);
   const impl = async (url, init) => {
     impl.calls.push({ url, init });
@@ -71,6 +75,7 @@ function releaseFetch(responses, preflight = jsonResponse(200, PROD_PROJECT)) {
       if (preflight instanceof Error) throw preflight;
       return preflight;
     }
+    if (url.includes('/v6/deployments')) return previous;
     return deployments(url, init);
   };
   impl.calls = [];
@@ -213,11 +218,14 @@ test('GET_BEFORE_POST = YES: preflight read-only (GET v9 com Bearer) acontece an
   const fetchImpl = releaseFetch([jsonResponse(200, READY_BODY)]);
   await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
 
-  assert.equal(fetchImpl.calls.length, 2);
+  // B6: preflight GET, depois GET read-only do deployment PROD anterior, so entao o POST.
+  assert.equal(fetchImpl.calls.length, 3);
   assert.equal(fetchImpl.calls[0].init.method, 'GET');
   assert.equal(fetchImpl.calls[0].url, 'https://api.vercel.com/v9/projects/prj_prod123?teamId=team_abc123');
   assert.equal(fetchImpl.calls[0].init.headers.Authorization, `Bearer ${TOKEN}`);
-  assert.equal(fetchImpl.calls[1].init.method, 'POST');
+  assert.equal(fetchImpl.calls[1].init.method, 'GET');
+  assert.match(fetchImpl.calls[1].url, /\/v6\/deployments\?/);
+  assert.equal(fetchImpl.calls[2].init.method, 'POST');
   // Exatamente um preflight por release.
   assert.equal(fetchImpl.calls.filter((call) => call.url.includes('/v9/projects/')).length, 1);
 });
@@ -614,7 +622,7 @@ test('POST_RELEASE: verificacao read-only aprova deployment READY com projeto/ta
   });
   assert.equal(result.ok, true);
   assert.equal(result.state, 'READY');
-  assert.equal(result.alias, 'NOT_VERIFIED');
+  assert.equal(result.alias, 'VERIFIED');
   assert.equal(fetchImpl.calls.length, 1);
   assert.equal(fetchImpl.calls[0].init.method, 'GET');
   assert.equal(fetchImpl.calls[0].init.body, undefined);
@@ -866,7 +874,7 @@ function nameOnlyEnv() {
   return env;
 }
 
-const READY_P1_NO_NAME = { id: 'dpl_abc', readyState: 'READY', target: 'production', projectId: 'prj_prod123', meta: { githubCommitSha: SHA } };
+const READY_P1_NO_NAME = { id: 'dpl_abc', readyState: 'READY', target: 'production', projectId: 'prj_prod123', meta: { githubCommitSha: SHA }, alias: [PROD_DOMAIN] };
 
 test('P10-H2A NAME_ONLY_MATCHING_ID_ACCEPTED: preflight PROD com P1 e READY com P1 sem name => READY', async () => {
   const fetchImpl = releaseFetch([jsonResponse(200, READY_P1_NO_NAME)], jsonResponse(200, PROD_PROJECT));
@@ -970,11 +978,12 @@ test('B9 ID_ONLY_DIVERGENT_ID_ZERO_POST: ID-only + GET com ID divergente => zero
 const neverResolves = () => new Promise(() => {});
 
 // Fetch roteado: preflight GET /v9, POST /v13 e GET de polling tem respostas independentes.
-function routedFetch({ preflight = jsonResponse(200, PROD_PROJECT), post, poll = jsonResponse(200, READY_BODY) }) {
+function routedFetch({ preflight = jsonResponse(200, PROD_PROJECT), post, poll = jsonResponse(200, READY_BODY), previous = jsonResponse(200, { deployments: [] }) }) {
   const calls = [];
   const impl = async (url, init) => {
     calls.push({ url, init });
     if (url.includes('/v9/projects/')) return preflight;
+    if (url.includes('/v6/deployments')) return previous;
     if (init.method === 'POST') return post();
     return poll();
   };
@@ -1210,6 +1219,7 @@ const CALLER_ENV = {
   VERCEL_TEAM_ID: 'team_abc123',
   VERCEL_PROD_PROJECT_ID: 'prj_prod123',
   VERCEL_PROD_PROJECT_NAME: PROD_NAME,
+  VERCEL_PROD_DOMAIN: PROD_DOMAIN,
   VERCEL_RELEASE_GIT_OWNER: 'owner-x',
   VERCEL_RELEASE_GIT_REPO: 'repo-y',
 };
@@ -1233,13 +1243,25 @@ async function withEnv(vars, run) {
 
 function recordingQueryable() {
   const inserts = [];
+  const reservations = [];
   return {
     inserts,
+    reservations,
     query: async (sql, params = []) => {
       if (/INSERT INTO app\.tab_publicacao/.test(sql)) {
+        // Reserva EM_EXECUCAO (B3) nao e resultado final: fica separada de `inserts`.
+        if (params[4] === 'EM_EXECUCAO') {
+          reservations.push({ status: params[4] });
+          return { rows: [{ id_publicacao: 'pub_1', status_publicacao: params[4] }] };
+        }
         // Ordem dos parametros do insertPublicacao: $5 status, $7 resumo_json, $8 mensagem_erro.
         inserts.push({ status: params[4], resumo: JSON.parse(params[6]), mensagem: params[7] });
         return { rows: [{ id_publicacao: 'pub_1', status_publicacao: params[4] }] };
+      }
+      // B3: a reserva EM_EXECUCAO vira UPDATE final. Registra o estado final no mesmo lugar dos inserts.
+      if (/-- op:finalize_publicacao/.test(sql)) {
+        inserts.push({ status: params[1], resumo: JSON.parse(params[3]), mensagem: params[2] });
+        return { rows: [{ id_publicacao: params[0], status_publicacao: params[1] }] };
       }
       return { rows: [] };
     },
@@ -1313,4 +1335,167 @@ test('I2C CALLER_HTTP_CONFIRMED_DISTINCT: HTTP confirmado no POST => release_fai
   assert.equal(result.status, 'ERRO');
   assert.equal(result.mensagem, 'Falha ao criar o deployment de produção.');
   assert.equal(queryable.inserts.some((row) => row.status === 'PUBLICADA'), false);
+});
+
+// ---------------------------------------------------------------------------
+// P10-L1: B1 (target production), B2 (dominio/alias), B6 (deployment anterior), B7 (identidade).
+// ---------------------------------------------------------------------------
+
+test('B1 production: request de release mantem target="production" (nao existe caminho preview)', () => {
+  const request = buildDeploymentRequest(readReleaseConfig(fullEnv()), SHA);
+  assert.equal(request.body.target, 'production');
+});
+
+test('B2 normalizeDomain: normaliza hostname e rejeita valor invalido ou ausente', () => {
+  assert.equal(normalizeDomain('  Loja.Amanteigadoslivia.com.br '), 'loja.amanteigadoslivia.com.br');
+  // Sem normalizacao silenciosa: protocolo e caminho invalidam a config.
+  assert.equal(normalizeDomain('https://loja.amanteigadoslivia.com.br'), '');
+  assert.equal(normalizeDomain('loja.amanteigadoslivia.com.br/'), '');
+  assert.equal(normalizeDomain('loja.amanteigadoslivia.com.br/path'), '');
+  assert.equal(normalizeDomain('loja..invalida'), '');
+  assert.equal(normalizeDomain('localhost'), '');
+  assert.equal(normalizeDomain(''), '');
+  assert.equal(normalizeDomain(undefined), '');
+});
+
+test('B2 dominio ausente: verificacao pos-release bloqueia antes de qualquer fetch', async () => {
+  const fetchImpl = fakeFetch([jsonResponse(200, READY_BODY)]);
+  await assert.rejects(
+    () => verifyPostReleaseDeployment({ env: fullEnv({ VERCEL_PROD_DOMAIN: undefined }), fetchImpl, deploymentId: 'dpl_abc', sha: SHA }),
+    (error) => error.code === 'release_domain_not_configured' && error.called === false,
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('B2 config de release sem dominio: cliente nao faz nenhuma chamada (zero fetch)', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_BODY)]);
+  await assert.rejects(
+    () => makeClient(fullEnv({ VERCEL_PROD_DOMAIN: undefined }), fetchImpl)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_not_configured' && error.called === false,
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('B2 alias: dominio esperado PASS; alias errado FAIL; ausente ou nao-array FAIL', async () => {
+  const cases = [
+    [[PROD_DOMAIN], true, 'VERIFIED', null],
+    [['LOJA.amanteigadoslivia.com.br'], true, 'VERIFIED', null],
+    [['outro.example.com'], false, 'MISMATCH', 'alias_mismatch'],
+    [undefined, false, 'MISSING', 'alias_missing'],
+    [PROD_DOMAIN, false, 'MISSING', 'alias_missing'],
+    [[], false, 'MISSING', 'alias_missing'],
+  ];
+  for (const [alias, ok, state, reason] of cases) {
+    const result = await verifyPostReleaseDeployment({
+      env: fullEnv(),
+      fetchImpl: fakeFetch([jsonResponse(200, { ...READY_BODY, alias })]),
+      deploymentId: 'dpl_abc',
+      sha: SHA,
+    });
+    assert.equal(result.ok, ok, JSON.stringify(alias));
+    assert.equal(result.alias, state, JSON.stringify(alias));
+    assert.equal(result.reason, reason, JSON.stringify(alias));
+  }
+});
+
+test('B2 erro de rede e timeout na verificacao pos-release: falha fechada, nunca ok', async () => {
+  await assert.rejects(
+    () => verifyPostReleaseDeployment({ env: fullEnv(), fetchImpl: fakeFetch([new Error('ECONNRESET')]), deploymentId: 'dpl_abc', sha: SHA }),
+    (error) => error.code === 'release_api_error',
+  );
+  await assert.rejects(
+    () => verifyPostReleaseDeployment({ env: fullEnv(), fetchImpl: hangFetchUntilAbort(), deploymentId: 'dpl_abc', sha: SHA, timeoutMs: 5 }),
+    (error) => error.code === 'release_api_timeout',
+  );
+});
+
+const PREVIOUS_PROD = { deployments: [{ uid: 'dpl_old_prod', readyState: 'READY' }] };
+
+test('B6 deployment PROD anterior capturado por GET read-only ANTES do POST', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_BODY)], undefined, jsonResponse(200, PREVIOUS_PROD));
+  const result = await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.previousProductionDeploymentId, 'dpl_old_prod');
+  assert.equal(result.projectId, 'prj_prod123');
+  const previousCall = fetchImpl.calls.find((call) => call.url.includes('/v6/deployments'));
+  assert.equal(previousCall.init.method, 'GET');
+  assert.match(previousCall.url, /target=production/);
+  assert.match(previousCall.url, /projectId=prj_prod123/);
+  assert.ok(fetchImpl.calls.indexOf(previousCall) < fetchImpl.calls.findIndex((call) => call.init.method === 'POST'));
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B6 primeiro release (sem deployment PROD anterior) => previous null e POST segue', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_BODY)], undefined, jsonResponse(200, { deployments: [] }));
+  const result = await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.previousProductionDeploymentId, null);
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B6 anterior nao identificavel (HTTP erro, malformado, nao READY, id invalido) => zero POST, release_previous_unproven', async () => {
+  const badResponses = [
+    jsonResponse(500, {}),
+    jsonResponse(200, {}),
+    jsonResponse(200, { deployments: [{ uid: 'dpl_x', readyState: 'BUILDING' }] }),
+    jsonResponse(200, { deployments: [{ uid: 'bad/id' }] }),
+  ];
+  for (const previous of badResponses) {
+    const fetchImpl = releaseFetch([jsonResponse(200, READY_BODY)], undefined, previous);
+    await assert.rejects(
+      () => makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' }),
+      (error) => error.code === 'release_previous_unproven' && error.called === true,
+    );
+    assert.equal(fetchImpl.postCount(), 0);
+  }
+});
+
+test('B7 projectId comprovado chega ao resultado: ID configurado ou ID do preflight (name-only)', async () => {
+  const withId = releaseFetch([jsonResponse(200, READY_BODY)]);
+  const resultWithId = await makeClient(fullEnv(), withId)({ sha: SHA, target: 'production' });
+  assert.equal(resultWithId.projectId, 'prj_prod123');
+
+  const nameOnly = releaseFetch([jsonResponse(200, READY_P1_NO_NAME)], jsonResponse(200, PROD_PROJECT));
+  const resultNameOnly = await makeClient(nameOnlyEnv(), nameOnly)({ sha: SHA, target: 'production' });
+  assert.equal(resultNameOnly.projectId, 'prj_prod123');
+});
+
+// P10-L1C — B7: nome PROD nunca substitui o projectId esperado.
+const { projectId: _omittedProjectId, ...READY_WITHOUT_PROJECT_ID } = READY_BODY;
+
+test('B7 sem fallback para nome: ID configurado + READY com nome PROD e sem projectId => nao READY (verificador)', async () => {
+  const result = await verifyPostReleaseDeployment({
+    env: fullEnv(),
+    fetchImpl: fakeFetch([jsonResponse(200, READY_WITHOUT_PROJECT_ID)]),
+    deploymentId: 'dpl_abc',
+    sha: SHA,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'project_missing');
+});
+
+test('B7 sem fallback para nome: name-only + READY com nome PROD e sem projectId => nao READY (cliente)', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_WITHOUT_PROJECT_ID)], jsonResponse(200, PROD_PROJECT));
+  const result = await makeClient(nameOnlyEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'ERROR');
+  assert.equal(result.reason, 'project_missing');
+  assert.equal(result.ok, false);
+});
+
+test('B7 sem fallback para nome: ID configurado + POST devolve READY sem projectId => ERROR, nunca READY', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_WITHOUT_PROJECT_ID)]);
+  const result = await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.ok, false);
+  assert.notEqual(result.state, 'READY');
+});
+
+test('B6/B3 erro generico apos POST enviado (POST com HTTP 500) => postSent marcado; recuperacao manual', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(500, {})]);
+  let caught = null;
+  try {
+    await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught);
+  assert.equal(caught.postSent, true);
+  assert.equal(fetchImpl.postCount(), 1);
 });

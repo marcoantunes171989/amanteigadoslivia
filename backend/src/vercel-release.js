@@ -76,6 +76,15 @@ function promotionEnabled(env) {
   return clean(env.PROMOCAO_PROD_HABILITADA).toLowerCase() === 'true';
 }
 
+// Dominio PROD esperado (hostname, sem protocolo). Invalido ou ausente vira '' => fail-closed.
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+// Sem normalizacao silenciosa: protocolo, barra ou caminho invalidam a config (fail-closed).
+export function normalizeDomain(value) {
+  const cleaned = clean(value).toLowerCase();
+  return DOMAIN_PATTERN.test(cleaned) ? cleaned : '';
+}
+
 // Le SOMENTE server-side. Nunca logar nem devolver este objeto.
 export function readReleaseConfig(env = process.env) {
   return {
@@ -86,6 +95,7 @@ export function readReleaseConfig(env = process.env) {
     gitOwner: clean(env.VERCEL_RELEASE_GIT_OWNER),
     gitRepo: clean(env.VERCEL_RELEASE_GIT_REPO),
     gitRef: clean(env.VERCEL_RELEASE_GIT_REF) || DEFAULT_GIT_REF,
+    prodDomain: normalizeDomain(env.VERCEL_PROD_DOMAIN),
   };
 }
 
@@ -96,8 +106,40 @@ export function isReleaseConfigComplete(config) {
     && (ID_PATTERN.test(config.projectId) || ID_PATTERN.test(config.projectName))
     && GIT_NAME_PATTERN.test(config.gitOwner)
     && GIT_NAME_PATTERN.test(config.gitRepo)
-    && REF_PATTERN.test(config.gitRef),
+    && REF_PATTERN.test(config.gitRef)
+    && config.prodDomain,
   );
+}
+
+// B6: GET read-only do deployment PROD atual (anterior ao novo POST). Nunca POST.
+export function buildPreviousProductionRequest(config, projectId, baseUrl = VERCEL_API_BASE) {
+  return {
+    method: 'GET',
+    url: `${baseUrl}/v6/deployments?teamId=${encodeURIComponent(config.teamId)}&projectId=${encodeURIComponent(projectId)}&target=production&state=READY&limit=1`,
+  };
+}
+
+// Sem deployment de producao previo (primeiro release) => null. Resposta malformada => erro (fail-closed).
+export function parsePreviousProductionId(payload) {
+  const list = payload?.deployments;
+  if (!Array.isArray(list)) {
+    throw new ReleaseError(502, 'release_previous_unproven', 'Resposta sem lista de deployments de produção.', { called: true });
+  }
+  if (list.length === 0) return null;
+  const first = list[0] && typeof list[0] === 'object' ? list[0] : {};
+  const id = typeof first.uid === 'string' ? first.uid : (typeof first.id === 'string' ? first.id : '');
+  const state = first.readyState ?? first.state;
+  if (!ID_PATTERN.test(id) || (state !== undefined && String(state).toUpperCase() !== 'READY')) {
+    throw new ReleaseError(502, 'release_previous_unproven', 'Deployment de produção anterior não identificável.', { called: true });
+  }
+  return id;
+}
+
+// B2: alias do deployment PROD contem o dominio esperado. Contrato de alias de production NAO comprovado offline.
+function aliasState(alias, domain) {
+  if (!Array.isArray(alias) || alias.length === 0) return 'MISSING';
+  const hit = alias.some((item) => typeof item === 'string' && item.trim().toLowerCase() === domain);
+  return hit ? 'VERIFIED' : 'MISMATCH';
 }
 
 export function redactSecrets(text, secrets = []) {
@@ -190,9 +232,8 @@ function findMismatch(body, expected) {
 function readyEvidenceGap(body, expected) {
   if (body.target === undefined) return 'target_missing';
   if (body.meta?.githubCommitSha === undefined) return 'sha_missing';
-  const provedByName = body.name === PROD_PROJECT_NAME;
-  const provedById = Boolean(expected.projectId) && body.projectId === expected.projectId;
-  if (!provedByName && !provedById) return 'project_missing';
+  // B7: a identidade e o projectId esperado. Nome nunca substitui o ID (sem fallback para nome).
+  if (!expected.projectId || body.projectId !== expected.projectId) return 'project_missing';
   return null;
 }
 
@@ -365,6 +406,10 @@ export async function verifyPostReleaseDeployment(options = {}) {
   if (typeof deploymentId !== 'string' || !ID_PATTERN.test(deploymentId)) {
     throw new ReleaseError(409, 'invalid_deployment_id', 'Id de deployment inválido.');
   }
+  // B2: dominio PROD esperado e obrigatorio antes do fetch (sem ele nao ha como comprovar o alias).
+  if (!config.prodDomain) {
+    throw new ReleaseError(409, 'release_domain_not_configured', 'Domínio de produção não configurado para verificação pós-release.');
+  }
   const exactSha = sha.toLowerCase();
 
   const url = `${baseUrl}/v13/deployments/${encodeURIComponent(deploymentId)}?teamId=${encodeURIComponent(config.teamId)}`;
@@ -375,13 +420,19 @@ export async function verifyPostReleaseDeployment(options = {}) {
     'consultar o deployment na API Vercel',
   );
   const evaluation = evaluateDeployment(body, { sha: exactSha, projectId: identityId });
+  let alias = 'NOT_EVALUATED';
+  let reason = evaluation.reason;
+  if (evaluation.state === RELEASE_STATE.READY) {
+    alias = aliasState(body.alias, config.prodDomain);
+    if (alias !== 'VERIFIED') reason = alias === 'MISSING' ? 'alias_missing' : 'alias_mismatch';
+  }
   return {
-    ok: evaluation.state === RELEASE_STATE.READY,
+    ok: evaluation.state === RELEASE_STATE.READY && alias === 'VERIFIED',
     state: evaluation.state,
-    reason: evaluation.reason,
+    reason,
     deploymentId,
     sha: exactSha,
-    alias: 'NOT_VERIFIED',
+    alias,
   };
 }
 
@@ -404,7 +455,7 @@ export function createVercelReleaseClient(options = {}) {
   const perRequestTimeoutMs = positiveInt(requestTimeoutMs, ACCESS_CHECK_DEFAULTS.timeoutMs);
 
   // Criacao do deployment (POST) e polling limitado. So e chamada apos preflight PASS.
-  async function deployAndPoll(config, exactSha) {
+  async function deployAndPoll(config, exactSha, previousProductionDeploymentId) {
     const headers = {
       Authorization: `Bearer ${config.token}`,
       'Content-Type': 'application/json',
@@ -483,6 +534,8 @@ export function createVercelReleaseClient(options = {}) {
       deploymentId,
       sha: exactSha,
       attempts,
+      projectId: config.projectId,
+      previousProductionDeploymentId,
     });
 
     let current = evaluateDeployment(created, expected);
@@ -580,15 +633,42 @@ export function createVercelReleaseClient(options = {}) {
         throw new ReleaseError(409, 'release_identity_unproven', 'Identidade do projeto de produção não comprovada pelo preflight. Release bloqueado.', { called: true });
       }
 
+      // 7b) B6: identifica o deployment PROD anterior (GET read-only) ANTES do POST.
+      // Falha ou resposta nao identificavel => fail-closed, sem POST.
+      let previousProductionDeploymentId;
+      try {
+        const previousRequest = buildPreviousProductionRequest({ ...config, projectId: resolvedProjectId }, resolvedProjectId, baseUrl);
+        const previousPayload = await readOnlyGet(
+          previousRequest.url,
+          config.token,
+          { fetchImpl, timeoutMs: perRequestTimeoutMs, scheduleTimeout, clearTimeoutImpl },
+          'consultar o deployment de produção anterior na API Vercel',
+        );
+        previousProductionDeploymentId = parsePreviousProductionId(previousPayload);
+      } catch (error) {
+        if (error?.code === 'release_previous_unproven') throw error;
+        throw new ReleaseError(502, 'release_previous_unproven', 'Não foi possível identificar o deployment de produção anterior. Release bloqueado antes do POST.', { called: true });
+      }
+
       // 8) Marca como tentado ANTES do POST: qualquer falha pos-POST nao libera novo POST.
       attemptGuard.set(exactSha, RELEASE_GUARD_STATE.POSTED);
       postSent = true;
       // Nome PROD enviado no POST: config (ja validada) ou o nome comprovado pelo preflight (assertPreflightIsProd).
-      return await deployAndPoll({
-        ...config,
-        projectId: resolvedProjectId,
-        projectName: config.projectName || access.projectName,
-      }, exactSha);
+      try {
+        return await deployAndPoll({
+          ...config,
+          projectId: resolvedProjectId,
+          projectName: config.projectName || access.projectName,
+        }, exactSha, previousProductionDeploymentId);
+      } catch (error) {
+        // Qualquer falha dentro de deployAndPoll ocorre com o POST ja enviado: o deployment pode existir.
+        // Anexa o anterior conhecido e marca postSent (fail-closed; o chamador registra recuperacao manual).
+        if (error && typeof error === 'object') {
+          error.previousProductionDeploymentId = previousProductionDeploymentId ?? null;
+          error.postSent = true;
+        }
+        throw error;
+      }
     } finally {
       // Falha antes do POST libera a reserva: nenhum deployment foi pedido.
       if (!postSent) attemptGuard.delete(exactSha);
