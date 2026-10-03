@@ -457,17 +457,20 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     });
   } catch (error) {
     // Falha do adapter: nunca PUBLICADA. Mensagem so do codigo controlado.
+    // Outcome unknown do POST: NAO e falha confirmada nem sucesso. Preserva o codigo e o resumo UNKNOWN.
     const notConfigured = ['release_not_configured', 'production_not_enabled', 'invalid_sha'].includes(error?.code);
+    const outcomeUnknown = error?.code === 'release_post_outcome_unknown';
     const status = notConfigured ? 'BLOQUEADA' : 'ERRO';
-    const code = notConfigured ? error.code : 'release_failed';
-    const mensagem = notConfigured
-      ? 'Orquestração de produção não configurada.'
-      : 'Falha ao criar o deployment de produção.';
+    const code = notConfigured || outcomeUnknown ? error.code : 'release_failed';
+    let mensagem = 'Falha ao criar o deployment de produção.';
+    if (notConfigured) mensagem = 'Orquestração de produção não configurada.';
+    if (outcomeUnknown) mensagem = 'Não foi possível confirmar o resultado do POST: o deployment de produção pode ter sido criado. Não repetir automaticamente; verificar na Vercel antes de nova tentativa.';
     const publicacao = await insertPublicacao(queryable, dados, session, {
       status,
       mensagem,
       checks: evaluation.checks,
       git_sha: evaluation.git_sha,
+      release: outcomeUnknown ? { state: 'UNKNOWN', reason: 'release_post_outcome_unknown' } : null,
     }).catch(() => null);
     return {
       ok: false,

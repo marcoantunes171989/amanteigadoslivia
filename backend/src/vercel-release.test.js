@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { promoteToProduction } from './admin-publish.js';
 import {
   ReleaseError,
   buildDeploymentRequest,
@@ -409,11 +410,11 @@ test('API retorna erro: nao publica (lanca release_api_error, called=true)', asy
     );
     assert.equal(fetchImpl.deploymentCalls.length, 1);
   }
-  // Resposta 200 sem id de deployment tambem nao vale.
+  // Resposta 2xx sem id de deployment: POST aceito, estado remoto desconhecido (I2E), nao release_api_error.
   const noId = releaseFetch([jsonResponse(200, { readyState: 'READY' })]);
   await assert.rejects(
     () => makeClient(fullEnv(), noId)({ sha: SHA, target: 'production' }),
-    (error) => error.code === 'release_api_error',
+    (error) => error.code === 'release_post_outcome_unknown' && error.called === true,
   );
 });
 
@@ -438,10 +439,11 @@ test('token nunca aparece no payload publico, no resultado nem em erros', async 
   );
 
   // Erro de rede cuja mensagem contem o token: tambem nao vaza.
+  // Falha de rede no POST (pos-inicio) = outcome unknown; mensagem nao vaza o token.
   const netFetch = releaseFetch([new Error(`connect failed Bearer ${TOKEN}`)]);
   await assert.rejects(
     () => makeClient(fullEnv(), netFetch)({ sha: SHA, target: 'production' }),
-    (error) => error.code === 'release_api_error' && !String(error.message).includes(TOKEN),
+    (error) => error.code === 'release_post_outcome_unknown' && !String(error.message).includes(TOKEN),
   );
 
   // Preflight que ecoa o token em erro de rede: tambem nao vaza.
@@ -591,7 +593,7 @@ test('IDEMPOTENCIA: erro de rede no POST nao gera novo POST automatico nem nova 
   const fetchImpl = releaseFetch([new Error('ECONNRESET')]);
   await assert.rejects(
     () => makeClient(fullEnv(), fetchImpl, { attemptGuard: guard })({ sha: SHA, target: 'production' }),
-    (error) => error.code === 'release_api_error' && error.called === true,
+    (error) => error.code === 'release_post_outcome_unknown' && error.called === true,
   );
   assert.equal(fetchImpl.postCount(), 1);
 
@@ -935,4 +937,373 @@ test('P10-H2A POST_RELEASE_CONFLICTING_IDENTITY: expectedProjectId divergente do
     (error) => error.code === 'release_identity_unproven' && error.called === false,
   );
   assert.equal(fetchImpl.calls.length, 0);
+});
+
+// P10-B9: config ID-only. O nome enviado no POST vem do preflight PROD comprovado, nunca do projectId.
+// B9: config ID-only = projectId P1 presente e nome ausente (diferente de nameOnlyEnv, que remove o ID).
+function idOnlyEnv() {
+  const env = fullEnv();
+  delete env.VERCEL_PROD_PROJECT_NAME;
+  return env;
+}
+
+test('B9 ID_ONLY_BODY_NAME: ID-only + preflight PROD valido => body.name = nome PROD e body.project = P1', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_P1_NO_NAME)], jsonResponse(200, PROD_PROJECT));
+  const result = await makeClient(idOnlyEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'READY');
+  const body = JSON.parse(fetchImpl.deploymentCalls[0].init.body);
+  assert.equal(body.name, 'amanteigadoslivia');
+  assert.equal(body.project, 'prj_prod123');
+  assert.notEqual(body.name, 'prj_prod123');
+});
+
+test('B9 ID_ONLY_DIVERGENT_ID_ZERO_POST: ID-only + GET com ID divergente => zero POST', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_P1_NO_NAME)], jsonResponse(200, { id: 'prj_outro', name: PROD_NAME }));
+  await assert.rejects(
+    () => makeClient(idOnlyEnv(), fetchImpl)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_project_mismatch' && error.called === true,
+  );
+  assert.equal(fetchImpl.postCount(), 0);
+});
+
+// Fetch que nunca resolve, mesmo ignorando o signal: so o race do timeout pode encerrar a espera.
+const neverResolves = () => new Promise(() => {});
+
+// Fetch roteado: preflight GET /v9, POST /v13 e GET de polling tem respostas independentes.
+function routedFetch({ preflight = jsonResponse(200, PROD_PROJECT), post, poll = jsonResponse(200, READY_BODY) }) {
+  const calls = [];
+  const impl = async (url, init) => {
+    calls.push({ url, init });
+    if (url.includes('/v9/projects/')) return preflight;
+    if (init.method === 'POST') return post();
+    return poll();
+  };
+  impl.calls = calls;
+  impl.postCount = () => calls.filter((call) => call.init.method === 'POST').length;
+  return impl;
+}
+
+// accessTimeoutMs pequeno SOMENTE no teste: o preflight de JSON pendurado respeita este limite (producao usa o padrao).
+const TIMEOUT_OPTS = { requestTimeoutMs: 5, accessTimeoutMs: 5, clearTimeoutImpl: clearTimeout };
+
+test('B8 POST_NORMAL_RESOLVES: POST dentro do limite segue o fluxo existente', async () => {
+  const fetchImpl = routedFetch({ post: () => jsonResponse(200, READY_BODY) });
+  const result = await makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'READY');
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B8 POST_NEVER_RESOLVES: timeout encerra a espera e vira POST_OUTCOME_UNKNOWN (somente um POST)', async () => {
+  const fetchImpl = routedFetch({ post: neverResolves });
+  await assert.rejects(
+    () => makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_post_outcome_unknown' && error.called === true && !/nenhum/i.test(error.message),
+  );
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B8 POST_TIMEOUT_GUARD_RETAINED: segunda chamada com mesmo SHA e mesma guarda => zero novo POST', async () => {
+  const guard = new Map();
+  const fetchImpl = routedFetch({ post: neverResolves });
+  const client = makeClient(fullEnv(), fetchImpl, { ...TIMEOUT_OPTS, attemptGuard: guard });
+  await assert.rejects(() => client({ sha: SHA, target: 'production' }), (error) => error.code === 'release_post_outcome_unknown');
+  assert.equal(guard.get(SHA), 'POSTED');
+
+  await assert.rejects(() => client({ sha: SHA, target: 'production' }), (error) => error.code === 'release_already_attempted' && error.called === false);
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B8 POLL_NEVER_RESOLVES: timeout do GET encerra a espera, preserva deploymentId, sem FAILED nem novo POST', async () => {
+  const fetchImpl = routedFetch({
+    post: () => jsonResponse(200, { id: 'dpl_abc', readyState: 'BUILDING', target: 'production', name: PROD_NAME, projectId: 'prj_prod123', meta: { githubCommitSha: SHA } }),
+    poll: neverResolves,
+  });
+  const result = await makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' });
+  assert.equal(result.ok, false);
+  assert.equal(result.state, 'TIMEOUT');
+  assert.equal(result.reason, 'poll_request_timeout');
+  assert.equal(result.deploymentId, 'dpl_abc');
+  assert.notEqual(result.state, 'ERROR');
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B8 JSON_BODY_TIMEOUT_PREFLIGHT: response.json() que nunca resolve no preflight => timeout e zero POST', async () => {
+  const hangingBody = { ok: true, status: 200, json: neverResolves };
+  const fetchImpl = routedFetch({ preflight: hangingBody, post: () => jsonResponse(200, READY_BODY) });
+  await assert.rejects(
+    () => makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_api_timeout' && error.called === true,
+  );
+  assert.equal(fetchImpl.postCount(), 0);
+});
+
+test('B8 JSON_BODY_TIMEOUT_POST: response.json() que nunca resolve no POST => POST_OUTCOME_UNKNOWN', async () => {
+  const fetchImpl = routedFetch({ post: () => ({ ok: true, status: 200, json: neverResolves }) });
+  await assert.rejects(
+    () => makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_post_outcome_unknown',
+  );
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('B8 DEPLOYMENT_ERROR_DISTINCT: ERROR confirmado nao e confundido com timeout/unknown', async () => {
+  const fetchImpl = routedFetch({ post: () => jsonResponse(200, { id: 'dpl_abc', readyState: 'ERROR', target: 'production' }) });
+  const result = await makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'ERROR');
+  assert.notEqual(result.reason, 'poll_request_timeout');
+  assert.equal(result.ok, false);
+});
+
+test('B8 DEADLINE_RECHECKED_AFTER_SLEEP: deadline estourado durante o sleep => nenhum GET de polling', async () => {
+  let clock = 0;
+  const fetchImpl = routedFetch({ post: () => jsonResponse(200, { id: 'dpl_abc', readyState: 'BUILDING', target: 'production', name: PROD_NAME, projectId: 'prj_prod123', meta: { githubCommitSha: SHA } }) });
+  const result = await makeClient(fullEnv(), fetchImpl, {
+    ...TIMEOUT_OPTS,
+    now: () => { clock += 1; return clock; },
+    pollTimeoutMs: 3,
+    sleep: async () => { clock += 100; },
+  })({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'TIMEOUT');
+  assert.equal(result.reason, 'poll_timeout');
+  assert.equal(fetchImpl.postCount(), 1);
+  assert.equal(fetchImpl.calls.filter((call) => call.init.method === 'GET' && call.url.includes('/v13/deployments/')).length, 0);
+});
+
+// P10-I2C: residuos B8. A) timeout / transporte sem resposta no POST = outcome unknown;
+// B) HTTP nao-2xx confirmado = release_api_error; C) poll HTTP/rede/json = TIMEOUT com deploymentId preservado.
+const CREATED_D1 = { id: 'dpl_D1', readyState: 'BUILDING', target: 'production', name: PROD_NAME, projectId: 'prj_prod123', meta: { githubCommitSha: SHA } };
+
+test('I2C POST_NETWORK_REJECT_OUTCOME_UNKNOWN: rejeicao de rede depois do POST => release_post_outcome_unknown, sem retry, guarda POSTED', async () => {
+  const guard = new Map();
+  const fetchImpl = routedFetch({ post: () => { throw new Error('socket hang up'); } });
+  const client = makeClient(fullEnv(), fetchImpl, { attemptGuard: guard });
+  await assert.rejects(
+    () => client({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_post_outcome_unknown' && error.called === true && !String(error.message).includes('socket'),
+  );
+  assert.equal(fetchImpl.postCount(), 1);
+  assert.equal(guard.get(SHA), 'POSTED');
+
+  // Segunda tentativa, mesmo SHA, mesmo processo: bloqueada sem nenhuma chamada.
+  await assert.rejects(
+    () => client({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_already_attempted' && error.called === false,
+  );
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('I2C POST_HTTP_CONFIRMED_DISTINCT: HTTP nao-2xx no POST segue release_api_error, nunca outcome unknown', async () => {
+  for (const status of [400, 401, 403, 429, 500, 503]) {
+    const fetchImpl = routedFetch({ post: () => jsonResponse(status, { error: { code: 'bad' } }) });
+    await assert.rejects(
+      () => makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' }),
+      (error) => error.code === 'release_api_error' && error.called === true,
+      String(status),
+    );
+    assert.equal(fetchImpl.postCount(), 1, String(status));
+  }
+});
+
+// P10-I2E: HTTP 2xx no POST sem deployment ID utilizavel = release_post_outcome_unknown (nunca release_api_error).
+test('I2E POST_2XX_WITHOUT_ID_UNKNOWN: HTTP 200 e 201 sem id => release_post_outcome_unknown, called=true, sem retry, guarda POSTED', async () => {
+  for (const status of [200, 201]) {
+    const guard = new Map();
+    const fetchImpl = routedFetch({ post: () => jsonResponse(status, { readyState: 'BUILDING' }) });
+    const client = makeClient(fullEnv(), fetchImpl, { attemptGuard: guard });
+    await assert.rejects(
+      () => client({ sha: SHA, target: 'production' }),
+      (error) => error.code === 'release_post_outcome_unknown' && error.called === true,
+      String(status),
+    );
+    assert.equal(fetchImpl.postCount(), 1, String(status));
+    assert.equal(guard.get(SHA), 'POSTED', String(status));
+
+    await assert.rejects(
+      () => client({ sha: SHA, target: 'production' }),
+      (error) => error.code === 'release_already_attempted' && error.called === false,
+      String(status),
+    );
+    assert.equal(fetchImpl.postCount(), 1, String(status));
+  }
+});
+
+test('I2E POST_2XX_WITHOUT_ID_MESSAGE: mensagem informa POST aceito sem afirmar falha de criacao', async () => {
+  const fetchImpl = routedFetch({ post: () => jsonResponse(200, {}) });
+  await assert.rejects(
+    () => makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_post_outcome_unknown'
+      && /sucesso HTTP/.test(error.message)
+      && /não é possível confirmar/.test(error.message)
+      && !/falha/i.test(error.message),
+  );
+});
+
+test('I2E POST_2XX_WITHOUT_ID_CALLER: HTTP 2xx sem ID nunca vira PUBLICADA; resumo UNKNOWN preservado', async () => {
+  const queryable = recordingQueryable();
+  const result = await runCaller(routedFetch({ post: () => jsonResponse(200, {}) }), queryable);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'release_post_outcome_unknown');
+  assert.equal(result.status, 'ERRO');
+  assert.doesNotMatch(result.mensagem, /Falha ao criar/);
+  assert.equal(queryable.inserts.length, 1);
+  assert.equal(queryable.inserts[0].status, 'ERRO');
+  assert.equal(queryable.inserts[0].resumo.release.state, 'UNKNOWN');
+  assert.equal(queryable.inserts[0].resumo.release.reason, 'release_post_outcome_unknown');
+  assert.equal(queryable.inserts.some((row) => row.status === 'PUBLICADA'), false);
+});
+
+test('I2C POLL_HTTP_ERROR_PRESERVES_DEPLOYMENT: POST cria D1, GET -> HTTP 500 => TIMEOUT poll_http_error, D1 preservado, zero novo POST', async () => {
+  const fetchImpl = routedFetch({
+    post: () => jsonResponse(200, CREATED_D1),
+    poll: () => jsonResponse(500, { error: { code: 'x' } }),
+  });
+  const result = await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.ok, false);
+  assert.notEqual(result.state, 'READY');
+  assert.equal(result.state, 'TIMEOUT');
+  assert.equal(result.reason, 'poll_http_error');
+  assert.equal(result.deploymentId, 'dpl_D1');
+  assert.equal(result.sha, SHA);
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('I2C POLL_NETWORK_ERROR_PRESERVES_DEPLOYMENT: GET sem resposta => TIMEOUT poll_network_error, D1 preservado, zero novo POST', async () => {
+  const fetchImpl = routedFetch({
+    post: () => jsonResponse(200, CREATED_D1),
+    poll: () => { throw new Error('ECONNRESET'); },
+  });
+  const result = await makeClient(fullEnv(), fetchImpl)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'TIMEOUT');
+  assert.equal(result.reason, 'poll_network_error');
+  assert.equal(result.deploymentId, 'dpl_D1');
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('I2C POLL_JSON_BODY_TIMEOUT: response.json() pendurado no poll => timeout, D1 preservado, zero novo POST', async () => {
+  const fetchImpl = routedFetch({
+    post: () => jsonResponse(200, CREATED_D1),
+    poll: () => ({ ok: true, status: 200, json: neverResolves }),
+  });
+  const result = await makeClient(fullEnv(), fetchImpl, TIMEOUT_OPTS)({ sha: SHA, target: 'production' });
+  assert.equal(result.state, 'TIMEOUT');
+  assert.equal(result.reason, 'poll_request_timeout');
+  assert.equal(result.deploymentId, 'dpl_D1');
+  assert.equal(fetchImpl.postCount(), 1);
+});
+
+test('I2C ID_ONLY_RESPONSE_WITHOUT_ID_BLOCKED: config com P1 e GET sem id (so nome PROD) => release_project_mismatch, zero POST', async () => {
+  const fetchImpl = releaseFetch([jsonResponse(200, READY_P1_NO_NAME)], jsonResponse(200, { name: PROD_NAME }));
+  await assert.rejects(
+    () => makeClient(idOnlyEnv(), fetchImpl)({ sha: SHA, target: 'production' }),
+    (error) => error.code === 'release_project_mismatch' && error.called === true,
+  );
+  assert.equal(fetchImpl.postCount(), 0);
+});
+
+// Caller (admin-publish.js): release_post_outcome_unknown nunca vira PUBLICADA nem "falha confirmada".
+const CALLER_SESSION = { id_usuario_admin: 'u-root', perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'root' };
+const CALLER_DADOS = { tipo_publicacao: 'COMPLETA', acao: 'publicar', git_sha: SHA, confirmacao: 'PUBLICAR PRODUCAO' };
+const CALLER_ENV = {
+  PROMOCAO_PROD_HABILITADA: 'true',
+  VERCEL_GIT_COMMIT_SHA: SHA,
+  VERCEL_RELEASE_TOKEN: TOKEN,
+  VERCEL_TEAM_ID: 'team_abc123',
+  VERCEL_PROD_PROJECT_ID: 'prj_prod123',
+  VERCEL_PROD_PROJECT_NAME: PROD_NAME,
+  VERCEL_RELEASE_GIT_OWNER: 'owner-x',
+  VERCEL_RELEASE_GIT_REPO: 'repo-y',
+};
+
+// Aplica env no process.env (o caller le config de la) e restaura ao final.
+async function withEnv(vars, run) {
+  const saved = {};
+  for (const key of Object.keys(vars)) {
+    saved[key] = process.env[key];
+    process.env[key] = vars[key];
+  }
+  try {
+    return await run();
+  } finally {
+    for (const key of Object.keys(vars)) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+}
+
+function recordingQueryable() {
+  const inserts = [];
+  return {
+    inserts,
+    query: async (sql, params = []) => {
+      if (/INSERT INTO app\.tab_publicacao/.test(sql)) {
+        // Ordem dos parametros do insertPublicacao: $5 status, $7 resumo_json, $8 mensagem_erro.
+        inserts.push({ status: params[4], resumo: JSON.parse(params[6]), mensagem: params[7] });
+        return { rows: [{ id_publicacao: 'pub_1', status_publicacao: params[4] }] };
+      }
+      return { rows: [] };
+    },
+  };
+}
+
+async function runCaller(fetchImpl, queryable, attemptGuard = new Map()) {
+  const client = createVercelReleaseClient({
+    env: CALLER_ENV,
+    fetchImpl,
+    sleep: async () => {},
+    attemptGuard,
+    ...TIMEOUT_OPTS,
+  });
+  return withEnv(CALLER_ENV, () => promoteToProduction(queryable, CALLER_DADOS, CALLER_SESSION, {
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient: client,
+  }));
+}
+
+test('I2C CALLER_CONTROL_READY: controle positivo, READY com evidencia => PUBLICADA', async () => {
+  const queryable = recordingQueryable();
+  const result = await runCaller(routedFetch({ post: () => jsonResponse(200, READY_BODY) }), queryable);
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'PUBLICADA');
+  assert.equal(queryable.inserts[0].status, 'PUBLICADA');
+});
+
+test('I2C CALLER_POST_OUTCOME_UNKNOWN: nao registra PUBLICADA, status ERRO, mensagem sem falha confirmada', async () => {
+  const fetchImpl = routedFetch({ post: neverResolves });
+  const queryable = recordingQueryable();
+  const result = await runCaller(fetchImpl, queryable);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'release_post_outcome_unknown');
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.vercelCalled, true);
+  assert.equal(fetchImpl.postCount(), 1);
+  assert.match(result.mensagem, /não foi possível confirmar/i);
+  assert.match(result.mensagem, /pode ter sido criado/);
+  assert.doesNotMatch(result.mensagem, /Falha ao criar/);
+
+  assert.equal(queryable.inserts.length, 1);
+  assert.equal(queryable.inserts[0].status, 'ERRO');
+  assert.equal(queryable.inserts[0].resumo.release.state, 'UNKNOWN');
+  // UNKNOWN_CAN_BE_RECORDED_AS_SUCCESS = NO
+  assert.equal(queryable.inserts.some((row) => row.status === 'PUBLICADA'), false);
+});
+
+test('I2C CALLER_NETWORK_UNKNOWN: rejeicao de rede no POST => mesma semantica de outcome unknown, sem PUBLICADA', async () => {
+  const fetchImpl = routedFetch({ post: () => { throw new Error('ECONNRESET'); } });
+  const queryable = recordingQueryable();
+  const result = await runCaller(fetchImpl, queryable);
+  assert.equal(result.error, 'release_post_outcome_unknown');
+  assert.equal(result.status, 'ERRO');
+  assert.equal(queryable.inserts.some((row) => row.status === 'PUBLICADA'), false);
+});
+
+test('I2C CALLER_HTTP_CONFIRMED_DISTINCT: HTTP confirmado no POST => release_failed, nao outcome unknown', async () => {
+  const queryable = recordingQueryable();
+  const result = await runCaller(routedFetch({ post: () => jsonResponse(500, {}) }), queryable);
+  assert.equal(result.error, 'release_failed');
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.mensagem, 'Falha ao criar o deployment de produção.');
+  assert.equal(queryable.inserts.some((row) => row.status === 'PUBLICADA'), false);
 });

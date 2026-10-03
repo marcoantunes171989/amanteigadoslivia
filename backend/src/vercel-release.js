@@ -110,12 +110,12 @@ export function redactSecrets(text, secrets = []) {
 
 // Request PUBLICO do deployment (sem token). Exatamente o que sera enviado, menos o header.
 export function buildDeploymentRequest(config, sha, baseUrl = VERCEL_API_BASE) {
-  const projectName = config.projectName || config.projectId;
+  // name vem somente do nome PROD (config ou comprovado pelo preflight); nunca do projectId.
   return {
     method: 'POST',
     url: `${baseUrl}/v13/deployments?teamId=${encodeURIComponent(config.teamId)}`,
     body: {
-      name: projectName,
+      name: config.projectName,
       project: config.projectId || config.projectName,
       target: RELEASE_TARGET,
       gitSource: {
@@ -221,6 +221,24 @@ export const ACCESS_CHECK_DEFAULTS = Object.freeze({
   timeoutMs: 10000,
 });
 
+// Limita uma operacao assincrona inteira (fetch + leitura do body) por tempo.
+// O abort sinaliza o fetch; o race garante que um fetch que ignora o signal tambem nao pendura o fluxo.
+async function withTimeout(run, { timeoutMs, scheduleTimeout, clearTimeoutImpl, what }) {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = scheduleTimeout(() => {
+      reject(new ReleaseError(504, 'release_api_timeout', `Timeout ao ${what}.`, { called: true }));
+      if (controller) controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([run(controller ? controller.signal : undefined), timeout]);
+  } finally {
+    clearTimeoutImpl(timer);
+  }
+}
+
 // Config minima para o preflight read-only: token, team e projeto (id OU name).
 // Nao exige git owner/repo/ref: isso e exclusivo do fluxo de deployment.
 function hasProjectAccessConfig(config) {
@@ -242,39 +260,31 @@ export function buildProjectAccessRequest(config, baseUrl = VERCEL_API_BASE) {
 
 // Unico ponto de GET autenticado: timeout limitado, erros sem token, nunca POST.
 async function readOnlyGet(url, token, { fetchImpl, timeoutMs, scheduleTimeout, clearTimeoutImpl }, what) {
-  let res;
-  let timedOut = false;
-  const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  const timer = scheduleTimeout(() => {
-    timedOut = true;
-    if (controller) controller.abort();
-  }, timeoutMs);
-  try {
-    res = await fetchImpl(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-      ...(controller ? { signal: controller.signal } : {}),
-    });
-  } catch {
-    if (timedOut) {
-      throw new ReleaseError(504, 'release_api_timeout', `Timeout ao ${what}.`, { called: true });
+  return withTimeout(async (signal) => {
+    let res;
+    try {
+      res = await fetchImpl(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        ...(signal ? { signal } : {}),
+      });
+    } catch {
+      throw new ReleaseError(502, 'release_api_error', `Falha de rede ao ${what}.`, { called: true });
     }
-    throw new ReleaseError(502, 'release_api_error', `Falha de rede ao ${what}.`, { called: true });
-  } finally {
-    clearTimeoutImpl(timer);
-  }
 
-  let payload = null;
-  try {
-    payload = await res.json();
-  } catch {
-    payload = null;
-  }
+    // Leitura do body dentro do mesmo limite de tempo do GET.
+    let payload = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
+    }
 
-  if (!res?.ok) {
-    throw new ReleaseError(502, 'release_api_error', `API Vercel retornou HTTP ${Number(res?.status) || 0} ao ${what}.`, { called: true });
-  }
-  return payload;
+    if (!res?.ok) {
+      throw new ReleaseError(502, 'release_api_error', `API Vercel retornou HTTP ${Number(res?.status) || 0} ao ${what}.`, { called: true });
+    }
+    return payload;
+  }, { timeoutMs, scheduleTimeout, clearTimeoutImpl, what });
 }
 
 // Preflight READ-ONLY: confirma autenticacao + team + projeto sem criar deployment.
@@ -308,7 +318,8 @@ export async function verifyVercelProjectAccess(options = {}) {
   if (!projectId && !projectName) {
     throw new ReleaseError(502, 'release_api_error', 'API Vercel não retornou identificação do projeto.', { called: true });
   }
-  if (config.projectId && projectId && projectId !== config.projectId) {
+  // Com ID configurado, o id devolvido precisa ser exatamente o configurado: resposta sem id nao comprova o projeto.
+  if (config.projectId && projectId !== config.projectId) {
     throw new ReleaseError(502, 'release_project_mismatch', 'Projeto retornado não corresponde à configuração.', { called: true });
   }
   if (config.projectName && projectName && projectName !== config.projectName) {
@@ -385,10 +396,12 @@ export function createVercelReleaseClient(options = {}) {
     scheduleTimeout = defaultScheduleTimeout,
     clearTimeoutImpl = defaultClearTimeout,
     accessTimeoutMs,
+    requestTimeoutMs,
   } = options;
   const intervalMs = positiveInt(options.pollIntervalMs, POLL_DEFAULTS.intervalMs);
   const timeoutMs = positiveInt(options.pollTimeoutMs, POLL_DEFAULTS.timeoutMs);
   const maxAttempts = positiveInt(options.maxAttempts, POLL_DEFAULTS.maxAttempts);
+  const perRequestTimeoutMs = positiveInt(requestTimeoutMs, ACCESS_CHECK_DEFAULTS.timeoutMs);
 
   // Criacao do deployment (POST) e polling limitado. So e chamada apos preflight PASS.
   async function deployAndPoll(config, exactSha) {
@@ -398,43 +411,69 @@ export function createVercelReleaseClient(options = {}) {
     };
     const expected = { sha: exactSha, projectId: config.projectId };
 
-    async function call(method, url, body) {
-      let res;
-      try {
-        res = await fetchImpl(url, {
-          method,
-          headers,
-          ...(body ? { body: JSON.stringify(body) } : {}),
-        });
-      } catch {
-        // Nao repassa a mensagem original: so o motivo generico.
-        throw new ReleaseError(502, 'release_api_error', 'Falha de rede ao contatar a API Vercel.', { called: true });
-      }
-      let payload = null;
-      try {
-        payload = await res.json();
-      } catch {
-        payload = null;
-      }
-      if (!res.ok) {
-        const vercelCode = typeof payload?.error?.code === 'string' && /^[a-z_]{1,64}$/.test(payload.error.code)
-          ? ` (${payload.error.code})`
-          : '';
-        throw new ReleaseError(
-          502,
-          'release_api_error',
-          `API Vercel retornou HTTP ${Number(res.status) || 0}${vercelCode}.`,
-          { called: true },
-        );
-      }
-      return payload || {};
+    // Cada request tem limite proprio (fetch + body). Timeout nunca libera nova tentativa aqui.
+    async function call(method, url, body, what) {
+      return withTimeout(async (signal) => {
+        let res;
+        try {
+          res = await fetchImpl(url, {
+            method,
+            headers,
+            ...(signal ? { signal } : {}),
+            ...(body ? { body: JSON.stringify(body) } : {}),
+          });
+        } catch {
+          // Erro de transporte SEM resposta HTTP. Nao repassa a mensagem original: so o motivo generico.
+          throw new ReleaseError(502, 'release_network_error', 'Falha de rede ao contatar a API Vercel.', { called: true });
+        }
+        let payload = null;
+        try {
+          payload = await res.json();
+        } catch {
+          payload = null;
+        }
+        if (!res.ok) {
+          const vercelCode = typeof payload?.error?.code === 'string' && /^[a-z_]{1,64}$/.test(payload.error.code)
+            ? ` (${payload.error.code})`
+            : '';
+          throw new ReleaseError(
+            502,
+            'release_api_error',
+            `API Vercel retornou HTTP ${Number(res.status) || 0}${vercelCode}.`,
+            { called: true },
+          );
+        }
+        return payload || {};
+      }, { timeoutMs: perRequestTimeoutMs, scheduleTimeout, clearTimeoutImpl, what });
     }
 
     const request = buildDeploymentRequest(config, exactSha, baseUrl);
-    const created = await call(request.method, request.url, request.body);
+    let created;
+    try {
+      created = await call(request.method, request.url, request.body, 'criar o deployment na API Vercel');
+    } catch (error) {
+      // Timeout ou falha de transporte sem resposta: o POST pode ter chegado e sido processado pela Vercel.
+      // Resultado remoto DESCONHECIDO, nunca "nao criado". HTTP nao-2xx confirmado segue como release_api_error.
+      if (error?.code === 'release_api_timeout' || error?.code === 'release_network_error') {
+        throw new ReleaseError(
+          504,
+          'release_post_outcome_unknown',
+          'Não foi possível confirmar o resultado do POST do deployment: ele pode ter sido criado. Não repetir automaticamente.',
+          { called: true },
+        );
+      }
+      throw error;
+    }
     const deploymentId = typeof created.id === 'string' ? created.id : '';
     if (!ID_PATTERN.test(deploymentId)) {
-      throw new ReleaseError(502, 'release_api_error', 'API Vercel não retornou o id do deployment.', { called: true });
+      // HTTP 2xx sem ID utilizável: o POST foi aceito, mas o deployment não é identificável.
+      // Estado remoto DESCONHECIDO (não é falha confirmada). Sem retry; guarda permanece POSTED.
+      throw new ReleaseError(
+        502,
+        'release_post_outcome_unknown',
+        'O POST foi respondido com sucesso HTTP, mas não foi possível identificar o deployment; não é possível confirmar com segurança o estado remoto. Não repetir automaticamente.',
+        { called: true },
+      );
     }
 
     const result = (state, reason, attempts) => ({
@@ -459,7 +498,26 @@ export function createVercelReleaseClient(options = {}) {
         return result(RELEASE_STATE.TIMEOUT, 'poll_timeout', attempt - 1);
       }
       await sleep(intervalMs);
-      const polled = await call('GET', statusUrl);
+      // Deadline reavaliado depois do await do sleep: o sleep tambem consome o orcamento.
+      if (now() - startedAt >= timeoutMs) {
+        return result(RELEASE_STATE.TIMEOUT, 'poll_timeout', attempt - 1);
+      }
+      let polled;
+      try {
+        polled = await call('GET', statusUrl, undefined, 'consultar o deployment na API Vercel');
+      } catch (error) {
+        // Incapacidade de consultar NAO e FAILED nem READY: estado remoto desconhecido, deploymentId preservado, sem novo POST.
+        if (error?.code === 'release_api_timeout') {
+          return result(RELEASE_STATE.TIMEOUT, 'poll_request_timeout', attempt);
+        }
+        if (error?.code === 'release_api_error') {
+          return result(RELEASE_STATE.TIMEOUT, 'poll_http_error', attempt);
+        }
+        if (error?.code === 'release_network_error') {
+          return result(RELEASE_STATE.TIMEOUT, 'poll_network_error', attempt);
+        }
+        throw error;
+      }
       current = evaluateDeployment(polled, expected);
       if (TERMINAL.has(current.state)) {
         return result(current.state, current.reason, attempt);
@@ -525,7 +583,12 @@ export function createVercelReleaseClient(options = {}) {
       // 8) Marca como tentado ANTES do POST: qualquer falha pos-POST nao libera novo POST.
       attemptGuard.set(exactSha, RELEASE_GUARD_STATE.POSTED);
       postSent = true;
-      return await deployAndPoll({ ...config, projectId: resolvedProjectId }, exactSha);
+      // Nome PROD enviado no POST: config (ja validada) ou o nome comprovado pelo preflight (assertPreflightIsProd).
+      return await deployAndPoll({
+        ...config,
+        projectId: resolvedProjectId,
+        projectName: config.projectName || access.projectName,
+      }, exactSha);
     } finally {
       // Falha antes do POST libera a reserva: nenhum deployment foi pedido.
       if (!postSent) attemptGuard.delete(exactSha);
