@@ -634,10 +634,83 @@ test('promoteToProduction so chama cliente mock quando o gate passa', async () =
       // PUBLICADA exige evidencia explicita READY (V15).
       return { ok: true, state: 'READY', deploymentId: 'dpl_mock', attempts: 1 };
     },
+    verifyPostRelease: async () => ({ ok: true, state: 'READY' }),
   });
   assert.equal(result.ok, true);
   assert.equal(result.status, 'PUBLICADA');
   assert.equal(vercelCalls, 1);
+});
+
+async function promoteWithVerify(verifyPostRelease, vercelReleaseClient = async () => ({ ok: true, state: 'READY', deploymentId: 'dpl_mock', attempts: 1 })) {
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL = '1';
+  const pool = publishPool();
+  const result = await promoteToProduction(pool, {
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+    tipo_publicacao: 'CATALOGO',
+  }, { id_usuario_admin: 'u1', perfil: 'SUPER_ADMIN', protegido: true, nome_usuario: 'Marco' }, {
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient,
+    verifyPostRelease,
+  });
+  return { result, pool };
+}
+
+test('B4 READY + verificacao pos-release PASS => PUBLICADA, verificador chamado com deployment e SHA', async () => {
+  const calls = [];
+  const { result } = await promoteWithVerify(async (args) => {
+    calls.push(args);
+    return { ok: true, state: 'READY', deploymentId: 'dpl_mock', sha: 'sha-hml-exato', alias: 'NOT_VERIFIED' };
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'PUBLICADA');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { deploymentId: 'dpl_mock', sha: 'sha-hml-exato' });
+});
+
+test('B4 READY + verificacao pos-release FAIL => ERRO, nunca PUBLICADA', async () => {
+  const { result } = await promoteWithVerify(async () => ({ ok: false, state: 'ERROR', reason: 'project_mismatch' }));
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.error, 'post_release_verify_failed');
+  assert.equal(result.vercelCalled, true);
+  assert.notEqual(result.status, 'PUBLICADA');
+  assert.equal(result.publicacao.status_publicacao, 'ERRO');
+});
+
+test('B4 verificacao pos-release lanca excecao => fail-closed, nunca PUBLICADA e sem vazar detalhes', async () => {
+  const { result, pool } = await promoteWithVerify(async () => {
+    throw Object.assign(new Error('Bearer super-secret-token boom'), { code: 'release_api_timeout' });
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.error, 'post_release_verify_failed');
+  assert.doesNotMatch(JSON.stringify(result), /super-secret-token/);
+  const statuses = pool.inserted.map((row) => row.status_publicacao);
+  assert.ok(!statuses.includes('PUBLICADA'));
+});
+
+test('B4 verificacao pos-release inconclusiva (sem ok) => ERRO', async () => {
+  const { result } = await promoteWithVerify(async () => undefined);
+  assert.equal(result.status, 'ERRO');
+  assert.notEqual(result.status, 'PUBLICADA');
+});
+
+test('B4 release nao READY => verificador nao e chamado e status ERRO preservado', async () => {
+  let verifyCalls = 0;
+  const { result } = await promoteWithVerify(async () => { verifyCalls += 1; return { ok: true }; },
+    async () => ({ ok: false, state: 'BUILDING', deploymentId: 'dpl_x' }));
+  assert.equal(result.status, 'ERRO');
+  assert.equal(result.error, 'release_not_ready');
+  assert.equal(verifyCalls, 0);
 });
 
 async function promoteWithClient(vercelReleaseClient) {

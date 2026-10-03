@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AdminError } from './admin-errors.js';
 import { isRootSuperAdmin } from './admin-users.js';
+import { verifyPostReleaseDeployment } from './vercel-release.js';
 
 export const PROD_PUBLISH_CONFIRMATION = 'PUBLICAR PRODUCAO';
 export const BLOCK_REASON = 'Credenciais/ambiente de produção ainda não habilitados.';
@@ -508,12 +509,44 @@ export async function promoteToProduction(queryable, dados = {}, session = {}, d
     };
   }
 
+  // B4: PUBLICADA exige verificacao pos-release positiva (GET read-only do deployment).
+  // Excecao, falha ou resultado inconclusivo => fail-closed: nunca PUBLICADA.
+  let postVerify = null;
+  try {
+    postVerify = await (deps.verifyPostRelease || verifyPostReleaseDeployment)({
+      deploymentId: release.deploymentId,
+      sha: evaluation.git_sha,
+    });
+  } catch {
+    postVerify = null;
+  }
+  if (postVerify?.ok !== true) {
+    const mensagem = 'Verificação pós-release não confirmou o deployment de produção.';
+    const publicacao = await insertPublicacao(queryable, dados, session, {
+      status: 'ERRO',
+      mensagem,
+      checks: evaluation.checks,
+      git_sha: evaluation.git_sha,
+      release: { ...releaseSummary(release), post_verify: 'FAIL' },
+    }).catch(() => null);
+    return {
+      ok: false,
+      httpStatus: 502,
+      error: 'post_release_verify_failed',
+      status: 'ERRO',
+      mensagem,
+      checks: evaluation.checks,
+      publicacao,
+      vercelCalled: true,
+    };
+  }
+
   const publicacao = await insertPublicacao(queryable, dados, session, {
     status: 'PUBLICADA',
     mensagem: null,
     checks: evaluation.checks,
     git_sha: evaluation.git_sha,
-    release: releaseSummary(release),
+    release: { ...releaseSummary(release), post_verify: 'PASS' },
   });
 
   return {

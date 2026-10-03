@@ -1254,19 +1254,26 @@ async function runCaller(fetchImpl, queryable, attemptGuard = new Map()) {
     attemptGuard,
     ...TIMEOUT_OPTS,
   });
+  // Verificacao pos-release com o MESMO fetch fake: nunca cai no globalThis.fetch (Vercel real).
+  const verifyPostRelease = (args) => verifyPostReleaseDeployment({ env: CALLER_ENV, fetchImpl, ...args });
   return withEnv(CALLER_ENV, () => promoteToProduction(queryable, CALLER_DADOS, CALLER_SESSION, {
     prodDatabaseReady: true,
     prodEnvReady: true,
     vercelReleaseClient: client,
+    verifyPostRelease,
   }));
 }
 
 test('I2C CALLER_CONTROL_READY: controle positivo, READY com evidencia => PUBLICADA', async () => {
   const queryable = recordingQueryable();
-  const result = await runCaller(routedFetch({ post: () => jsonResponse(200, READY_BODY) }), queryable);
+  // poll explicito: o GET da verificacao pos-release tambem deve receber READY com evidencia.
+  const fetchImpl = routedFetch({ post: () => jsonResponse(200, READY_BODY), poll: () => jsonResponse(200, READY_BODY) });
+  const result = await runCaller(fetchImpl, queryable);
   assert.equal(result.ok, true);
   assert.equal(result.status, 'PUBLICADA');
   assert.equal(queryable.inserts[0].status, 'PUBLICADA');
+  // B4: a verificacao pos-release foi executada no fluxo real (GET do deployment via fake).
+  assert.ok(fetchImpl.calls.some((call) => call.init.method === 'GET' && call.url.includes('/v13/deployments/dpl_abc')));
 });
 
 test('I2C CALLER_POST_OUTCOME_UNKNOWN: nao registra PUBLICADA, status ERRO, mensagem sem falha confirmada', async () => {
