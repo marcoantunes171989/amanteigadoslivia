@@ -8,7 +8,8 @@ import {
   signSession,
 } from './admin-auth.js';
 import { AUDIT_ACTIONS, AUDIT_CSV_MAX_ROWS, auditPaginationMeta, parseAuditPagination, recordAudit } from './admin-audit.js';
-import { executeAdminAction, getAdminCatalog } from './admin-catalog.js';
+import { resolveAmbiente } from './ambiente.js';
+import { computeProdutoAlteracaoDelta, executeAdminAction, getAdminCatalog } from './admin-catalog.js';
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
 import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, readinessFromDeps, validatePromotionDryRun } from './admin-publish.js';
@@ -17,7 +18,7 @@ import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
 import { cancelScheduledChange, listScheduledChanges, parseSaoPauloDateTime, processDueScheduledChanges, scheduleChange } from './admin-schedule.js';
 import { createSignedImageUpload } from './admin-storage.js';
-import { createUsuario, findUsuarioByLogin, listUsuarios, loadActor, canListUsuarios, resetUsuarioSenha, SQL_USERS, touchUltimoLogin, updateUsuario } from './admin-users.js';
+import { assertSuperAdmin, createUsuario, findUsuarioByLogin, isSuperAdminPerfil, listUsuarios, loadActor, resetUsuarioSenha, SQL_USERS, touchUltimoLogin, updateUsuario } from './admin-users.js';
 import { getCatalogPayload } from './catalog.js';
 import { broadcastCatalogUpdated, broadcastSiteUpdated, getCatalogRevision } from './catalog-revision.js';
 import { executeContentAction, getAdminSiteContent, getPublicSiteContent } from './site-content.js';
@@ -359,6 +360,7 @@ export async function handleAdminSessao(request, response) {
     const session = assertAdminSession(request);
     sendJson(response, 200, {
       autenticado: true,
+      ambiente: resolveAmbiente(),
       usuario: {
         id_usuario_admin: session.id_usuario_admin,
         email: session.email,
@@ -410,12 +412,25 @@ export async function handleAdminCatalog(request, response, deps = {}) {
 
     if (aplicar === 'agendar') {
       const vigencia = parseSaoPauloDateTime(dados.data_agendada || body.data_agendada, dados.hora_agendada || body.hora_agendada);
+      let dadosAgendamento = { ...dados, recurso, acao, id };
+      if (recurso === 'produto' && acao === 'editar' && id) {
+        // Agenda só os campos que o admin de fato alterou no modal, para que campos
+        // não tocados sigam o valor vigente no momento da aplicação (ver
+        // computeProdutoAlteracaoDelta) em vez de sobrescrever edições manuais feitas
+        // entre o agendamento e a execução.
+        const catalogoAtual = await getAdminCatalog(pool);
+        const produtoAtual = catalogoAtual.produtos.find((item) => String(item.id_produto) === String(id));
+        if (produtoAtual) {
+          const delta = computeProdutoAlteracaoDelta(produtoAtual, dados);
+          dadosAgendamento = { ...delta, recurso, acao, id };
+        }
+      }
       const scheduled = await scheduleChange(pool, {
         id_usuario_admin: session.id_usuario_admin,
         tipo_entidade: recurso === 'categoria' ? 'CATEGORIA' : 'PRODUTO',
         id_registro: id || randomUUID(),
         data_vigencia: vigencia,
-        dados_alteracao: { ...dados, recurso, acao, id },
+        dados_alteracao: dadosAgendamento,
       });
       await recordAudit(pool, {
         id_usuario_admin: session.id_usuario_admin,
@@ -474,14 +489,19 @@ export async function handleAdminVendas(request, response, deps = {}) {
 
 export async function handleAdminRelatorios(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
-  await withAdmin(request, response, deps, async ({ pool }) => {
+  await withAdmin(request, response, deps, async ({ pool, session }) => {
     if (request.method !== 'GET') {
       sendJson(response, 405, { error: 'method_not_allowed' });
       return;
     }
     const url = new URL(request.url || 'http://localhost/api/admin/relatorios', 'http://localhost');
     const query = Object.fromEntries(url.searchParams.entries());
-    const reports = await getReports(pool, query);
+    // Registros de auditoria só para SUPER_ADMIN: negado antes de qualquer consulta.
+    const incluirAuditoria = isSuperAdminPerfil(session);
+    if (!incluirAuditoria && query.secao === 'auditoria') {
+      throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
+    }
+    const reports = await getReports(pool, query, { incluirAuditoria });
     if (query.formato === 'csv') {
       const secao = query.secao || 'vendas';
       let csv = '';
@@ -516,7 +536,9 @@ export async function handleAdminRelatorios(request, response, deps = {}) {
 
 export async function handleAdminAuditoria(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
-  await withAdmin(request, response, deps, async ({ pool }) => {
+  await withAdmin(request, response, deps, async ({ pool, session }) => {
+    // Auditoria (JSON e CSV) é exclusiva de SUPER_ADMIN: negado antes de qualquer consulta.
+    assertSuperAdmin(session);
     if (request.method !== 'GET') {
       sendJson(response, 405, { error: 'method_not_allowed' });
       return;
@@ -605,11 +627,12 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
 export async function handleAdminUsuarios(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
+    // Gestão de Usuários (GET, criação, edição, ativação, reset de senha) é exclusiva de SUPER_ADMIN.
+    // Checa a sessão e, em seguida, o perfil atual no banco antes de qualquer operação.
+    assertSuperAdmin(session);
     const actor = await loadActor(pool, session);
+    assertSuperAdmin(actor);
     if (request.method === 'GET') {
-      if (!canListUsuarios(actor)) {
-        throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
-      }
       sendJson(response, 200, { usuarios: await listUsuarios(pool) });
       return;
     }
@@ -704,6 +727,9 @@ export async function handleAdminAlteracoes(request, response, deps = {}) {
 export async function handleAdminPublicacoes(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
+    // Publicações (status, validar, publicar, agendar/registrar) são exclusivas de SUPER_ADMIN.
+    // Negado ANTES de qualquer efeito: sem auditoria, sem INSERT, sem reserva de release, sem Vercel.
+    assertSuperAdmin(session);
     if (request.method === 'GET') {
       sendJson(response, 200, await getPublicationStatus(pool, { session, ...readinessFromDeps(deps) }));
       return;

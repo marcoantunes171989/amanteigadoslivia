@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   DEFAULT_APPLICATION_NAME,
   DatabaseConfigError,
+  isLocalDatabaseHost,
   isSupabasePoolerHost,
   resolveApplicationName,
   resolvePoolConfig,
@@ -123,6 +124,74 @@ test('mensagens de erro nao contem senha nem connection string', () => {
     assert.doesNotMatch(error.message, /p4ssw0rd-super-secreta/);
     assert.doesNotMatch(error.message, /postgres:\/\//);
   }
+});
+
+test('DATABASE_HOST=127.0.0.1 ou localhost (discreto): ssl === false', () => {
+  for (const host of ['127.0.0.1', 'localhost']) {
+    const { mode, options } = resolvePoolConfig({
+      DATABASE_HOST: host,
+      DATABASE_PORT: '5432',
+      DATABASE_NAME: 'amanteigados_dev',
+      DATABASE_USER: 'amanteigados_dev_app',
+      DATABASE_PASSWORD: 'unit-test-password',
+    });
+    assert.equal(mode, 'discrete');
+    assert.equal(options.ssl, false, host);
+  }
+});
+
+test('host remoto convencional: SSL permanece com rejectUnauthorized false', () => {
+  const { options } = resolvePoolConfig(discrete({ DATABASE_HOST: 'db.internal.example', DATABASE_PORT: '5432' }));
+  assert.deepEqual(options.ssl, { rejectUnauthorized: false });
+});
+
+test('pooler Supabase 6543: SSL permanece habilitado', () => {
+  const { options } = resolvePoolConfig(discrete());
+  assert.deepEqual(options.ssl, { rejectUnauthorized: false });
+});
+
+test('falsos hosts locais (sufixo/substring) NAO desabilitam SSL', () => {
+  for (const host of ['localhost.example.com', '127.0.0.1.example.com', 'evil-localhost', 'my-localhost', '10.0.0.5', '127.0.0.2']) {
+    assert.equal(isLocalDatabaseHost(host), false, host);
+    const { options } = resolvePoolConfig(discrete({ DATABASE_HOST: host, DATABASE_PORT: '5432' }));
+    assert.deepEqual(options.ssl, { rejectUnauthorized: false }, host);
+  }
+});
+
+test('DATABASE_URL com localhost ou 127.0.0.1: ssl === false', () => {
+  for (const url of [
+    'postgres://amanteigados_dev_app:unit-test-password@localhost:5432/amanteigados_dev',
+    'postgres://amanteigados_dev_app:unit-test-password@127.0.0.1:5432/amanteigados_dev',
+  ]) {
+    const { mode, options } = resolvePoolConfig({ DATABASE_URL: url });
+    assert.equal(mode, 'url');
+    assert.equal(options.ssl, false);
+    assert.equal(options.connectionString, url);
+  }
+});
+
+test('DATABASE_URL remota ou com falso host local: SSL permanece habilitado', () => {
+  for (const url of [
+    'postgres://u:p@example.test:5432/db',
+    'postgres://u:p@localhost.example.com:5432/db',
+    'postgres://u:p@127.0.0.1.example.com:5432/db',
+    'postgres://u:p@evil-localhost:5432/db',
+    'not a valid url',
+  ]) {
+    const { options } = resolvePoolConfig({ DATABASE_URL: url });
+    assert.deepEqual(options.ssl, { rejectUnauthorized: false }, url);
+  }
+});
+
+test('prioridade DATABASE_HOST sobre DATABASE_URL: SSL segue o DATABASE_HOST', () => {
+  const localUrl = 'postgres://u:p@localhost:5432/db';
+  const remoteUrl = 'postgres://u:p@example.test:5432/db';
+  const remoteHost = resolvePoolConfig(discrete({ DATABASE_HOST: 'db.internal.example', DATABASE_PORT: '5432', DATABASE_URL: localUrl }));
+  assert.equal(remoteHost.mode, 'discrete');
+  assert.deepEqual(remoteHost.options.ssl, { rejectUnauthorized: false });
+  const localHost = resolvePoolConfig({ DATABASE_HOST: 'localhost', DATABASE_PORT: '5432', DATABASE_NAME: 'd', DATABASE_URL: remoteUrl });
+  assert.equal(localHost.mode, 'discrete');
+  assert.equal(localHost.options.ssl, false);
 });
 
 test('api/catalogo.js usa db-config e nao carrega mais fallback 5432 nem application_name homolog', () => {

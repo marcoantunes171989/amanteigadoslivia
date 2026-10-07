@@ -35,74 +35,120 @@
         <img src="assets/logo.jpg" alt="Amanteigados Lívia" width="48" height="48" />
         <div>
           <strong>Amanteigados Lívia</strong>
-          <span>Homologação</span>
+          <span id="sidebarAmbiente">Ambiente não identificado</span>
         </div>
         <button type="button" class="icon-btn sidebar-close" id="sidebarClose" aria-label="Fechar menu">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
         </button>
       </div>
       <nav class="admin-nav" aria-label="Menu do painel">
-        <button type="button" class="nav-btn is-active" data-view="overview" data-tooltip="Visão Geral" aria-current="page">
+        <button type="button" class="nav-btn is-active" data-view="overview" data-tooltip="Dashboard" aria-current="page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h7V4H4v9Zm9 7h7v-9h-7v9ZM4 20h7v-5H4v5Zm9-9h7V4h-7v7Z" fill="currentColor"/></svg>
-          <span>Visão Geral</span>
+          <span>Dashboard</span>
         </button>
-        <p class="nav-label">Catálogo</p>
-        <button type="button" class="nav-btn" data-view="categories" data-tooltip="Categorias">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z" fill="currentColor"/></svg>
-          <span>Categorias</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="products" data-tooltip="Produtos">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l3 7H4l3-7Zm-3 9h16v7H4v-7Z" fill="currentColor"/></svg>
-          <span>Produtos</span>
-        </button>
-        <p class="nav-label">Conteúdo</p>
-        <button type="button" class="nav-btn" data-view="branding" data-tooltip="Branding">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
-          <span>Branding</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="homeContent" data-tooltip="Página Inicial">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4v-9Z" fill="currentColor"/></svg>
-          <span>Página Inicial</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="encomendasContent" data-tooltip="Encomendas">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4V7Zm4-3h8v3H8V4Z" fill="currentColor"/></svg>
-          <span>Encomendas</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="festasContent" data-tooltip="Festas">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 6 6 6 10a6 6 0 1 1-12 0c0-4 3-6 6-10Z" fill="currentColor"/></svg>
-          <span>Festas</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="personalizadosContent" data-tooltip="Personalizados">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 9 9H3l5 4-2 8 6-4 6 4-2-8 5-4h-6Z" fill="currentColor"/></svg>
-          <span>Personalizados</span>
-        </button>
-        <p class="nav-label">Operação</p>
-        <button type="button" class="nav-btn" data-view="sales" data-tooltip="Vendas">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM3 3h3l2.4 10.4A2 2 0 0 0 10.3 15H18a2 2 0 0 0 1.9-1.4L22 7H7" fill="currentColor"/></svg>
-          <span>Vendas</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="requests" data-tooltip="Solicitações">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v4H5V4Zm0 6h14v10H5V10Z" fill="currentColor"/></svg>
-          <span>Solicitações</span>
-        </button>
-        <p class="nav-label">Análise</p>
-        <button type="button" class="nav-btn" data-view="reports" data-tooltip="Relatórios">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9h3v10H5Zm6 0V5h3v14h-3Zm6 0v-7h3v7h-3Z" fill="currentColor"/></svg>
-          <span>Relatórios</span>
-        </button>
-        <p class="nav-label">Gestão</p>
-        <button type="button" class="nav-btn" data-view="publications" data-tooltip="Publicações">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
-          <span>Publicações</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="audit" data-tooltip="Auditoria">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Zm3 4h6v2H9V8Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>
-          <span>Auditoria</span>
-        </button>
-        <button type="button" class="nav-btn" data-view="users" data-tooltip="Usuários" id="navUsers">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 8a8 8 0 0 1 16 0H4Z" fill="currentColor"/></svg>
-          <span>Usuários</span>
-        </button>
+        <div class="nav-group" data-nav-group="catalogo">
+          <button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="navGroupCatalogo">
+            <span>Catálogo</span>
+            <svg class="nav-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-group-panel" id="navGroupCatalogo">
+            <div class="nav-group-items">
+              <button type="button" class="nav-btn" data-view="categories" data-tooltip="Categorias">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h10v2H4v-2Z" fill="currentColor"/></svg>
+                <span>Categorias</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="products" data-tooltip="Produtos">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l3 7H4l3-7Zm-3 9h16v7H4v-7Z" fill="currentColor"/></svg>
+                <span>Produtos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="conteudo">
+          <button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="navGroupConteudo">
+            <span>Conteúdo</span>
+            <svg class="nav-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-group-panel" id="navGroupConteudo">
+            <div class="nav-group-items">
+              <button type="button" class="nav-btn" data-view="branding" data-tooltip="Branding">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
+                <span>Branding</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="homeContent" data-tooltip="Página Inicial">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9H4v-9Z" fill="currentColor"/></svg>
+                <span>Página Inicial</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="encomendasContent" data-tooltip="Encomendas">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4V7Zm4-3h8v3H8V4Z" fill="currentColor"/></svg>
+                <span>Encomendas</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="festasContent" data-tooltip="Festas">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 6 6 6 10a6 6 0 1 1-12 0c0-4 3-6 6-10Z" fill="currentColor"/></svg>
+                <span>Festas</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="personalizadosContent" data-tooltip="Personalizados">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 9 9H3l5 4-2 8 6-4 6 4-2-8 5-4h-6Z" fill="currentColor"/></svg>
+                <span>Personalizados</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="operacao">
+          <button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="navGroupOperacao">
+            <span>Operação</span>
+            <svg class="nav-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-group-panel" id="navGroupOperacao">
+            <div class="nav-group-items">
+              <button type="button" class="nav-btn" data-view="sales" data-tooltip="Vendas">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM3 3h3l2.4 10.4A2 2 0 0 0 10.3 15H18a2 2 0 0 0 1.9-1.4L22 7H7" fill="currentColor"/></svg>
+                <span>Vendas</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="requests" data-tooltip="Solicitações">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v4H5V4Zm0 6h14v10H5V10Z" fill="currentColor"/></svg>
+                <span>Solicitações</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="nav-group" data-nav-group="analise">
+          <button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="navGroupAnalise">
+            <span>Análise</span>
+            <svg class="nav-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-group-panel" id="navGroupAnalise">
+            <div class="nav-group-items">
+              <button type="button" class="nav-btn" data-view="reports" data-tooltip="Relatórios">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9h3v10H5Zm6 0V5h3v14h-3Zm6 0v-7h3v7h-3Z" fill="currentColor"/></svg>
+                <span>Relatórios</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- Gestão: oculto por padrão; admin.js libera só para SUPER_ADMIN confirmado pela sessão (fail closed). -->
+        <div class="nav-group hidden" data-nav-group="gestao">
+          <button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="navGroupGestao">
+            <span>Gestão</span>
+            <svg class="nav-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="nav-group-panel" id="navGroupGestao">
+            <div class="nav-group-items">
+              <button type="button" class="nav-btn" data-view="publications" data-tooltip="Publicações">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V7l-8-4Z" fill="currentColor"/></svg>
+                <span>Publicações</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="audit" data-tooltip="Auditoria">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16H6V4Zm3 4h6v2H9V8Zm0 4h6v2H9v-2Z" fill="currentColor"/></svg>
+                <span>Auditoria</span>
+              </button>
+              <button type="button" class="nav-btn" data-view="users" data-tooltip="Usuários" id="navUsers">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 8a8 8 0 0 1 16 0H4Z" fill="currentColor"/></svg>
+                <span>Usuários</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </nav>
       <div class="sidebar-footer">
         <button type="button" class="nav-btn collapse-btn" id="sidebarCollapse" data-tooltip="Recolher menu" aria-pressed="false">
@@ -119,9 +165,9 @@
         </button>
         <div class="admin-header-copy">
           <p class="eyebrow" id="viewEyebrow">Painel</p>
-          <h1 id="viewTitle">Visão Geral</h1>
-          <p class="view-subtitle" id="viewSubtitle">Acompanhe o painel da loja em homologação.</p>
-          <p class="breadcrumb" id="viewBreadcrumb">Início / Visão Geral</p>
+          <h1 id="viewTitle">Dashboard</h1>
+          <p class="view-subtitle" id="viewSubtitle">Indicadores e desempenho da operação.</p>
+          <p class="breadcrumb" id="viewBreadcrumb">Início / Painel / Dashboard</p>
         </div>
         <div class="admin-user" id="adminUser" hidden></div>
       </header>

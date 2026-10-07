@@ -3,7 +3,11 @@ import { test } from 'node:test';
 import { AdminError } from './admin-errors.js';
 import {
   assertCredentialPolicy,
+  assertSuperAdmin,
+  canListUsuarios,
   createUsuario as createUsuarioBase,
+  creatablePerfisFor,
+  isSuperAdminPerfil,
   listUsuarios,
   normalizeLoginUsuario,
   normalizePerfil,
@@ -182,6 +186,64 @@ test('ADMIN nao cria SUPER_ADMIN', async () => {
   );
 });
 
+test('gestao de usuarios e exclusiva de SUPER_ADMIN: helper fail closed', () => {
+  assert.equal(isSuperAdminPerfil({ perfil: 'SUPER_ADMIN', protegido: true }), true);
+  assert.equal(isSuperAdminPerfil({ perfil_usuario: 'SUPER_ADMIN' }), true);
+  for (const actor of [
+    { perfil: 'ADMIN' },
+    { perfil: 'GESTOR' },
+    { perfil: 'ROOT' },
+    { perfil: '' },
+    { perfil: null },
+    { perfil: undefined },
+    { id_usuario_admin: 'x' },
+    { nome_usuario: 'super_admin', email: 'super_admin@example.com', login_usuario: 'SUPER_ADMIN' },
+    null,
+    undefined,
+  ]) {
+    assert.equal(isSuperAdminPerfil(actor), false, JSON.stringify(actor));
+    assert.equal(canListUsuarios(actor), false, JSON.stringify(actor));
+    assert.throws(() => assertSuperAdmin(actor), (error) => error instanceof AdminError && error.status === 403);
+  }
+  assert.doesNotThrow(() => assertSuperAdmin({ perfil: 'SUPER_ADMIN', protegido: false }));
+  assert.deepEqual(creatablePerfisFor({ perfil: 'ADMIN' }), []);
+  assert.deepEqual(creatablePerfisFor({ perfil: 'GESTOR' }), []);
+});
+
+test('ADMIN e GESTOR nao criam usuarios, mesmo GESTOR (403 antes de validar ou gravar)', async () => {
+  const noDb = { async query() { throw new Error('nao deve consultar o banco'); } };
+  for (const actor of [{ id_usuario_admin: 'a1', perfil: 'ADMIN' }, { id_usuario_admin: 'g1', perfil: 'GESTOR' }]) {
+    await assert.rejects(
+      () => createUsuario(noDb, { nome: 'Novo', email: 'novo@example.com', senha: '1234', perfil: 'GESTOR' }, actor),
+      (error) => error instanceof AdminError && error.status === 403,
+    );
+  }
+});
+
+test('ADMIN nao edita nem reseta senha de GESTOR e nada e gravado', async () => {
+  const gestor = {
+    id_usuario_admin: '77777777-7777-4777-8777-777777777777',
+    nome_usuario: 'Gerente',
+    email_usuario: 'gerente-admin@example.com',
+    login_usuario: 'gerente.admin',
+    perfil_usuario: 'GESTOR',
+    ativo: true,
+    protegido: false,
+  };
+  const pool = recordingPool(gestor);
+  const admin = { id_usuario_admin: 'a1', perfil: 'ADMIN' };
+  await assert.rejects(
+    () => updateUsuarioBase(pool, gestor.id_usuario_admin, { nome: 'X', email: 'x@example.com', perfil: 'GESTOR', ativo: false }, admin),
+    (error) => error instanceof AdminError && error.status === 403,
+  );
+  await assert.rejects(
+    () => resetUsuarioSenha(pool, gestor.id_usuario_admin, '0123', admin),
+    (error) => error instanceof AdminError && error.status === 403,
+  );
+  assert.equal(pool.calls.some((item) => item.sql.includes('op:update_usuario')), false);
+  assert.equal(pool.calls.some((item) => item.sql.includes('op:update_usuario_senha')), false);
+});
+
 test('ROOT protegido cria SUPER_ADMIN nao protegido', async () => {
   const created = await createUsuario(poolWith(null), {
     nome: 'Novo Super',
@@ -229,13 +291,13 @@ test('GESTOR nao cria usuarios', async () => {
   );
 });
 
-test('ADMIN cria GESTOR e senha nao retorna', async () => {
+test('SUPER_ADMIN nao protegido cria GESTOR e senha nao retorna', async () => {
   const created = await createUsuario(poolWith(null), {
     nome: 'Gerente',
     email: 'gerente@example.com',
     senha: '123456',
     perfil: 'GESTOR',
-  }, { id_usuario_admin: 'admin-1', perfil: 'ADMIN' });
+  }, { id_usuario_admin: 'super-1', perfil: 'SUPER_ADMIN', protegido: false });
   assert.equal(created.perfil_usuario, 'GESTOR');
   assert.equal(created.protegido, false);
   assert.equal(created.senha, undefined);
@@ -378,21 +440,21 @@ test('GESTOR com PIN "0123" chega ao hash como 4 caracteres e valida no login', 
     email: 'gerente-pin@example.com',
     senha: '0123',
     perfil: 'GESTOR',
-  }, { id_usuario_admin: 'admin-1', perfil: 'ADMIN' });
+  }, { id_usuario_admin: 'super-1', perfil: 'SUPER_ADMIN', protegido: false });
   const [, , , senhaHash, senhaSalt] = insertParams(pool);
   assert.equal(await verifyPassword('0123', senhaHash, senhaSalt), true);
   assert.equal(await verifyPassword('123', senhaHash, senhaSalt), false);
   assert.equal(await verifyPassword('0123 ', senhaHash, senhaSalt), false);
 });
 
-test('ADMIN cria GESTOR com PIN e o hash nao aparece na resposta', async () => {
+test('SUPER_ADMIN nao protegido cria GESTOR com PIN e o hash nao aparece na resposta', async () => {
   const pool = recordingPool();
   const created = await createUsuario(pool, {
     nome: 'Gerente',
     email: 'gerente2@example.com',
     senha: '987654',
     perfil: 'GESTOR',
-  }, { id_usuario_admin: 'admin-1', perfil: 'ADMIN' });
+  }, { id_usuario_admin: 'super-1', perfil: 'SUPER_ADMIN', protegido: false });
   assert.equal(created.senha, undefined);
   assert.equal(created.senha_hash, undefined);
   assert.equal(created.senha_salt, undefined);
@@ -406,13 +468,13 @@ test('GESTOR com senha alfanumerica nao e aceito: PIN obrigatorio', async () => 
       email: 'gerente3@example.com',
       senha: 'senha-forte-123',
       perfil: 'GESTOR',
-    }, { id_usuario_admin: 'admin-1', perfil: 'ADMIN' }),
+    }, { id_usuario_admin: 'super-1', perfil: 'SUPER_ADMIN', protegido: false }),
     (error) => error instanceof AdminError && error.status === 400 && error.code === 'validation_error',
   );
 });
 
 test('PIN curto e nao numerico sao rejeitados na criacao com mensagem clara', async () => {
-  const actor = { id_usuario_admin: 'admin-1', perfil: 'ADMIN' };
+  const actor = { id_usuario_admin: 'super-1', perfil: 'SUPER_ADMIN', protegido: false };
   const base = { nome: 'G', email: 'g@example.com', perfil: 'GESTOR' };
   await assert.rejects(() => createUsuario(poolWith(null), { ...base, senha: '123' }, actor), (error) => error.message === 'Informe no mínimo 4 dígitos.');
   await assert.rejects(() => createUsuario(poolWith(null), { ...base, senha: '12a4' }, actor), (error) => error.message === 'Use somente números.');

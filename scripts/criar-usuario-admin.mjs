@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import readline from 'node:readline';
 import { createUsuario } from '../backend/src/admin-users.js';
+import { resolveDevAdminTarget } from './lib/dev-admin-target.mjs';
 import pg from 'pg';
 
 function ask(rl, question, { silent = false } = {}) {
@@ -46,32 +47,38 @@ function ask(rl, question, { silent = false } = {}) {
 }
 
 async function main() {
+  console.log('AMANTEIGADOS LIVIA');
+  console.log('BOOTSTRAP USUARIO ADMIN — DEV LOCAL ONLY');
+  let target;
+  try {
+    target = resolveDevAdminTarget(process.env);
+  } catch (error) {
+    console.error('FAIL');
+    console.error(error?.code || 'dev_target_rejected');
+    console.error(error?.message || 'destino rejeitado');
+    process.exitCode = 1;
+    return;
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    console.log('AMANTEIGADOS LIVIA');
-    console.log('BOOTSTRAP USUARIO ADMIN — HOMOLOG');
     const nome = (await ask(rl, 'Nome: ')).trim();
+    const usuarioLogin = (await ask(rl, 'Usuário (login): ')).trim();
     const email = (await ask(rl, 'E-mail: ')).trim();
     rl.pause();
-    const senha = await ask(rl, 'Senha: ', { silent: true });
-    if (!nome || !email || !senha) {
+    const senha = await ask(rl, 'Senha/PIN: ', { silent: true });
+    if (!nome || !usuarioLogin || !email || !senha) {
       console.error('FAIL');
       process.exitCode = 1;
       return;
     }
 
-    const host = process.env.DATABASE_HOST;
     const pool = new pg.Pool({
-      ...(host
-        ? {
-          host,
-          port: Number(process.env.DATABASE_PORT || 5432),
-          database: process.env.DATABASE_NAME,
-          user: process.env.DATABASE_USER,
-          password: process.env.DATABASE_PASSWORD,
-        }
-        : { connectionString: process.env.DATABASE_URL }),
-      ssl: { rejectUnauthorized: false },
+      host: target.host,
+      port: target.port,
+      database: target.database,
+      user: target.user,
+      password: target.password,
+      ssl: target.ssl,
       max: 1,
     });
 
@@ -87,6 +94,7 @@ async function main() {
     const usuario = await createUsuario(pool, {
       id_usuario_admin: randomUUID(),
       nome_usuario: nome,
+      usuario: usuarioLogin,
       email_usuario: email,
       senha,
       perfil_usuario: 'ADMIN',
@@ -97,6 +105,7 @@ async function main() {
     });
     await pool.end();
     console.log('PASS');
+    console.log(`usuario=${usuario.login_usuario}`);
     console.log(`email=${usuario.email_usuario}`);
     console.log(`id_usuario_admin=${usuario.id_usuario_admin}`);
   } catch (error) {

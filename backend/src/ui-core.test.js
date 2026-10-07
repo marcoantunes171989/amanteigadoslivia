@@ -27,6 +27,8 @@ import {
   maskCheckoutPhone,
   validateCheckoutName,
   validateCheckoutPhone,
+  isAgendamentoFuturo,
+  saoPauloDateTimeParts,
 } from '../../ui-core.js';
 
 test('sidebar collapsed preference uses a visual-only localStorage key', () => {
@@ -364,4 +366,138 @@ test('npm run build cobre cart-checkout.js e encomenda-form.js', () => {
   assert.ok(files.includes('cart-checkout.js'));
   assert.ok(files.includes('encomenda-form.js'));
   assert.ok(!files.some((file) => /gerar-reset-admin/.test(file)));
+});
+
+// Sidebar em grupos recolhíveis (accordion exclusivo). Verificação estática: o painel não tem harness de DOM.
+const navHtml = readFileSync(new URL('../../admin.html', import.meta.url), 'utf8');
+const navCss = readFileSync(new URL('../../admin.css', import.meta.url), 'utf8');
+const navJs = readFileSync(new URL('../../admin.js', import.meta.url), 'utf8');
+const navMarkup = navHtml.slice(navHtml.indexOf('<nav class="admin-nav"'), navHtml.indexOf('<div class="sidebar-footer">'));
+const navGroupSections = navMarkup.split(/<div class="nav-group(?: hidden)?" /).slice(1);
+const navGroupsMap = Object.fromEntries(navGroupSections.map((section) => [
+  section.match(/data-nav-group="([^"]+)"/)[1],
+  [...section.matchAll(/data-view="([^"]+)"/g)].map((match) => match[1]),
+]));
+
+test('sidebar grupos: cinco grupos existentes na ordem Catálogo, Conteúdo, Operação, Análise, Gestão', () => {
+  assert.deepEqual(Object.keys(navGroupsMap), ['catalogo', 'conteudo', 'operacao', 'analise', 'gestao']);
+});
+
+test('sidebar grupos: cada grupo mantém os mesmos itens e rotas (data-view) de antes', () => {
+  assert.deepEqual(navGroupsMap, {
+    catalogo: ['categories', 'products'],
+    conteudo: ['branding', 'homeContent', 'encomendasContent', 'festasContent', 'personalizadosContent'],
+    operacao: ['sales', 'requests'],
+    analise: ['reports'],
+    gestao: ['publications', 'audit', 'users'],
+  });
+});
+
+test('sidebar grupos: Dashboard (overview) fica fora dos grupos, no topo, sem accordion', () => {
+  const dashboard = navMarkup.indexOf('data-view="overview"');
+  assert.ok(dashboard > 0 && dashboard < navMarkup.indexOf('data-nav-group='), 'Dashboard antes do primeiro grupo');
+  assert.equal(navGroupsMap.overview, undefined);
+  assert.equal(Object.values(navGroupsMap).flat().includes('overview'), false);
+});
+
+test('sidebar grupos: cabeçalhos são button reais, começam recolhidos e apontam para o painel', () => {
+  const toggles = [...navMarkup.matchAll(/<button type="button" class="nav-group-toggle" aria-expanded="false" aria-controls="([^"]+)">/g)];
+  assert.equal(toggles.length, 5);
+  toggles.forEach(([, panelId]) => {
+    assert.match(navMarkup, new RegExp(`<div class="nav-group-panel" id="${panelId}">`));
+  });
+  assert.equal(navMarkup.includes('aria-expanded="true"'), false);
+});
+
+test('sidebar accordion: updateNavGroups aplica no máximo um grupo aberto e espelha aria-expanded', () => {
+  assert.match(navJs, /function updateNavGroups\(openGroup\) \{[\s\S]*?const isOpen = group === openGroup;[\s\S]*?group\.classList\.toggle\('is-open', isOpen\);[\s\S]*?setAttribute\('aria-expanded', isOpen \? 'true' : 'false'\)/);
+});
+
+test('sidebar accordion: clicar no grupo aberto recolhe; clicar em outro troca (exclusividade)', () => {
+  assert.match(navJs, /updateNavGroups\(group\.classList\.contains\('is-open'\) \? null : group\)/);
+});
+
+test('sidebar accordion: setView sincroniza grupo com a view ativa (inclusive navegação programática)', () => {
+  const setViewBody = navJs.slice(navJs.indexOf('function setView(view) {'), navJs.indexOf('function badge(active)'));
+  assert.match(setViewBody, /updateNavGroups\(activeNavGroup\(\)\)/);
+  assert.match(navJs, /\.nav-group \.nav-btn\[data-view="\$\{state\.view\}"\]/);
+});
+
+test('sidebar accordion: Dashboard recolhe todos os grupos (activeNavGroup nulo em overview)', () => {
+  assert.equal(navGroupsMap.overview, undefined);
+  assert.match(navJs, /\?\.closest\('\.nav-group'\) \?\? null/);
+});
+
+test('sidebar accordion: estado não é persistido (sem localStorage para grupos)', () => {
+  assert.doesNotMatch(navJs, /nav-?group[\s\S]{0,80}localStorage|localStorage[\s\S]{0,80}nav-?group/i);
+});
+
+test('sidebar accordion: animação por grid-template-rows entre 150-220ms, sem altura manual', () => {
+  assert.match(navCss, /\.nav-group-panel \{[^}]*grid-template-rows: 0fr;[^}]*transition: grid-template-rows 180ms ease, visibility 180ms ease;/);
+  assert.match(navCss, /\.nav-group\.is-open \.nav-group-panel \{\s*grid-template-rows: 1fr;/);
+});
+
+test('sidebar accordion: prefers-reduced-motion desliga a transição dos painéis e do chevron', () => {
+  const reduced = navCss.slice(navCss.indexOf('@media (prefers-reduced-motion: reduce)'));
+  assert.match(reduced, /\.nav-group-panel,/);
+  assert.match(reduced, /\.nav-group-chevron,/);
+});
+
+test('sidebar accordion: rail recolhido mostra todos os itens e oculta cabeçalhos', () => {
+  assert.match(navCss, /\.admin-shell\.is-collapsed \.nav-group-toggle \{ display: none; \}/);
+  assert.match(navCss, /\.admin-shell\.is-collapsed \.nav-group-panel \{ grid-template-rows: 1fr; visibility: visible; \}/);
+});
+
+test('sidebar gestão: grupo nasce oculto no HTML (fail closed, sem flash) e é o único com hidden', () => {
+  assert.match(navMarkup, /<div class="nav-group hidden" data-nav-group="gestao">/);
+  assert.equal(navMarkup.match(/class="nav-group hidden"/g).length, 1);
+  assert.equal(navMarkup.match(/class="nav-group"/g).length, 4);
+});
+
+test('sidebar gestão: admin.js libera o grupo só via canAccessGestao(session), sem opacity', () => {
+  assert.match(navJs, /classList\.toggle\('hidden', !canAccessGestao\(session\)\)/);
+  assert.doesNotMatch(navJs, /gestao[\s\S]{0,120}opacity/);
+});
+
+test('sidebar gestão: boot só exibe o app depois de carregar a sessão real', () => {
+  assert.match(navJs, /const sessao = await request\('\/api\/admin\/sessao'\);\s*applySessaoPayload\(sessao\);\s*await showApp\(\);/);
+});
+
+test('sidebar gestão: setView resolve a view antes de ativá-la (acesso programático cai no Dashboard)', () => {
+  const setViewBody = navJs.slice(navJs.indexOf('function setView(view) {'), navJs.indexOf('Object.entries(views)'));
+  assert.match(setViewBody, /view = resolveAllowedView\(view, currentSession\(\)\);\s*state\.view = view;/);
+});
+
+test('sidebar gestão: applySessionChrome reaplica o guard pela sessão, sem usar nome ou login', () => {
+  const chrome = navJs.slice(navJs.indexOf('function applySessionChrome() {'), navJs.indexOf('async function logout()'));
+  assert.match(chrome, /state\.view = resolveAllowedView\(state\.view, session\)/);
+  assert.doesNotMatch(chrome, /nome_usuario|login_usuario|\.email/);
+});
+
+test('sidebar accordion: cabeçalho com área de toque de 44px no mobile e tipografia 12px/600', () => {
+  const mobile = navCss.slice(navCss.indexOf('@media (max-width: 980px)'), navCss.indexOf('@media (max-width: 720px)'));
+  assert.match(mobile, /\.nav-group-toggle \{ min-height: 44px; \}/);
+  assert.match(navCss, /\.nav-group-toggle \{[\s\S]*?font-size: var\(--fs-sm\);[\s\S]*?font-weight: var\(--fw-semibold\);/);
+});
+
+test('isAgendamentoFuturo: usa o relógio civil de São Paulo, não o fuso local do processo', () => {
+  const now = new Date('2026-10-07T14:15:00.000Z'); // 2026-10-07 11:15 em São Paulo (UTC-3)
+  assert.equal(isAgendamentoFuturo('2026-10-07', '11:14', now), false);
+  assert.equal(isAgendamentoFuturo('2026-10-07', '11:15', now), false);
+  assert.equal(isAgendamentoFuturo('2026-10-07', '11:16', now), true);
+  assert.equal(isAgendamentoFuturo('2026-10-08', '00:00', now), true);
+  assert.equal(isAgendamentoFuturo('2026-10-06', '23:59', now), false);
+});
+
+test('isAgendamentoFuturo: rejeita datas/horas ausentes ou com formato inválido', () => {
+  const now = new Date('2026-10-07T14:15:00.000Z');
+  assert.equal(isAgendamentoFuturo('', '11:16', now), false);
+  assert.equal(isAgendamentoFuturo('2026-10-08', '', now), false);
+  assert.equal(isAgendamentoFuturo('2026-10-08', '00h00', now), false);
+  assert.equal(isAgendamentoFuturo('08/10/2026', '00:00', now), false);
+});
+
+test('saoPauloDateTimeParts: retorna data/hora civis no formato esperado pelos campos do formulário', () => {
+  const now = new Date('2026-10-07T14:15:00.000Z');
+  assert.deepEqual(saoPauloDateTimeParts(now), { data: '2026-10-07', hora: '11:15' });
 });

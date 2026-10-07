@@ -1,9 +1,11 @@
-import { readSidebarCollapsed, writeSidebarCollapsed, ENCOMENDA_TIPO_LABELS, QUANTIDADE_MINIMA_DEFAULT, QUANTIDADE_MINIMA_KEY, formatIsoToBrDate, formatWhatsAppMaskDisplay, normalizeQuantidadeMinimaMap } from './ui-core.js';
+import { readSidebarCollapsed, writeSidebarCollapsed, ENCOMENDA_TIPO_LABELS, QUANTIDADE_MINIMA_DEFAULT, QUANTIDADE_MINIMA_KEY, formatIsoToBrDate, formatWhatsAppMaskDisplay, normalizeQuantidadeMinimaMap, isAgendamentoFuturo, saoPauloDateTimeParts } from './ui-core.js';
 import {
   DATA_LOAD_ERROR_MESSAGE,
   DIALOG_CLOSE_LABEL,
   PROD_PUBLISH_CONFIRMATION,
-  canAccessUsuarios,
+  ambienteLabel,
+  canAccessGestao,
+  canAccessReportTab,
   canEnableProductionUpdateButton,
   creatablePerfisFor,
   decideSessionErrorAction,
@@ -18,11 +20,41 @@ import {
   releaseCheckTone,
   requestStatusBadgeClass,
   requestStatusLabel,
+  resolveAllowedReportTab,
+  resolveAllowedView,
   saleStatusBadgeClass,
   saleStatusLabel,
   sessionDisplayName,
   shouldCloseDialogOnBackdrop,
 } from './admin-session-ui.js';
+import {
+  DASHBOARD_CUSTOM_ID,
+  DASHBOARD_EMPTY_INSIGHTS,
+  DASHBOARD_PERIODS,
+  DASHBOARD_PERIOD_DEFAULT,
+  buildDashboardModel,
+  createLatestGate,
+  customDashboardRange,
+  dashboardQuery,
+  dashboardRange,
+  formatAxisBrl,
+  formatAxisCount,
+  formatBrl,
+  formatDayKey,
+  formatDeltaText,
+  formatPercent,
+  formatPeriodLabel,
+  niceMax,
+  previousDashboardRange,
+  validateCustomPeriod,
+} from './admin-dashboard.js';
+import {
+  VIEW_RESOURCES,
+  createDirtyViews,
+  createViewCache,
+  createViewNavigator,
+  isFormField,
+} from './admin-view-cache.js';
 
   const loginView = document.getElementById('loginView');
   const appView = document.getElementById('appView');
@@ -54,7 +86,7 @@ import {
   };
 
   const TITLES = {
-    overview: ['Painel', 'Visão Geral', 'Acompanhe o painel da loja em homologação.'],
+    overview: ['Painel', 'Dashboard', 'Indicadores e desempenho da operação.'],
     categories: ['Catálogo', 'Categorias', 'Organize as categorias ativas do cardápio.'],
     products: ['Catálogo', 'Produtos', 'Gerencie nomes, preços, imagens e disponibilidade.'],
     branding: ['Conteúdo', 'Branding', 'Logos e WhatsApp comercial do site.'],
@@ -70,6 +102,8 @@ import {
     users: ['Gestão', 'Usuários', 'Gerencie acessos do painel.'],
   };
 
+  // Última requisição de Dashboard vence: respostas antigas são descartadas (ver createLatestGate).
+  const dashboardGate = createLatestGate();
   const state = {
     view: 'overview',
     catalog: { resumo: {}, categorias: [], produtos: [] },
@@ -84,6 +118,13 @@ import {
     promotionDryRun: null,
     productQuery: '',
     productFilter: 'todos',
+    dashboardPeriod: DASHBOARD_PERIOD_DEFAULT,
+    dashboard: null,
+    dashboardCustom: { inicio: '', fim: '' },
+    dashboardCustomRange: null,
+    dashboardCustomError: '',
+    dashboardLoading: false,
+    dashboardError: false,
     salesPeriod: 'hoje',
     salesStatus: 'todos',
     reportTab: 'visao',
@@ -103,6 +144,10 @@ import {
     formDirty: false,
   };
 
+  // Cache só em memória (ver admin-view-cache.js). Limpo no logout para não vazar dados entre sessões.
+  const viewCache = createViewCache();
+  const viewDirty = createDirtyViews();
+
   function el(tag, props = {}, children = []) {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(props)) {
@@ -116,6 +161,13 @@ import {
     for (const child of children) {
       if (child) node.append(child);
     }
+    return node;
+  }
+
+  function svgEl(tag, attrs = {}, children = []) {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    node.append(...children);
     return node;
   }
 
@@ -333,6 +385,8 @@ import {
   }
 
   async function request(url, options = {}) {
+    // Qualquer escrita torna os dados em memória vencidos: a próxima entrada na tela revalida em background.
+    if (options.method && options.method !== 'GET') viewCache.invalidateAll();
     const response = await fetch(url, {
       credentials: 'same-origin',
       cache: 'no-store',
@@ -373,12 +427,11 @@ import {
   }
 
   function applySessionChrome() {
-    const usersNav = document.getElementById('navUsers');
-    const allowed = canAccessUsuarios(currentSession());
-    usersNav?.classList.toggle('hidden', !allowed);
-    if (!allowed && state.view === 'users') {
-      state.view = 'overview';
-    }
+    const session = currentSession();
+    // Gestão só aparece para SUPER_ADMIN confirmado. O padrão no HTML já é oculto, então não há flash.
+    document.querySelector('.nav-group[data-nav-group="gestao"]')?.classList.toggle('hidden', !canAccessGestao(session));
+    state.view = resolveAllowedView(state.view, session);
+    state.reportTab = resolveAllowedReportTab(state.reportTab, session);
     renderAdminUser();
   }
 
@@ -481,7 +534,24 @@ import {
     }
   }
 
+  function activeNavGroup() {
+    return document.querySelector(`.nav-group .nav-btn[data-view="${state.view}"]`)?.closest('.nav-group') ?? null;
+  }
+
+  // Accordion exclusivo: no máximo um grupo aberto. openGroup = null recolhe todos.
+  function updateNavGroups(openGroup) {
+    const activeGroup = activeNavGroup();
+    document.querySelectorAll('.nav-group').forEach((group) => {
+      const isOpen = group === openGroup;
+      group.classList.toggle('is-open', isOpen);
+      group.classList.toggle('has-active', group === activeGroup);
+      group.querySelector('.nav-group-toggle')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+  }
+
   function setView(view) {
+    // Acesso programático a view de Gestão sem SUPER_ADMIN cai no Dashboard (fail closed).
+    view = resolveAllowedView(view, currentSession());
     state.view = view;
     document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
       const active = button.dataset.view === view;
@@ -489,6 +559,7 @@ import {
       if (active) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     });
+    updateNavGroups(activeNavGroup());
     Object.entries(views).forEach(([name, node]) => {
       node.classList.toggle('hidden', name !== view);
     });
@@ -500,7 +571,8 @@ import {
     document.getElementById('viewBreadcrumb').textContent = `Início / ${titles[0]} / ${titles[1]}`;
     closeDrawer();
     closeUserSheet();
-    refreshView();
+    // Render imediato a partir do cache (ou esqueleto no 1º acesso); a revalidação não bloqueia o clique.
+    enterView(view);
   }
 
   function badge(active) {
@@ -565,8 +637,11 @@ import {
     })));
   }
 
-  async function loadCatalog() {
-    state.catalog = await request('/api/admin/catalogo');
+  // Loaders: só gravam em state se isCurrent() ainda for verdadeiro (resposta obsoleta não sobrescreve), e retornam se aplicaram.
+  async function loadCatalog(isCurrent = () => true) {
+    const catalog = await request('/api/admin/catalogo');
+    if (!isCurrent()) return false;
+    state.catalog = catalog;
     if (state.catalog?.sessao) {
       applySessaoPayload({
         usuario: {
@@ -575,6 +650,7 @@ import {
         },
       });
     }
+    return true;
   }
 
   function currentSession() {
@@ -591,21 +667,105 @@ import {
       && currentSession().perfil === 'SUPER_ADMIN';
   }
 
-  async function loadReports() {
-    state.reports = await request(`/api/admin/relatorios?${periodQuery()}`);
+  async function loadReports(isCurrent = () => true) {
+    const reports = await request(`/api/admin/relatorios?${periodQuery()}`);
+    if (!isCurrent()) return false;
+    state.reports = reports;
+    return true;
   }
 
-  async function loadSales() {
+  // Duas leituras de relatório em paralelo: período atual e anterior equivalente (só intervalo, sem backend novo).
+  // O catálogo não depende do período e NÃO é recarregado aqui.
+  // Retorna false quando a resposta já ficou obsoleta (o usuário trocou o período no meio).
+  async function loadDashboard(range) {
+    const latest = dashboardGate.next();
+    state.dashboardLoading = true;
+    state.dashboardError = false;
+    try {
+      const [atual, previo] = await Promise.all([
+        request(`/api/admin/relatorios?${dashboardQuery(range)}`),
+        request(`/api/admin/relatorios?${dashboardQuery(previousDashboardRange(range))}`),
+      ]);
+      if (!latest.isLatest()) return false;
+      state.dashboard = { range, atual, anterior: previo };
+      return true;
+    } catch (error) {
+      // Cancelamento por nova seleção não é erro para o usuário.
+      if (!latest.isLatest()) return false;
+      state.dashboardError = true;
+      throw error;
+    } finally {
+      if (latest.isLatest()) state.dashboardLoading = false;
+    }
+  }
+
+  // Período vigente da tela: presets sempre "agora"; personalizado só após "Aplicar".
+  function currentDashboardRange() {
+    if (state.dashboardPeriod === DASHBOARD_CUSTOM_ID && state.dashboardCustomRange) return state.dashboardCustomRange;
+    if (state.dashboardPeriod === DASHBOARD_CUSTOM_ID) state.dashboardPeriod = DASHBOARD_PERIOD_DEFAULT;
+    return dashboardRange(state.dashboardPeriod);
+  }
+
+  // Clique em preset: feedback visual imediato, depois a consulta. Personalizado só mostra os campos.
+  function selectDashboardPeriod(id) {
+    state.dashboardPeriod = id;
+    state.dashboardCustomError = '';
+    if (id === DASHBOARD_CUSTOM_ID) {
+      keepDashboardFocus(renderDashboardToolbar);
+      return;
+    }
+    refreshDashboardPeriod(dashboardRange(id));
+  }
+
+  function applyCustomDashboardPeriod() {
+    const { inicio, fim } = state.dashboardCustom;
+    state.dashboardCustomError = validateCustomPeriod(inicio, fim) || '';
+    if (state.dashboardCustomError) {
+      keepDashboardFocus(renderDashboardToolbar);
+      return;
+    }
+    state.dashboardCustomRange = customDashboardRange(inicio, fim);
+    refreshDashboardPeriod(state.dashboardCustomRange);
+  }
+
+  async function refreshDashboardPeriod(range) {
+    // loadDashboard marca "atualizando" de forma síncrona antes do primeiro await, então o toolbar já reflete o estado.
+    const pending = loadDashboard(range);
+    keepDashboardFocus(renderDashboardToolbar);
+    try {
+      if (await pending && state.view === 'overview') renderOverview();
+    } catch (error) {
+      if (state.view === 'overview') keepDashboardFocus(renderDashboardToolbar);
+      if (decideSessionErrorAction(error.status) === 'login') {
+        showLogin();
+        return;
+      }
+      toast(error.message || DATA_LOAD_ERROR_MESSAGE, false);
+    }
+  }
+
+  // Mantém o foco no controle que o usuário usava quando o cabeçalho é reconstruído.
+  function keepDashboardFocus(render) {
+    const key = document.activeElement?.dataset?.focusKey;
+    render();
+    if (key) views.overview.querySelector(`[data-focus-key="${key}"]`)?.focus({ preventScroll: true });
+  }
+
+  async function loadSales(isCurrent = () => true) {
     const payload = await request(`/api/admin/vendas?periodo=${encodeURIComponent(state.salesPeriod)}&status=${encodeURIComponent(state.salesStatus)}`);
+    if (!isCurrent()) return false;
     state.vendas = payload.vendas || [];
+    return true;
   }
 
-  async function loadUsers() {
+  async function loadUsers(isCurrent = () => true) {
     const payload = await request('/api/admin/usuarios');
+    if (!isCurrent()) return false;
     state.usuarios = payload.usuarios || [];
+    return true;
   }
 
-  async function loadAudit() {
+  function auditFetchQuery() {
     const params = new URLSearchParams();
     if (state.auditPeriod) params.set('periodo', state.auditPeriod);
     if (state.auditUser) params.set('usuario', state.auditUser);
@@ -614,22 +774,103 @@ import {
     if (state.auditResult) params.set('sucesso', state.auditResult);
     params.set('pagina', String(state.auditPage || 1));
     params.set('limite', '10');
-    const payload = await request(`/api/admin/auditoria?${params}`);
+    return params;
+  }
+
+  async function loadAudit(isCurrent = () => true) {
+    const payload = await request(`/api/admin/auditoria?${auditFetchQuery()}`);
+    if (!isCurrent()) return false;
     state.auditoria = payload.eventos || [];
     state.auditPagination = payload.paginacao || { pagina: 1, limite: 10, total: 0, total_paginas: 1 };
+    return true;
   }
 
-  async function loadPublications() {
-    state.publicacoes = await request('/api/admin/publicacoes');
+  async function loadPublications(isCurrent = () => true) {
+    const publicacoes = await request('/api/admin/publicacoes');
+    if (!isCurrent()) return false;
+    state.publicacoes = publicacoes;
+    return true;
   }
 
-  async function loadContent() {
-    state.conteudo = await request('/api/admin/conteudo');
+  async function loadContent(isCurrent = () => true) {
+    const conteudo = await request('/api/admin/conteudo');
+    if (!isCurrent()) return false;
+    state.conteudo = conteudo;
+    return true;
   }
 
-  async function loadRequests() {
+  async function loadRequests(isCurrent = () => true) {
     const payload = await request('/api/admin/solicitacoes');
+    if (!isCurrent()) return false;
     state.solicitacoes = payload.solicitacoes || [];
+    return true;
+  }
+
+  const RESOURCE_LOADERS = {
+    catalog: (isCurrent) => loadCatalog(isCurrent),
+    dashboard: () => loadDashboard(currentDashboardRange()),
+    content: (isCurrent) => loadContent(isCurrent),
+    sales: (isCurrent) => loadSales(isCurrent),
+    requests: (isCurrent) => loadRequests(isCurrent),
+    reports: (isCurrent) => loadReports(isCurrent),
+    publications: (isCurrent) => loadPublications(isCurrent),
+    audit: (isCurrent) => loadAudit(isCurrent),
+    users: (isCurrent) => loadUsers(isCurrent),
+  };
+
+  // Chave do cache: identifica o filtro/período que gerou os dados. Dados de outro filtro não são reaproveitados.
+  function cacheKeyOf(resource) {
+    switch (resource) {
+      case 'sales': return `${state.salesPeriod}|${state.salesStatus}`;
+      case 'reports': return periodQuery().toString();
+      case 'audit': return auditFetchQuery().toString();
+      case 'dashboard': {
+        const custom = state.dashboardCustomRange;
+        if (state.dashboardPeriod === DASHBOARD_CUSTOM_ID && custom) return `custom|${custom.inicio.getTime()}|${custom.fim.getTime()}`;
+        return state.dashboardPeriod;
+      }
+      default: return 'default';
+    }
+  }
+
+  async function loadResource(name, isCurrent) {
+    const applied = await RESOURCE_LOADERS[name](isCurrent);
+    if (applied) viewCache.mark(name, cacheKeyOf(name));
+    return applied;
+  }
+
+  // Pinta a view a partir de state (já carregado). Só a view ativa é desenhada.
+  function renderOverviewIfCurrent(dashboardAtual) {
+    if (dashboardAtual && state.view === 'overview') renderOverview();
+  }
+
+  function paintView(view) {
+    if (view === 'overview') renderOverviewIfCurrent(state.dashboard);
+    else if (view === 'categories') renderCategories();
+    else if (view === 'products') renderProducts();
+    else if (['branding', 'homeContent', 'encomendasContent', 'festasContent', 'personalizadosContent'].includes(view)) renderContentView();
+    else if (view === 'sales') renderSales();
+    else if (view === 'requests') renderRequests();
+    else if (view === 'reports') renderReports();
+    else if (view === 'publications') renderPublications();
+    else if (view === 'audit') renderAudit();
+    else if (view === 'users') renderUsers();
+  }
+
+  // Primeiro acesso sem dados: estrutura da tela imediatamente, sem overlay e sem bloquear o menu.
+  function renderViewSkeleton(view) {
+    views[view].replaceChildren(
+      pageHeading(view),
+      el('div', { className: 'view-skeleton', role: 'status', 'aria-live': 'polite', 'aria-label': 'Carregando dados' }, [
+        el('div', { className: 'skeleton view-skeleton-block' }),
+        el('div', { className: 'skeleton view-skeleton-line' }),
+        el('div', { className: 'skeleton view-skeleton-line' }),
+      ]),
+    );
+  }
+
+  function renderViewLoadError(view) {
+    views[view].replaceChildren(pageHeading(view), emptyState(DATA_LOAD_ERROR_MESSAGE));
   }
 
   function filteredRequests() {
@@ -637,134 +878,328 @@ import {
     return state.solicitacoes.filter((item) => item.status_solicitacao === state.requestStatus);
   }
 
-  async function refreshView() {
+  // Ao reentrar (clique no menu): pinta o que já está em memória e revalida só o vencido. Ver admin-view-cache.js.
+  const viewNavigator = createViewNavigator({
+    cache: viewCache,
+    dirty: viewDirty,
+    currentView: () => state.view,
+    resourcesFor: (view) => VIEW_RESOURCES[view] || [],
+    keyOf: cacheKeyOf,
+    load: loadResource,
+    paint: paintView,
+    skeleton: renderViewSkeleton,
+    onError: handleViewError,
+  });
+
+  function enterView(view) {
     hideDataError();
-    try {
-      if (state.view === 'overview') {
-        await Promise.all([loadCatalog(), loadReports()]);
-        renderOverview();
-      } else if (state.view === 'categories' || state.view === 'products') {
-        await loadCatalog();
-        renderCategories();
-        renderProducts();
-      } else if (state.view === 'sales') {
-        await loadSales();
-        renderSales();
-      } else if (['branding', 'homeContent', 'encomendasContent', 'festasContent', 'personalizadosContent'].includes(state.view)) {
-        await loadContent();
-        renderContentView();
-      } else if (state.view === 'requests') {
-        await loadRequests();
-        renderRequests();
-      } else if (state.view === 'reports') {
-        await loadReports();
-        renderReports();
-      } else if (state.view === 'publications') {
-        await loadPublications();
-        renderPublications();
-      } else if (state.view === 'audit') {
-        await loadAudit();
-        renderAudit();
-      } else if (state.view === 'users') {
-        await loadUsers();
-        renderUsers();
-      }
-    } catch (error) {
-      const action = decideSessionErrorAction(error.status);
-      if (action === 'login') {
-        showLogin();
-        return;
-      }
-      if (action === 'retry') {
-        showDataError();
-        toast(DATA_LOAD_ERROR_MESSAGE, false);
-        return;
-      }
-      if (action === 'forbidden') {
-        toast(error.message || 'Sem permissão para esta ação.', false);
-        return;
-      }
-      if (action === 'rate_limit') {
-        toast(error.message || 'Muitas tentativas. Tente novamente em instantes.', false);
-        return;
-      }
-      toast(error.message || DATA_LOAD_ERROR_MESSAGE, false);
+    return viewNavigator.enter(view);
+  }
+
+  // Recarga explícita (ação do usuário, escrita ou erro "Tentar novamente"): sempre renderiza o resultado.
+  function refreshView() {
+    hideDataError();
+    return viewNavigator.refresh(state.view);
+  }
+
+  function handleViewError(error, { view, hasData }) {
+    const action = decideSessionErrorAction(error.status);
+    if (action === 'login') {
+      showLogin();
+      return;
     }
+    // Com dados anteriores, a tela continua visível; sem dados, mostra o estado de erro no lugar do esqueleto.
+    if (!hasData) renderViewLoadError(view);
+    if (action === 'retry') {
+      showDataError();
+      toast(DATA_LOAD_ERROR_MESSAGE, false);
+      return;
+    }
+    if (action === 'forbidden') {
+      toast(error.message || 'Sem permissão para esta ação.', false);
+      return;
+    }
+    if (action === 'rate_limit') {
+      toast(error.message || 'Muitas tentativas. Tente novamente em instantes.', false);
+      return;
+    }
+    toast(error.message || DATA_LOAD_ERROR_MESSAGE, false);
+  }
+
+  // Logout/401: nada de dados administrativos em memória para a próxima sessão.
+  function clearAdminData() {
+    viewCache.clear();
+    viewDirty.clearAll();
+    state.catalog = { resumo: {}, categorias: [], produtos: [] };
+    state.reports = null;
+    state.vendas = [];
+    state.solicitacoes = [];
+    state.conteudo = { configuracoes: [], conteudos: [] };
+    state.usuarios = [];
+    state.auditoria = [];
+    state.publicacoes = null;
+    state.dashboard = null;
   }
 
   function renderOverview() {
-    const dash = state.reports?.dashboard || {};
-    const hoje = dash.hoje || {};
-    const catalogo = state.reports?.catalogo || {};
-    views.overview.replaceChildren(
-      pageHeading('overview'),
-      el('section', { className: 'overview-section' }, [
-        el('h3', { text: 'Indicadores' }),
-        el('div', { className: 'kpi-grid' }, [
-          metric('Produtos ativos', dash.produtos_ativos),
-          metric('Categorias ativas', dash.categorias_ativas),
-          metric('Produtos em destaque', dash.destaques),
-          metric('Promoções ativas', dash.promocoes_ativas),
-          metric('Pedidos hoje', hoje.pedidos),
-          metric('Vendas confirmadas hoje', hoje.vendas_confirmadas),
-          metric('Faturamento hoje', money(hoje.faturamento_centavos)),
-          metric('Ticket médio hoje', money(hoje.ticket_medio_centavos)),
+    const data = state.dashboard;
+    if (!data) return;
+    const model = buildDashboardModel({
+      range: data.range,
+      atual: data.atual,
+      anterior: data.anterior,
+      catalogoProdutos: state.catalog.produtos || [],
+    });
+    const fin = model.financeiro;
+    const sections = [
+      dashSection('Resultado do período', [
+        el('div', { className: 'dash-kpis' }, [
+          kpiCard('Faturamento', formatBrl(fin.faturamento.atual), fin.faturamento, 'money'),
+          kpiCard('Pedidos', String(fin.pedidos.atual), fin.pedidos, 'count'),
+          kpiCard('Ticket médio', formatBrl(fin.ticket.atual), fin.ticket, 'money'),
+          kpiCard('Vendas confirmadas', String(fin.confirmadas.atual), fin.confirmadas, 'count'),
         ]),
       ]),
-      el('section', { className: 'overview-section' }, [
-        el('h3', { text: 'Atividade e pedidos' }),
-        el('div', { className: 'cards' }, [
-          metric('Pedidos 7 dias', dash.dias_7?.pedidos),
-          metric('Faturamento 7 dias', money(dash.dias_7?.faturamento_centavos)),
-          metric('Pedidos 30 dias', dash.dias_30?.pedidos),
-          metric('Faturamento 30 dias', money(dash.dias_30?.faturamento_centavos)),
+      dashSection('Catálogo atual', [
+        el('div', { className: 'dash-kpis dash-kpis--compact' }, [
+          metric('Produtos ativos', model.catalogo.produtos_ativos),
+          metric('Categorias ativas', model.catalogo.categorias_ativas),
+          metric('Produtos em destaque', model.catalogo.destaques),
+          metric('Promoções ativas', model.catalogo.promocoes_ativas),
         ]),
-        el('div', { className: 'env-grid' }, [
-          el('article', { className: 'card' }, [
-            el('span', { text: 'Vendas por dia' }),
-            chart(state.reports?.vendas?.por_dia || [], 'pedidos'),
-          ]),
-          el('article', { className: 'card' }, [
-            el('span', { text: 'Faturamento por dia' }),
-            chart(state.reports?.vendas?.por_dia || [], 'faturamento_centavos'),
-          ]),
-        ]),
-        el('article', { className: 'card' }, [
-          el('span', { text: 'Produtos mais vendidos' }),
-          (state.reports?.produtos || []).length
-            ? el('div', { className: 'table-wrap' }, [simpleTable(['Produto', 'Qtd', 'Receita'], (state.reports.produtos || []).slice(0, 8).map((item) => [item.nome_produto, item.quantidade, money(item.receita_centavos)]))])
-            : emptyState('Nenhuma venda encontrada para este período.'),
+        el('p', { className: 'dash-note', text: `${model.catalogo.sem_imagem} sem imagem · ${model.catalogo.sem_preco_vigente} sem preço vigente` }),
+      ]),
+      dashSection('Evolução', [
+        el('div', { className: 'dash-grid' }, [
+          dashCard('Faturamento por dia', model.temFaturamento
+            ? revenueChart(model.serie)
+            : dashEmpty('Sem vendas confirmadas no período', 'Os gráficos serão exibidos assim que houver vendas confirmadas.')),
+          dashCard('Pedidos por dia', model.temPedidos
+            ? orderBars(model.serie)
+            : dashEmpty('Sem pedidos no período', 'Os gráficos serão exibidos assim que houver pedidos.')),
         ]),
       ]),
-      el('section', { className: 'overview-section' }, [
-        el('h3', { text: 'Atalhos' }),
-        el('div', { className: 'cards' }, [
-          el('article', { className: 'card' }, [
-            el('span', { text: 'Catálogo' }),
-            el('div', { className: 'actions' }, [
-              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Categorias', onClick: () => setView('categories') }),
-              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Produtos', onClick: () => setView('products') }),
-            ]),
-          ]),
-          el('article', { className: 'card' }, [
-            el('span', { text: 'Operação' }),
-            el('div', { className: 'actions' }, [
-              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Solicitações', onClick: () => setView('requests') }),
-              el('button', { className: 'btn btn-ghost btn-small', type: 'button', text: 'Relatórios', onClick: () => setView('reports') }),
-            ]),
-          ]),
+      dashSection('Vendas e produtos', [
+        el('div', { className: 'dash-grid' }, [
+          dashCard('Produtos mais vendidos', model.topProdutos.length
+            ? rankingList(model.topProdutos)
+            : dashEmpty('Sem produtos vendidos', 'O ranking aparece quando houver vendas confirmadas.')),
+          dashCard('Vendas por categoria', model.categorias.length
+            ? categoryList(model.categorias)
+            : dashEmpty('Sem categorias vendidas', 'A distribuição aparece quando houver vendas confirmadas.')),
         ]),
       ]),
-      el('section', { className: 'overview-section' }, [
-        el('h3', { text: 'Estado do sistema' }),
-        el('div', { className: 'cards' }, [
-          metric('Ativos no catálogo', catalogo.produtos_ativos ?? dash.produtos_ativos),
-          metric('Sem imagem', catalogo.sem_imagem),
-          metric('Sem preço vigente', catalogo.sem_preco_vigente),
-          metric('Promoções ativas', catalogo.promocoes_ativas ?? dash.promocoes_ativas),
+      dashSection('Insights e desempenho', [
+        el('div', { className: 'dash-grid' }, [
+          dashCard('Insights', model.insights.length
+            ? el('ul', { className: 'dash-insights' }, model.insights.map((text) => el('li', { text })))
+            : el('p', { className: 'muted dash-note', text: DASHBOARD_EMPTY_INSIGHTS })),
+          dashCard('Desempenho de produtos', performanceList(model)),
         ]),
       ]),
-    );
+    ];
+    keepDashboardFocus(() => views.overview.replaceChildren(dashboardToolbarNode(), ...sections));
+    views.overview.setAttribute('aria-busy', String(state.dashboardLoading));
+  }
+
+  // Toolbar de período: nó próprio, trocado no lugar (não remonta os cards a cada clique).
+  function renderDashboardToolbar() {
+    const current = views.overview.querySelector(':scope > .dash-toolbar');
+    const next = dashboardToolbarNode();
+    if (current) current.replaceWith(next);
+    else views.overview.prepend(next);
+    views.overview.setAttribute('aria-busy', String(state.dashboardLoading));
+  }
+
+  function dashboardToolbarNode() {
+    const selected = state.dashboardPeriod;
+    const options = [...DASHBOARD_PERIODS, { id: DASHBOARD_CUSTOM_ID, label: 'Personalizado' }];
+    const periodo = state.dashboard?.range ? formatPeriodLabel(state.dashboard.range) : '';
+    let status = null;
+    if (state.dashboardLoading) status = el('span', { className: 'dash-status', role: 'status', text: 'Atualizando...' });
+    else if (state.dashboardError) status = el('span', { className: 'dash-status is-error', role: 'alert', text: 'Não foi possível atualizar o período. Selecione o período novamente para tentar outra vez.' });
+    return el('div', { className: 'dash-toolbar' }, [
+      el('div', { className: 'dash-toolbar-main' }, [
+        el('div', { className: 'period-filters', role: 'group', 'aria-label': 'Período do dashboard' }, options.map((option) => el('button', {
+          className: `chip${selected === option.id ? ' is-active' : ''}`,
+          type: 'button',
+          'aria-pressed': selected === option.id ? 'true' : 'false',
+          'data-focus-key': `period:${option.id}`,
+          text: option.label,
+          onClick: () => selectDashboardPeriod(option.id),
+        }))),
+        dashboardCustomForm(selected === DASHBOARD_CUSTOM_ID),
+      ]),
+      el('div', { className: 'dash-toolbar-meta' }, [
+        el('p', { className: 'dash-period', text: periodo ? `Período: ${periodo}` : '' }),
+        status,
+      ]),
+    ]);
+  }
+
+  // Campos compactos do período personalizado. A consulta só roda em "Aplicar" (sem request a cada tecla).
+  // Renderizado sempre (ativo ou não) para reservar a altura da linha no desktop/notebook e evitar
+  // o "pulo" vertical do restante do dashboard ao alternar entre os períodos. Ver .dash-period-custom.is-inactive.
+  function dashboardCustomForm(active) {
+    const { inicio, fim } = state.dashboardCustom;
+    const erro = active ? state.dashboardCustomError : null;
+    const onDate = (field) => (event) => { state.dashboardCustom[field] = event.target.value; };
+    return el('form', {
+      className: `dash-period-custom${active ? '' : ' is-inactive'}`,
+      novalidate: true,
+      'aria-label': 'Período personalizado',
+      'aria-hidden': active ? null : 'true',
+      inert: active ? null : true,
+      onSubmit: (event) => { event.preventDefault(); if (active) applyCustomDashboardPeriod(); },
+    }, [
+      el('label', { className: 'field' }, [
+        el('span', { text: 'Data inicial' }),
+        el('input', { type: 'date', name: 'inicio', value: inicio, disabled: !active, tabindex: active ? null : '-1', 'data-focus-key': 'custom:inicio', 'aria-invalid': erro ? 'true' : null, onInput: onDate('inicio'), onChange: onDate('inicio') }),
+      ]),
+      el('label', { className: 'field' }, [
+        el('span', { text: 'Data final' }),
+        el('input', { type: 'date', name: 'fim', value: fim, disabled: !active, tabindex: active ? null : '-1', 'data-focus-key': 'custom:fim', 'aria-invalid': erro ? 'true' : null, onInput: onDate('fim'), onChange: onDate('fim') }),
+      ]),
+      el('button', { type: 'submit', className: 'btn btn-primary btn-small', text: 'Aplicar', disabled: !active, tabindex: active ? null : '-1', 'data-focus-key': 'custom:apply' }),
+      erro ? el('p', { className: 'dash-error', role: 'alert', text: erro }) : null,
+    ]);
+  }
+
+  function dashSection(title, children) {
+    return el('section', { className: 'dash-section' }, [el('h3', { text: title }), ...children]);
+  }
+
+  function dashCard(title, body, note = null) {
+    return el('article', { className: 'card dash-card' }, [
+      el('div', { className: 'dash-card-head' }, [
+        el('h4', { text: title }),
+        note ? el('span', { className: 'muted dash-note', text: note }) : null,
+      ]),
+      body,
+    ]);
+  }
+
+  function kpiCard(label, value, delta, kind) {
+    return el('article', { className: 'card dash-kpi' }, [
+      el('span', { text: label }),
+      el('strong', { text: value }),
+      el('small', {
+        className: `dash-delta is-${delta.base ? delta.status : 'none'}`,
+        text: formatDeltaText(delta, kind),
+      }),
+    ]);
+  }
+
+  function dashEmpty(title, description) {
+    return el('div', { className: 'dash-empty' }, [
+      svgIcon('M4 19h16M7 16V9m5 7V5m5 11v-4'),
+      el('strong', { text: title }),
+      el('span', { text: description }),
+    ]);
+  }
+
+  // Eixo X com rótulos espaçados (no máximo ~7) para não sobrepor em períodos longos.
+  function xAxis(serie) {
+    const step = Math.max(1, Math.ceil(serie.length / 7));
+    return el('div', { className: 'dash-xaxis', 'aria-hidden': 'true' }, serie.map((row, index) => el('span', {
+      text: index % step === 0 ? formatDayKey(row.dia) : '',
+    })));
+  }
+
+  function chartFrame(max, axisFormat, plot, serie) {
+    return el('div', { className: 'dash-chart' }, [
+      el('div', { className: 'dash-yaxis', 'aria-hidden': 'true' }, [
+        el('span', { text: axisFormat(max) }),
+        el('span', { text: axisFormat(max / 2) }),
+        el('span', { text: axisFormat(0) }),
+      ]),
+      el('div', { className: 'dash-plot-wrap' }, [plot, xAxis(serie)]),
+    ]);
+  }
+
+  // Área/linha em SVG (escala 0-100 esticada) + pontos e colunas transparentes com tooltip nativo.
+  function revenueChart(serie) {
+    const max = niceMax(Math.max(0, ...serie.map((row) => row.faturamento_centavos)));
+    const n = serie.length;
+    const points = serie.map((row, index) => ({
+      x: ((index + 0.5) / n) * 100,
+      y: 100 - (max ? (row.faturamento_centavos / max) * 100 : 0),
+    }));
+    const line = points.map((p, index) => `${index ? 'L' : 'M'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+    const area = `${line} L${points[n - 1].x.toFixed(2)},100 L${points[0].x.toFixed(2)},100 Z`;
+    const svg = svgEl('svg', { class: 'dash-line', viewBox: '0 0 100 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' }, [
+      svgEl('path', { class: 'dash-area', d: area }),
+      svgEl('path', { class: 'dash-stroke', d: line }),
+    ]);
+    const dots = serie.map((row, index) => (row.faturamento_centavos > 0
+      ? el('span', { className: 'dash-dot', style: `left:${points[index].x}%;bottom:${100 - points[index].y}%` })
+      : null));
+    const hits = serie.map((row) => el('div', {
+      className: 'dash-col',
+      title: `${formatDayKey(row.dia)}: ${formatBrl(row.faturamento_centavos)} (${row.confirmadas} confirmada(s))`,
+    }));
+    const plot = el('div', { className: 'dash-plot' }, [svg, ...dots, el('div', { className: 'dash-cols' }, hits)]);
+    return chartFrame(max, formatAxisBrl, plot, serie);
+  }
+
+  function orderBars(serie) {
+    const max = niceMax(Math.max(0, ...serie.map((row) => row.pedidos)));
+    const cols = serie.map((row) => el('div', {
+      className: 'dash-col',
+      title: `${formatDayKey(row.dia)}: ${row.pedidos} pedido(s)`,
+    }, [el('span', { className: 'dash-col-fill', style: `height:${max ? (row.pedidos / max) * 100 : 0}%` })]));
+    const plot = el('div', { className: 'dash-plot' }, [el('div', { className: 'dash-cols' }, cols)]);
+    return chartFrame(max, formatAxisCount, plot, serie);
+  }
+
+  function rankingList(items) {
+    const maxQty = Math.max(1, ...items.map((item) => item.quantidade));
+    return el('ol', { className: 'dash-rank' }, items.map((item, index) => el('li', {}, [
+      el('span', { className: 'dash-rank-pos', text: String(index + 1), 'aria-hidden': 'true' }),
+      el('div', { className: 'dash-rank-main' }, [
+        el('strong', { text: item.nome_produto }),
+        el('span', { className: 'muted', text: `${item.quantidade} un. · ${formatBrl(item.receita_centavos)} · ${formatPercent(item.participacao)} do faturamento` }),
+        el('span', { className: 'dash-bar-track', 'aria-hidden': 'true' }, [
+          el('span', { className: 'dash-bar-fill', style: `width:${(item.quantidade / maxQty) * 100}%` }),
+        ]),
+      ]),
+    ])));
+  }
+
+  function categoryList(items) {
+    return el('ul', { className: 'dash-rank' }, items.map((item) => el('li', {}, [
+      el('span', { className: 'dash-rank-pos dash-rank-pos--muted', text: '•', 'aria-hidden': 'true' }),
+      el('div', { className: 'dash-rank-main' }, [
+        el('strong', { text: item.nome }),
+        el('span', { className: 'muted', text: `${formatBrl(item.receita_centavos)} · ${formatPercent(item.participacao)} do faturamento · ${item.quantidade} un.` }),
+        el('span', { className: 'dash-bar-track', 'aria-hidden': 'true' }, [
+          el('span', { className: 'dash-bar-fill', style: `width:${Math.min(100, item.participacao || 0)}%` }),
+        ]),
+      ]),
+    ])));
+  }
+
+  function performanceList(model) {
+    if (!model.temFaturamento) {
+      return dashEmpty('Sem vendas confirmadas no período', 'O desempenho por produto aparece quando houver vendas confirmadas.');
+    }
+    const maisVendido = model.topProdutos[0];
+    const maiorFat = model.maiorFaturamento;
+    const semVenda = model.semVenda;
+    const rows = [
+      ['Maior faturamento', maiorFat ? `${maiorFat.nome_produto} · ${formatBrl(maiorFat.receita_centavos)}` : '—'],
+      ['Maior quantidade', maisVendido ? `${maisVendido.nome_produto} · ${maisVendido.quantidade} un.` : '—'],
+      ['Ativos sem venda', String(semVenda.length)],
+    ];
+    return el('div', { className: 'dash-performance' }, [
+      el('ul', { className: 'dash-list' }, rows.map(([label, value]) => el('li', {}, [
+        el('span', { className: 'muted', text: label }),
+        el('strong', { text: value }),
+      ]))),
+      semVenda.length
+        ? el('p', { className: 'muted dash-note', text: `Sem venda no período: ${semVenda.slice(0, 5).map((item) => item.nome_produto).join(', ')}${semVenda.length > 5 ? ` e mais ${semVenda.length - 5}` : ''}.` })
+        : null,
+    ]);
   }
 
   function simpleTable(headers, rows) {
@@ -1270,14 +1705,22 @@ import {
     refreshView();
   }
 
+  // Auditoria (e qualquer sub-aba restrita) nunca é selecionada sem acesso, nem por estado persistido.
+  function setReportTab(id) {
+    state.reportTab = resolveAllowedReportTab(id, currentSession());
+    renderReports();
+  }
+
   function renderReports() {
     const reports = state.reports || {};
+    const session = currentSession();
+    state.reportTab = resolveAllowedReportTab(state.reportTab, session);
     const tabs = [
       ['visao', 'Resumo'],
       ['vendas', 'Vendas'],
       ['produtos', 'Produtos'],
       ['auditoria', 'Auditoria'],
-    ];
+    ].filter(([id]) => canAccessReportTab(id, session));
     views.reports.replaceChildren(
       pageHeading('reports'),
       periodFilters(() => refreshView()),
@@ -1288,7 +1731,7 @@ import {
           role: 'tab',
           'aria-selected': state.reportTab === id ? 'true' : 'false',
           text: label,
-          onClick: () => { state.reportTab = id; renderReports(); },
+          onClick: () => setReportTab(id),
         }))),
         el('button', { className: 'btn btn-ghost', type: 'button', text: 'Exportar CSV', onClick: () => {
           window.location.href = `/api/admin/relatorios?formato=csv&secao=${state.reportTab === 'produtos' ? 'produtos' : state.reportTab === 'auditoria' ? 'auditoria' : 'vendas'}&${periodQuery()}`;
@@ -1723,15 +2166,94 @@ import {
     return null;
   }
 
+  // Mensagem de agendamento inválido próxima aos campos, com aria-invalid nos
+  // inputs e foco no primeiro campo com erro ao tentar salvar (ver validateAgendamento).
   function scheduleFields() {
-    return el('div', { className: 'form-grid' }, [
-      field('aplicar', 'Aplicar alteração', el('select', { id: 'aplicar', name: 'aplicar' }, [
-        el('option', { value: 'agora', text: 'Agora' }),
-        el('option', { value: 'agendar', text: 'Agendar' }),
-      ])),
-      field('data_agendada', 'Data', input('data_agendada', { type: 'date' })),
-      field('hora_agendada', 'Hora', input('hora_agendada', { type: 'time' })),
+    const hoje = saoPauloDateTimeParts().data;
+    const aplicarSelect = el('select', { id: 'aplicar', name: 'aplicar' }, [
+      el('option', { value: 'agora', text: 'Agora' }),
+      el('option', { value: 'agendar', text: 'Agendar' }),
     ]);
+    const dataInput = input('data_agendada', { type: 'date', min: hoje });
+    const horaInput = input('hora_agendada', { type: 'time' });
+    const dataField = field('data_agendada', 'Data *', dataInput);
+    const horaField = field('hora_agendada', 'Hora *', horaInput);
+    const erro = el('p', { className: 'form-error', role: 'alert', hidden: true });
+
+    function limparErro() {
+      erro.hidden = true;
+      erro.textContent = '';
+      dataInput.removeAttribute('aria-invalid');
+      horaInput.removeAttribute('aria-invalid');
+    }
+
+    function syncVisibility() {
+      const agendar = aplicarSelect.value === 'agendar';
+      dataField.classList.toggle('hidden', !agendar);
+      horaField.classList.toggle('hidden', !agendar);
+      erro.classList.toggle('hidden', !agendar);
+      if (agendar) {
+        dataInput.setAttribute('required', '');
+        horaInput.setAttribute('required', '');
+      } else {
+        dataInput.removeAttribute('required');
+        horaInput.removeAttribute('required');
+        limparErro();
+      }
+    }
+
+    aplicarSelect.addEventListener('change', syncVisibility);
+    dataInput.addEventListener('input', limparErro);
+    horaInput.addEventListener('input', limparErro);
+    syncVisibility();
+
+    const group = el('div', { className: 'form-grid' }, [
+      field('aplicar', 'Aplicar alteração', aplicarSelect),
+      dataField,
+      horaField,
+      erro,
+    ]);
+    group.dataset.aplicarSelect = '';
+    return group;
+  }
+
+  // Valida o agendamento no cliente (UX): obrigatoriedade e instante estritamente
+  // futuro em America/Sao_Paulo. O backend revalida tudo de novo (parseSaoPauloDateTime);
+  // esta checagem nunca é a autoridade final.
+  function validateAgendamento(form) {
+    if (!form.aplicar || form.aplicar.value !== 'agendar') return null;
+    const erro = form.querySelector('.form-error');
+    const dataValor = String(form.data_agendada?.value || '');
+    const horaValor = String(form.hora_agendada?.value || '');
+    let mensagem = null;
+    let campoFoco = null;
+    if (!dataValor) {
+      mensagem = 'Informe a data do agendamento.';
+      campoFoco = form.data_agendada;
+    } else if (!horaValor) {
+      mensagem = 'Informe a hora do agendamento.';
+      campoFoco = form.hora_agendada;
+    } else if (!isAgendamentoFuturo(dataValor, horaValor)) {
+      mensagem = 'A data e hora do agendamento devem ser estritamente futuras.';
+      campoFoco = form.data_agendada;
+    }
+    if (mensagem) {
+      if (erro) {
+        erro.hidden = false;
+        erro.textContent = mensagem;
+      }
+      if (form.data_agendada) form.data_agendada.setAttribute('aria-invalid', !dataValor || !isAgendamentoFuturo(dataValor, horaValor) ? 'true' : 'false');
+      if (form.hora_agendada) form.hora_agendada.setAttribute('aria-invalid', !horaValor || !isAgendamentoFuturo(dataValor, horaValor) ? 'true' : 'false');
+      campoFoco?.focus();
+      return mensagem;
+    }
+    if (erro) {
+      erro.hidden = true;
+      erro.textContent = '';
+    }
+    form.data_agendada?.removeAttribute('aria-invalid');
+    form.hora_agendada?.removeAttribute('aria-invalid');
+    return null;
   }
 
   function openCategoryForm(category) {
@@ -2004,6 +2526,9 @@ import {
     event.preventDefault();
     formError('');
     const kind = resourceForm.dataset.kind;
+    if ((kind === 'categoria' || kind === 'produto') && validateAgendamento(resourceForm)) {
+      return;
+    }
     const data = new FormData(resourceForm);
     const submitBtn = resourceForm.querySelector('[type="submit"]');
     const originalLabel = submitBtn?.textContent;
@@ -2203,6 +2728,7 @@ import {
           nome_usuario: payload.usuario.nome_usuario,
         };
       }
+      renderAmbiente((await request('/api/admin/sessao').catch(() => null))?.ambiente);
       await showApp();
     } catch (error) {
       loginError.hidden = false;
@@ -2217,6 +2743,18 @@ import {
 
   document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
     button.addEventListener('click', () => setView(button.dataset.view));
+  });
+  // Edição de formulário marca a view como "dirty" (busca e filtros não contam). Ver admin-view-cache.js.
+  Object.entries(views).forEach(([name, node]) => {
+    if (name === 'overview') return;
+    const markDirty = (event) => { if (isFormField(event.target)) viewDirty.mark(name); };
+    node.addEventListener('input', markDirty);
+    node.addEventListener('change', markDirty);
+  });
+  document.querySelectorAll('.nav-group').forEach((group) => {
+    group.querySelector('.nav-group-toggle')?.addEventListener('click', () => {
+      updateNavGroups(group.classList.contains('is-open') ? null : group);
+    });
   });
   menuToggle?.addEventListener('click', () => {
     if (adminSidebar.classList.contains('is-open')) closeDrawer();
@@ -2250,6 +2788,12 @@ import {
     appView.classList.add('hidden');
     loginView.classList.remove('hidden');
     hideDataError();
+    clearAdminData();
+  }
+
+  function renderAmbiente(codigo) {
+    const ambienteEl = document.getElementById('sidebarAmbiente');
+    if (ambienteEl) ambienteEl.textContent = ambienteLabel(codigo);
   }
 
   async function showApp() {
@@ -2278,6 +2822,7 @@ import {
       const sessao = await request('/api/admin/sessao');
       applySessaoPayload(sessao);
       await showApp();
+      renderAmbiente(sessao.ambiente);
     } catch (error) {
       if (decideSessionErrorAction(error.status) === 'login') {
         showLogin();

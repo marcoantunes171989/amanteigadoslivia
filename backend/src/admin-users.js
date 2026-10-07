@@ -136,15 +136,25 @@ export function isRootSuperAdmin(actor) {
   return sessionPerfil(actor) === 'SUPER_ADMIN' && isProtectedUser(actor);
 }
 
+// Grupo Gestão (Publicações, Auditoria, Usuários) é EXCLUSIVO de SUPER_ADMIN.
+// Ponto único de decisão server-side: perfil ausente, vazio, nulo ou desconhecido é negado.
+export function isSuperAdminPerfil(actor) {
+  return sessionPerfil(actor) === 'SUPER_ADMIN';
+}
+
+export function assertSuperAdmin(actor) {
+  if (!isSuperAdminPerfil(actor)) {
+    forbiddenProtected();
+  }
+}
+
 export function canListUsuarios(actor) {
-  const perfil = sessionPerfil(actor);
-  return perfil === 'SUPER_ADMIN' || perfil === 'ADMIN';
+  return isSuperAdminPerfil(actor);
 }
 
 export function creatablePerfisFor(actor) {
   if (isRootSuperAdmin(actor)) return ['SUPER_ADMIN', 'ADMIN', 'GESTOR'];
-  if (sessionPerfil(actor) === 'SUPER_ADMIN') return ['ADMIN', 'GESTOR'];
-  if (sessionPerfil(actor) === 'ADMIN') return ['GESTOR'];
+  if (isSuperAdminPerfil(actor)) return ['ADMIN', 'GESTOR'];
   return [];
 }
 
@@ -225,7 +235,8 @@ export function assertCanManageProtectedUser(session, current, next = {}) {
     return;
   }
 
-  if (actorPerfil === 'GESTOR' || !actorPerfil) {
+  // Gestão de usuários é exclusiva de SUPER_ADMIN (ADMIN e GESTOR não gerenciam ninguém).
+  if (!isSuperAdminPerfil(session)) {
     forbiddenProtected();
   }
 
@@ -233,21 +244,9 @@ export function assertCanManageProtectedUser(session, current, next = {}) {
     return;
   }
 
-  if (actorPerfil === 'SUPER_ADMIN') {
-    if (current.perfil_usuario === 'SUPER_ADMIN' || nextPerfil === 'SUPER_ADMIN') {
-      forbiddenProtected();
-    }
-    return;
+  if (current.perfil_usuario === 'SUPER_ADMIN' || nextPerfil === 'SUPER_ADMIN') {
+    forbiddenProtected();
   }
-
-  if (actorPerfil === 'ADMIN') {
-    if (current.perfil_usuario !== 'GESTOR' || nextPerfil !== 'GESTOR') {
-      forbiddenProtected();
-    }
-    return;
-  }
-
-  forbiddenProtected();
 }
 
 export async function loadActor(queryable, session) {

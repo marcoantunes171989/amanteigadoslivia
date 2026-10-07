@@ -1,3 +1,17 @@
+// Rótulo da segunda linha do cabeçalho da sidebar. Código vem de backend/src/ambiente.js.
+// Código ausente ou desconhecido vira rótulo não produtivo (fail closed).
+export const AMBIENTE_LABELS = Object.freeze({
+  DEV: 'Desenvolvimento',
+  HML: 'Homologação',
+  PROD: 'Produção',
+});
+
+export const AMBIENTE_LABEL_DESCONHECIDO = 'Ambiente não identificado';
+
+export function ambienteLabel(codigo) {
+  return Object.hasOwn(AMBIENTE_LABELS, codigo) ? AMBIENTE_LABELS[codigo] : AMBIENTE_LABEL_DESCONHECIDO;
+}
+
 export function isUnauthorizedStatus(status) {
   return Number(status) === 401;
 }
@@ -29,7 +43,35 @@ export function decideCatalogLoadAction(status) {
 
 export function canAccessUsuarios(session) {
   const perfil = String(session?.perfil || session?.perfil_usuario || '').trim().toUpperCase();
-  return perfil === 'SUPER_ADMIN' || perfil === 'ADMIN';
+  return perfil === 'SUPER_ADMIN';
+}
+
+// Grupo Gestão (Publicações, Auditoria, Usuários): só SUPER_ADMIN confirmado pela sessão real.
+// Sessão ausente, carregando, sem perfil ou perfil desconhecido resultam em acesso negado (fail closed).
+export const GESTAO_VIEWS = Object.freeze(['publications', 'audit', 'users']);
+
+export function canAccessGestao(session) {
+  const perfil = String(session?.perfil || session?.perfil_usuario || '').trim().toUpperCase();
+  return perfil === 'SUPER_ADMIN';
+}
+
+// Mantém a view pedida só se a sessão tiver acesso; caso contrário cai no Dashboard.
+export function resolveAllowedView(view, session) {
+  if (GESTAO_VIEWS.includes(view) && !canAccessGestao(session)) return 'overview';
+  return view;
+}
+
+// Sub-abas de Relatórios restritas ao grupo Gestão. Auditoria é só SUPER_ADMIN (mesmo gate de canAccessGestao).
+export const REPORT_GESTAO_TABS = Object.freeze(['auditoria']);
+
+export function canAccessReportTab(tab, session) {
+  if (REPORT_GESTAO_TABS.includes(tab)) return canAccessGestao(session);
+  return true;
+}
+
+// Sub-aba pedida (ex.: estado persistido) só é mantida se a sessão tiver acesso; senão cai em Resumo.
+export function resolveAllowedReportTab(tab, session) {
+  return canAccessReportTab(tab, session) ? tab : 'visao';
 }
 
 export function creatablePerfisFor(session) {
@@ -37,7 +79,6 @@ export function creatablePerfisFor(session) {
   const protegido = session?.protegido === true;
   if (perfil === 'SUPER_ADMIN' && protegido) return ['SUPER_ADMIN', 'ADMIN', 'GESTOR'];
   if (perfil === 'SUPER_ADMIN') return ['ADMIN', 'GESTOR'];
-  if (perfil === 'ADMIN') return ['GESTOR'];
   return [];
 }
 

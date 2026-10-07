@@ -659,6 +659,62 @@ export async function setProdutoDestaque(queryable, id, destaque) {
   }
 }
 
+// Usado pelo agendamento de alterações de produto: calcula apenas os campos que
+// o admin de fato alterou no modal (comparando com o cadastro no momento em que
+// agendou), para que, na aplicação, campos não agendados sigam o valor vigente
+// no instante da execução em vez de sobrescrever edições manuais intermediárias.
+export function computeProdutoAlteracaoDelta(produtoAtual, dados = {}) {
+  const atual = {
+    nome: produtoAtual?.nome_produto ?? '',
+    descricao: produtoAtual?.descricao_produto || '',
+    id_categoria: String(produtoAtual?.id_categoria ?? ''),
+    ordem: Number(produtoAtual?.ordem_exibicao ?? 0),
+    destaque: Boolean(produtoAtual?.destaque),
+    ativo: Boolean(produtoAtual?.ativo),
+    url_imagem_principal: produtoAtual?.url_imagem_principal || '',
+    preco_normal_centavos: produtoAtual?.preco_normal_centavos ?? null,
+    promocao_ativa: Boolean(produtoAtual?.promocao_ativa),
+    preco_promocional_centavos: produtoAtual?.promocao_ativa ? (produtoAtual?.preco_promocional_centavos ?? null) : null,
+  };
+
+  const delta = {};
+
+  const compareSimple = (key, novoValue, atualValue) => {
+    if (novoValue !== atualValue) delta[key] = dados[key];
+  };
+
+  if (dados.nome !== undefined) compareSimple('nome', String(dados.nome).trim(), atual.nome);
+  if (dados.descricao !== undefined) compareSimple('descricao', String(dados.descricao || '').trim(), atual.descricao);
+  if (dados.id_categoria !== undefined) compareSimple('id_categoria', String(dados.id_categoria), atual.id_categoria);
+  if (dados.ordem !== undefined) compareSimple('ordem', Number(dados.ordem), atual.ordem);
+  if (dados.destaque !== undefined) compareSimple('destaque', parseBoolean(dados.destaque, false), atual.destaque);
+  if (dados.ativo !== undefined) compareSimple('ativo', parseBoolean(dados.ativo, true), atual.ativo);
+  if (dados.url_imagem_principal !== undefined) {
+    compareSimple('url_imagem_principal', String(dados.url_imagem_principal || '').trim(), atual.url_imagem_principal);
+  }
+
+  if (dados.preco_normal !== undefined && String(dados.preco_normal).trim() !== '') {
+    const novoCentavos = parseReaisToCentavos(dados.preco_normal);
+    if (novoCentavos !== atual.preco_normal_centavos) delta.preco_normal = dados.preco_normal;
+  }
+
+  const promoInformada = dados.promocao_ativa !== undefined;
+  const precoPromoInformado = dados.preco_promocional !== undefined && String(dados.preco_promocional).trim() !== '';
+  const novaPromocaoAtiva = promoInformada ? parseBoolean(dados.promocao_ativa, false) : atual.promocao_ativa;
+  const novoPromoCentavos = precoPromoInformado
+    ? parseReaisToCentavos(dados.preco_promocional)
+    : (novaPromocaoAtiva ? atual.preco_promocional_centavos : null);
+
+  if (novaPromocaoAtiva !== atual.promocao_ativa || novoPromoCentavos !== atual.preco_promocional_centavos) {
+    delta.promocao_ativa = novaPromocaoAtiva;
+    delta.preco_promocional = novaPromocaoAtiva
+      ? (precoPromoInformado ? dados.preco_promocional : formatCentavosToReais(atual.preco_promocional_centavos))
+      : '';
+  }
+
+  return delta;
+}
+
 export async function executeAdminAction(pool, payload = {}) {
   const recurso = payload.recurso;
   const acao = payload.acao;

@@ -350,6 +350,33 @@ export function isValidIsoDate(iso) {
     && date.getUTCDate() === day;
 }
 
+const SAO_PAULO_TZ = 'America/Sao_Paulo';
+
+// Data/hora civis de São Paulo, independente do fuso do navegador/servidor.
+// Usado apenas para feedback imediato no formulário; a validação que decide
+// é sempre a do backend (ver backend/src/admin-schedule.js).
+export function saoPauloDateTimeParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SAO_PAULO_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+  return { data: `${parts.year}-${parts.month}-${parts.day}`, hora: `${parts.hour}:${parts.minute}` };
+}
+
+export function isAgendamentoFuturo(data, hora, now = new Date()) {
+  if (!isValidIsoDate(data) || !/^\d{2}:\d{2}$/.test(String(hora || ''))) return false;
+  const atual = saoPauloDateTimeParts(now);
+  if (data > atual.data) return true;
+  if (data < atual.data) return false;
+  return hora > atual.hora;
+}
+
 export function parseBrDateToIso(value) {
   const text = String(value || '').trim();
   if (!text) return null;

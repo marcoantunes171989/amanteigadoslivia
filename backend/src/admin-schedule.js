@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { executeAdminAction } from './admin-catalog.js';
 import { AdminError, mapDatabaseError } from './admin-errors.js';
-
-const SAO_PAULO = 'America/Sao_Paulo';
+import { saoPauloCivilDateTime } from './sao-paulo-time.js';
 
 export function parseSaoPauloDateTime(data, hora, now = new Date()) {
   const dateText = typeof data === 'string' ? data.trim() : '';
@@ -10,29 +9,13 @@ export function parseSaoPauloDateTime(data, hora, now = new Date()) {
   if (!dateText || !timeText) {
     throw new AdminError(400, 'validation_error', 'Informe data e hora do agendamento.');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText) || !/^\d{2}:\d{2}$/.test(timeText)) {
+  // saoPauloCivilDateTime nunca assume um offset fixo (-03:00): recalcula o
+  // deslocamento a partir do relógio de parede real em America/Sao_Paulo e
+  // rejeita datas de calendário inexistentes (ex.: 29/02 em ano não bissexto)
+  // em vez de normalizá-las silenciosamente para outro dia.
+  const vigencia = saoPauloCivilDateTime(dateText, timeText);
+  if (!vigencia) {
     throw new AdminError(400, 'validation_error', 'Data ou hora inválida.');
-  }
-  const iso = `${dateText}T${timeText}:00`;
-  const asUtcGuess = new Date(`${iso}-03:00`);
-  if (Number.isNaN(asUtcGuess.getTime())) {
-    throw new AdminError(400, 'validation_error', 'Data ou hora inválida.');
-  }
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: SAO_PAULO,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
-  const parts = Object.fromEntries(formatter.formatToParts(asUtcGuess).map((part) => [part.type, part.value]));
-  const rebuilt = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
-  const expected = `${dateText}T${timeText}`;
-  let vigencia = asUtcGuess;
-  if (rebuilt !== expected) {
-    vigencia = new Date(asUtcGuess.getTime() + 60 * 60 * 1000);
   }
   if (vigencia.getTime() <= now.getTime()) {
     throw new AdminError(400, 'validation_error', 'A data de vigência não pode estar no passado.');
@@ -158,11 +141,15 @@ export async function processDueScheduledChanges(pool, now = new Date()) {
   const results = [];
   for (const row of due.rows) {
     try {
+      // A trava de idempotência é o próprio UPDATE: WHERE exige mensagem_erro IS NULL,
+      // então apenas a primeira chamada concorrente que alcançar essa linha consegue
+      // marcá-la como "APLICANDO"; qualquer outra (retry, instância duplicada,
+      // segunda requisição) não encontra a linha mais e não reaplica a alteração.
       const claimed = await pool.query(
         `-- op:claim_alteracao
           UPDATE app.tab_alteracao_agendada
           SET mensagem_erro = 'APLICANDO'
-          WHERE id_alteracao_agendada = $1 AND status_alteracao = 'AGENDADA'
+          WHERE id_alteracao_agendada = $1 AND status_alteracao = 'AGENDADA' AND mensagem_erro IS NULL
           RETURNING id_alteracao_agendada, status_alteracao, dados_alteracao, id_registro, tipo_entidade
         `,
         [row.id_alteracao_agendada],

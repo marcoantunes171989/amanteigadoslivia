@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { afterEach, test } from 'node:test';
 import { AUDIT_PAGE_LIMIT, parseAuditPagination } from './admin-audit.js';
 import { COOKIE_NAME, signSession } from './admin-auth.js';
-import { handleAdminAuditoria, handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
+import { handleAdminAuditoria, handleAdminCatalog, handleAdminLogin, handleAdminLogout, handleAdminPublicacoes, handleAdminRelatorios, handleAdminSessao, handleAdminUsuarios, handlePublicCatalog, handlePublicVenda } from './admin-http.js';
 import { hashPassword } from './password.js';
 import { AdminError, isDatabaseUnavailable, mapDatabaseError, safeDatabaseErrorLog, toClientError } from './admin-errors.js';
 import { POOL_LIMITS } from '../../api/catalogo.js';
@@ -36,6 +37,23 @@ function mockResponse() {
       return this;
     },
   };
+}
+
+function superAdminToken() {
+  return signSession(SECRET, {
+    id_usuario_admin: '22222222-2222-4222-8222-222222222222',
+    email: 'super@example.com',
+    perfil: 'SUPER_ADMIN',
+    protegido: false,
+  });
+}
+
+// Sessão assinada com o segredo real, mas com perfil arbitrário (inclusive ausente/nulo).
+// signSession() troca perfil falsy por ADMIN; aqui o payload é montado literalmente.
+function forgedToken(claims) {
+  const payload = Buffer.from(JSON.stringify({ v: 2, exp: Date.now() + 60_000, ...claims }), 'utf8').toString('base64url');
+  const signature = crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
 }
 
 function createUserPool(user) {
@@ -400,6 +418,34 @@ test('GET /api/admin/sessao returns 401 without a cookie', async () => {
   assert.equal(response.body.error, 'unauthorized');
 });
 
+test('GET /api/admin/sessao entrega ambiente resolvido por APP_AMBIENTE ao frontend', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const anterior = process.env.APP_AMBIENTE;
+  const casos = [
+    ['development', 'DEV'],
+    ['homologacao', 'HML'],
+    ['production', 'PROD'],
+    ['valor-invalido', 'UNKNOWN'],
+    [undefined, 'UNKNOWN'],
+  ];
+  try {
+    for (const [valor, esperado] of casos) {
+      if (valor === undefined) delete process.env.APP_AMBIENTE;
+      else process.env.APP_AMBIENTE = valor;
+      const response = mockResponse();
+      await handleAdminSessao({
+        method: 'GET',
+        headers: { cookie: `${COOKIE_NAME}=${superAdminToken()}` },
+      }, response);
+      assert.equal(response.statusCode, 200, String(valor));
+      assert.equal(response.body.ambiente, esperado, String(valor));
+    }
+  } finally {
+    if (anterior === undefined) delete process.env.APP_AMBIENTE;
+    else process.env.APP_AMBIENTE = anterior;
+  }
+});
+
 test('auditoria pagination defaults to 10 and ignores larger limite', () => {
   assert.deepEqual(parseAuditPagination({}), { pagina: 1, limite: AUDIT_PAGE_LIMIT });
   assert.deepEqual(parseAuditPagination({ limite: '50', pagina: '2' }), { pagina: 2, limite: 10 });
@@ -408,7 +454,7 @@ test('auditoria pagination defaults to 10 and ignores larger limite', () => {
 
 test('GET /api/admin/auditoria paginates with count, offset and preserved filters', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
-  const token = signSession(SECRET);
+  const token = superAdminToken();
   const calls = [];
   const rows = Array.from({ length: 10 }, (_, index) => ({
     id_auditoria: `evt-${index + 11}`,
@@ -454,7 +500,7 @@ test('GET /api/admin/auditoria paginates with count, offset and preserved filter
 
 test('auditoria CSV is not limited to the current page', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
-  const token = signSession(SECRET);
+  const token = superAdminToken();
   const csvRows = Array.from({ length: 47 }, (_, index) => ({
     data_evento: '2026-01-01',
     email_usuario: 'a@b.com',
@@ -589,4 +635,170 @@ test('GET /api/health-db em erro devolve só {ok:false, database:unavailable} co
   await healthDbHandler({ method: 'GET' }, response);
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.body, { ok: false, database: 'unavailable' });
+});
+
+// ---- Gestão (Publicações, Auditoria, Usuários) exclusiva de SUPER_ADMIN ----
+// Perfis sem valor real no token (vazio/nulo/ausente) viram ADMIN em readSession; continuam negados.
+
+const PERFIS_NAO_SUPER = [
+  { label: 'ADMIN', token: () => forgedToken({ id_usuario_admin: 'a1', email: 'admin@example.com', perfil: 'ADMIN' }) },
+  { label: 'GESTOR', token: () => forgedToken({ id_usuario_admin: 'g1', email: 'gestor@example.com', perfil: 'GESTOR' }) },
+  { label: 'desconhecido', token: () => forgedToken({ id_usuario_admin: 'x1', perfil: 'ROOT' }) },
+  { label: 'vazio', token: () => forgedToken({ id_usuario_admin: 'x2', perfil: '' }) },
+  { label: 'null', token: () => forgedToken({ id_usuario_admin: 'x3', perfil: null }) },
+  { label: 'ausente', token: () => forgedToken({ id_usuario_admin: 'x4' }) },
+];
+
+const USUARIO_ALVO = '77777777-7777-4777-8777-777777777777';
+
+const GESTAO_CASOS = [
+  { label: 'publicacoes GET', handler: handleAdminPublicacoes, method: 'GET', url: '/api/admin/publicacoes' },
+  { label: 'publicacoes validar', handler: handleAdminPublicacoes, method: 'POST', url: '/api/admin/publicacoes', body: { acao: 'validar', git_sha: 'sha-hml-exato' } },
+  { label: 'publicacoes validar persistir', handler: handleAdminPublicacoes, method: 'POST', url: '/api/admin/publicacoes', body: { acao: 'validar', persistir: true } },
+  { label: 'publicacoes agendar', handler: handleAdminPublicacoes, method: 'POST', url: '/api/admin/publicacoes', body: { acao: 'agendar', tipo_publicacao: 'CATALOGO' } },
+  { label: 'publicacoes publicar', handler: handleAdminPublicacoes, method: 'POST', url: '/api/admin/publicacoes', body: { acao: 'publicar', git_sha: 'sha-hml-exato', confirmacao: 'PUBLICAR PRODUCAO' } },
+  { label: 'auditoria JSON', handler: handleAdminAuditoria, method: 'GET', url: '/api/admin/auditoria' },
+  { label: 'auditoria CSV', handler: handleAdminAuditoria, method: 'GET', url: '/api/admin/auditoria?formato=csv' },
+  { label: 'relatorios secao=auditoria JSON', handler: handleAdminRelatorios, method: 'GET', url: '/api/admin/relatorios?secao=auditoria' },
+  { label: 'relatorios secao=auditoria CSV', handler: handleAdminRelatorios, method: 'GET', url: '/api/admin/relatorios?formato=csv&secao=auditoria' },
+  { label: 'usuarios GET', handler: handleAdminUsuarios, method: 'GET', url: '/api/admin/usuarios' },
+  { label: 'usuarios criar', handler: handleAdminUsuarios, method: 'POST', url: '/api/admin/usuarios', body: { acao: 'criar', dados: { nome: 'Novo', email: 'novo@example.com', usuario: 'novo.gestor', senha: '1234', perfil: 'GESTOR' } } },
+  { label: 'usuarios editar', handler: handleAdminUsuarios, method: 'POST', url: '/api/admin/usuarios', body: { acao: 'editar', id: USUARIO_ALVO, dados: { nome: 'G', email: 'g@example.com', perfil: 'GESTOR', ativo: false } } },
+  { label: 'usuarios redefinir_senha', handler: handleAdminUsuarios, method: 'POST', url: '/api/admin/usuarios', body: { acao: 'redefinir_senha', id: USUARIO_ALVO, senha: '0123' } },
+  { label: 'usuarios excluir', handler: handleAdminUsuarios, method: 'POST', url: '/api/admin/usuarios', body: { acao: 'excluir', id: USUARIO_ALVO } },
+];
+
+function strictPool() {
+  const calls = [];
+  return {
+    calls,
+    async query(sql) {
+      calls.push(String(sql));
+      throw new Error('nao deve consultar o banco');
+    },
+  };
+}
+
+test('Gestão negada a todo perfil que não seja SUPER_ADMIN, antes de qualquer efeito colateral', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL = '1';
+  try {
+    for (const perfil of PERFIS_NAO_SUPER) {
+      for (const caso of GESTAO_CASOS) {
+        const label = `${caso.label} / ${perfil.label}`;
+        const pool = strictPool();
+        let vercelCalls = 0;
+        const response = mockResponse();
+        await caso.handler({
+          method: caso.method,
+          url: caso.url,
+          headers: { cookie: `${COOKIE_NAME}=${perfil.token()}` },
+          body: caso.body,
+        }, response, {
+          getPool: () => pool,
+          prodDatabaseReady: true,
+          prodEnvReady: true,
+          vercelReleaseClient: async () => { vercelCalls += 1; return { state: 'READY' }; },
+          verifyPostRelease: async () => ({ ok: true }),
+        });
+        assert.equal(response.statusCode, 403, label);
+        assert.equal(response.body.error, 'forbidden', label);
+        assert.equal(vercelCalls, 0, `${label}: Vercel não pode ser chamada`);
+        assert.deepEqual(pool.calls, [], `${label}: nenhuma consulta ao banco`);
+        assert.equal(response.body.eventos ?? response.body.usuarios ?? response.body.publicacoes ?? response.body.auditoria, undefined, `${label}: sem dados parciais`);
+      }
+    }
+  } finally {
+    delete process.env.PROMOCAO_PROD_HABILITADA;
+    delete process.env.GIT_SHA;
+  }
+});
+
+test('sessão ausente em Gestão continua 401 (comportamento de autenticação existente)', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  for (const caso of GESTAO_CASOS) {
+    const response = mockResponse();
+    await caso.handler({ method: caso.method, url: caso.url, headers: {}, body: caso.body }, response, {
+      getPool: () => strictPool(),
+    });
+    assert.equal(response.statusCode, 401, caso.label);
+  }
+});
+
+test('SUPER_ADMIN alcança leitura de usuários, criação de GESTOR e auditoria (caminho autorizado mockado)', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const cookie = { cookie: `${COOKIE_NAME}=${superAdminToken()}` };
+  const superRow = {
+    id_usuario_admin: '22222222-2222-4222-8222-222222222222',
+    nome_usuario: 'Super',
+    email_usuario: 'super@example.com',
+    login_usuario: 'super',
+    perfil_usuario: 'SUPER_ADMIN',
+    ativo: true,
+    protegido: false,
+  };
+  const pool = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('op:get_usuario_id')) return { rows: [superRow] };
+      if (text.includes('op:insert_usuario')) {
+        return { rows: [{ ...superRow, id_usuario_admin: 'novo-1', nome_usuario: 'Novo', email_usuario: 'novo@example.com', login_usuario: 'novo.gestor', perfil_usuario: 'GESTOR' }] };
+      }
+      if (text.includes('op:count_auditoria')) return { rows: [{ total: 0 }] };
+      return { rows: [] };
+    },
+  };
+  const listagem = mockResponse();
+  await handleAdminUsuarios({ method: 'GET', url: '/api/admin/usuarios', headers: cookie }, listagem, { getPool: () => pool });
+  assert.equal(listagem.statusCode, 200);
+  assert.deepEqual(listagem.body.usuarios, []);
+
+  const criacao = mockResponse();
+  await handleAdminUsuarios({
+    method: 'POST',
+    url: '/api/admin/usuarios',
+    headers: cookie,
+    body: { acao: 'criar', dados: { nome: 'Novo', email: 'novo@example.com', usuario: 'novo.gestor', senha: '0123', perfil: 'GESTOR' } },
+  }, criacao, { getPool: () => pool });
+  assert.equal(criacao.statusCode, 200);
+  assert.equal(criacao.body.usuario.perfil_usuario, 'GESTOR');
+
+  const auditoria = mockResponse();
+  await handleAdminAuditoria({ method: 'GET', url: '/api/admin/auditoria', headers: cookie }, auditoria, { getPool: () => pool });
+  assert.equal(auditoria.statusCode, 200);
+  assert.deepEqual(auditoria.body.eventos, []);
+});
+
+test('relatorios: ADMIN não recebe auditoria e a tabela não é consultada; SUPER_ADMIN recebe', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  const seen = [];
+  const pool = {
+    async query(sql) {
+      seen.push(String(sql));
+      return { rows: [] };
+    },
+  };
+
+  const adminResponse = mockResponse();
+  await handleAdminRelatorios({
+    method: 'GET',
+    url: '/api/admin/relatorios',
+    headers: { cookie: `${COOKIE_NAME}=${forgedToken({ id_usuario_admin: 'a1', perfil: 'ADMIN' })}` },
+  }, adminResponse, { getPool: () => pool });
+  assert.equal(adminResponse.statusCode, 200);
+  assert.equal('auditoria' in adminResponse.body, false);
+  assert.equal(seen.some((sql) => sql.includes('tab_auditoria_admin')), false);
+
+  seen.length = 0;
+  const superResponse = mockResponse();
+  await handleAdminRelatorios({
+    method: 'GET',
+    url: '/api/admin/relatorios',
+    headers: { cookie: `${COOKIE_NAME}=${superAdminToken()}` },
+  }, superResponse, { getPool: () => pool });
+  assert.equal(superResponse.statusCode, 200);
+  assert.deepEqual(superResponse.body.auditoria, []);
+  assert.equal(seen.some((sql) => sql.includes('tab_auditoria_admin')), true);
 });

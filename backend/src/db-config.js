@@ -21,6 +21,27 @@ export function isSupabasePoolerHost(host) {
   return clean(host).toLowerCase().endsWith(SUPABASE_POOLER_SUFFIX);
 }
 
+// Igualdade exata (nao por sufixo/substring): localhost.example.com e 127.0.0.1.example.com continuam remotos.
+export const LOCAL_DATABASE_HOSTS = Object.freeze(['localhost', '127.0.0.1']);
+
+export function isLocalDatabaseHost(host) {
+  return LOCAL_DATABASE_HOSTS.includes(clean(host).toLowerCase());
+}
+
+// Postgres local (sem SSL) so para localhost/127.0.0.1; demais hosts mantem o SSL atual.
+function resolveSsl(host) {
+  return isLocalDatabaseHost(host) ? false : { rejectUnauthorized: false };
+}
+
+function hostnameOfConnectionString(connectionString) {
+  try {
+    return new URL(connectionString).hostname;
+  } catch {
+    // URL invalida: nao presume local; SSL permanece habilitado.
+    return '';
+  }
+}
+
 export function resolveApplicationName(env = process.env) {
   return clean(env.DATABASE_APPLICATION_NAME) || DEFAULT_APPLICATION_NAME;
 }
@@ -61,7 +82,7 @@ export function resolvePoolConfig(env = process.env) {
         database: env.DATABASE_NAME,
         user: env.DATABASE_USER,
         password: env.DATABASE_PASSWORD,
-        ssl: { rejectUnauthorized: false },
+        ssl: resolveSsl(host),
         application_name: applicationName,
       },
     };
@@ -75,7 +96,7 @@ export function resolvePoolConfig(env = process.env) {
     mode: 'url',
     options: {
       connectionString: env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: resolveSsl(hostnameOfConnectionString(connectionString)),
       application_name: applicationName,
     },
   };

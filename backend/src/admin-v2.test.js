@@ -474,6 +474,7 @@ async function postPublicacao(claims, body, extra = {}) {
   }, response, {
     getPool: () => pool,
     vercelReleaseClient: extra.vercelReleaseClient || (async () => { vercelCalls += 1; }),
+    verifyPostRelease: extra.verifyPostRelease,
     prodDatabaseReady: extra.prodDatabaseReady,
     prodEnvReady: extra.prodEnvReady,
   });
@@ -481,25 +482,127 @@ async function postPublicacao(claims, body, extra = {}) {
 }
 
 test('publicacao is blocked without production enabled', async () => {
+  // Ator: ROOT SUPER_ADMIN protegido, que passa pelo gate de perfil e pelos demais pré-requisitos,
+  // de modo que a única falha possível é o gate PROMOCAO_PROD_HABILITADA desabilitado.
   process.env.ADMIN_SESSION_SECRET = SECRET;
   process.env.PROMOCAO_PROD_HABILITADA = 'false';
-  const { response } = await postPublicacao({ perfil: 'ADMIN' }, { acao: 'publicar', tipo_publicacao: 'CATALOGO' });
-  assert.equal(response.statusCode, 403);
-  assert.equal(response.body.error, 'forbidden');
-});
-
-test('ADMIN e GESTOR nao promovem producao', async () => {
-  process.env.ADMIN_SESSION_SECRET = SECRET;
-  for (const perfil of ['ADMIN', 'GESTOR']) {
-    const { response, vercelCalls } = await postPublicacao({ perfil }, {
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL = '1';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
+  try {
+    const pool = publishPool();
+    let vercelCalls = 0;
+    const { response } = await postPublicacao(ROOT, {
       acao: 'publicar',
+      git_sha: 'sha-hml-exato',
       tipo_publicacao: 'CATALOGO',
       confirmacao: 'PUBLICAR PRODUCAO',
+    }, {
+      pool,
+      prodDatabaseReady: true,
+      prodEnvReady: true,
+      vercelReleaseClient: async () => { vercelCalls += 1; },
     });
-    assert.equal(response.statusCode, 403);
+    // Falha específica do gate de produção: 409 production_not_enabled, não 403 de perfil.
+    assert.notEqual(response.statusCode, 403);
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.body.error, 'production_not_enabled');
     assert.equal(response.body.status, 'BLOQUEADA');
+    const checks = response.body.checks || [];
+    assert.equal(checks.find((item) => item.id === 'perfil')?.status, 'PASS');
+    assert.equal(checks.find((item) => item.id === 'feature_flag')?.status, 'BLOCK');
+    // Demais pré-requisitos passam: nenhum outro check bloqueia.
+    assert.deepEqual(checks.filter((item) => item.status === 'BLOCK').map((item) => item.id), ['feature_flag']);
+    // Nada publicado: Vercel não chamada e a tentativa fica registrada como BLOQUEADA.
     assert.equal(vercelCalls, 0);
+    assert.equal(pool.inserted.some((row) => row.status_publicacao === 'PUBLICADA'), false);
+    assert.equal(pool.inserted[0]?.status_publicacao, 'BLOQUEADA');
+  } finally {
+    delete process.env.PROMOCAO_PROD_HABILITADA;
+    delete process.env.GIT_SHA;
+    delete process.env.VERCEL;
+    delete process.env.VERCEL_RELEASE_TOKEN;
+    delete process.env.VERCEL_TEAM_ID;
+    delete process.env.VERCEL_PROD_PROJECT_ID;
+    delete process.env.VERCEL_RELEASE_GIT_OWNER;
+    delete process.env.VERCEL_RELEASE_GIT_REPO;
+    delete process.env.VERCEL_PROD_DOMAIN;
   }
+});
+
+test('ADMIN e GESTOR nao promovem producao e nao gravam nada (negado antes de qualquer efeito)', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
+  process.env.VERCEL = '1';
+  for (const perfil of ['ADMIN', 'GESTOR']) {
+    const pool = publishPool();
+    const { response, vercelCalls } = await postPublicacao({ perfil }, {
+      acao: 'publicar',
+      git_sha: 'sha-hml-exato',
+      tipo_publicacao: 'CATALOGO',
+      confirmacao: 'PUBLICAR PRODUCAO',
+    }, { pool, prodDatabaseReady: true, prodEnvReady: true });
+    assert.equal(response.statusCode, 403, perfil);
+    assert.equal(response.body.error, 'forbidden', perfil);
+    assert.equal(response.body.status, undefined, perfil);
+    assert.equal(vercelCalls, 0, perfil);
+    assert.deepEqual(pool.inserted, [], `${perfil}: nenhuma linha de publicação`);
+    assert.deepEqual(pool.audits, [], `${perfil}: nenhuma auditoria gravada`);
+  }
+  delete process.env.PROMOCAO_PROD_HABILITADA;
+  delete process.env.GIT_SHA;
+});
+
+test('SUPER_ADMIN protegido publica pelo caminho autorizado (mocks) e o gate server-side passa', async () => {
+  process.env.ADMIN_SESSION_SECRET = SECRET;
+  process.env.PROMOCAO_PROD_HABILITADA = 'true';
+  process.env.GIT_SHA = 'sha-hml-exato';
+  process.env.VERCEL_RELEASE_TOKEN = 'token';
+  process.env.VERCEL_TEAM_ID = 'team';
+  process.env.VERCEL_PROD_PROJECT_ID = 'proj';
+  process.env.VERCEL_RELEASE_GIT_OWNER = 'owner';
+  process.env.VERCEL_RELEASE_GIT_REPO = 'repo';
+  process.env.VERCEL_PROD_DOMAIN = 'loja.amanteigadoslivia.com.br';
+  process.env.VERCEL = '1';
+  const pool = publishPool();
+  let vercelCalls = 0;
+  let verifyCalls = 0;
+  const { response } = await postPublicacao(ROOT, {
+    acao: 'publicar',
+    git_sha: 'sha-hml-exato',
+    confirmacao: 'PUBLICAR PRODUCAO',
+  }, {
+    pool,
+    prodDatabaseReady: true,
+    prodEnvReady: true,
+    vercelReleaseClient: async () => {
+      vercelCalls += 1;
+      return { ok: true, state: 'READY', deploymentId: 'dpl_mock', projectId: 'proj', attempts: 1 };
+    },
+    verifyPostRelease: async () => {
+      verifyCalls += 1;
+      return { ok: true, state: 'READY' };
+    },
+  });
+  assert.equal(vercelCalls, 1);
+  assert.equal(verifyCalls, 1);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.status, 'PUBLICADA');
+  assert.equal(pool.audits.some((item) => item.acao === 'TENTAR_PUBLICACAO'), true);
+  delete process.env.PROMOCAO_PROD_HABILITADA;
+  delete process.env.GIT_SHA;
 });
 
 test('SUPER_ADMIN nao protegido nao promove e ROOT chega ao gate bloqueado', async () => {

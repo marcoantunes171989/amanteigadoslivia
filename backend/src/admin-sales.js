@@ -4,6 +4,14 @@ import { AdminError, mapDatabaseError } from './admin-errors.js';
 import { withTransaction } from './db-tx.js';
 import { CHECKOUT_MESSAGES, CHECKOUT_NAME_MIN, normalizeCustomerName } from '../../ui-core.js';
 import { normalizeWhatsAppPhone } from './whatsapp.js';
+import {
+  endExclusiveOfBoundary,
+  saoPauloDayKey,
+  saoPauloDayStart,
+  startOfBoundary,
+} from './sao-paulo-time.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function toCentavos(value) {
   if (value === null || value === undefined) return null;
@@ -188,44 +196,37 @@ export async function captureVenda(pool, payload = {}) {
   }
 }
 
-function periodBounds(query = {}, now = new Date()) {
+// Intervalo [start, end) em instantes. Datas civis (AAAA-MM-DD) são dias de São Paulo;
+// timestamps ISO completos preservam o instante informado. Sem data_fim, o fim é o próprio "agora".
+export function periodBounds(query = {}, now = new Date()) {
   const preset = String(query.periodo || query.range || '30d').toLowerCase();
-  const end = query.data_fim ? new Date(query.data_fim) : new Date(now.getTime() + 5000);
+  const reference = query.data_fim ? startOfBoundary(query.data_fim) : now;
+  const end = query.data_fim ? endExclusiveOfBoundary(query.data_fim) : now;
   let start;
   if (query.data_inicio) {
-    start = new Date(query.data_inicio);
+    start = startOfBoundary(query.data_inicio);
   } else if (preset === 'hoje' || preset === 'today') {
-    start = new Date(end);
-    start.setHours(0, 0, 0, 0);
+    start = saoPauloDayStart(saoPauloDayKey(reference));
   } else if (preset === '7d' || preset === '7dias') {
-    start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    start = new Date(reference.getTime() - 7 * DAY_MS);
   } else if (preset === 'mes' || preset === 'month') {
-    start = new Date(end.getFullYear(), end.getMonth(), 1);
+    start = saoPauloDayStart(`${saoPauloDayKey(reference).slice(0, 7)}-01`);
   } else {
-    start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    start = new Date(reference.getTime() - 30 * DAY_MS);
   }
   return { start, end };
 }
 
-export async function listVendas(queryable, query = {}) {
-  const { start, end } = periodBounds(query);
+export async function listVendas(queryable, query = {}, { now = new Date() } = {}) {
+  const { start, end } = periodBounds(query, now);
   const status = query.status && query.status !== 'todos' ? String(query.status).toUpperCase() : null;
-  const params = [start.toISOString()];
+  const params = [start.toISOString(), end.toISOString()];
   let sql = `-- op:list_vendas
     SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
            telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
     FROM app.tab_venda
-    WHERE data_venda >= $1 AND data_venda <= now() + interval '2 minutes'
+    WHERE data_venda >= $1 AND data_venda < $2
   `;
-  if (query.data_fim) {
-    params.push(end.toISOString());
-    sql = `-- op:list_vendas
-    SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-           telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
-    FROM app.tab_venda
-    WHERE data_venda >= $1 AND data_venda <= $2
-  `;
-  }
   if (status && ['PENDENTE', 'CONFIRMADA', 'CANCELADA'].includes(status)) {
     params.push(status);
     sql += ` AND status_venda = $${params.length}`;

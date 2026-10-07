@@ -289,3 +289,73 @@ test('interno jobs accept INTERNAL_JOB_SECRET and dispatch the worker', async ()
   assert.equal(scheduled, true);
   assert.equal(published, true);
 });
+
+test('scheduled-changes job accepts GET for external HTTP schedulers', async () => {
+  process.env.CRON_SECRET = INTERNAL;
+  const handler = createInternoHandler({ getPool: emptyPool });
+  const response = mockResponse();
+  await handler({
+    method: 'GET',
+    url: '/api/interno/processar-alteracoes-agendadas',
+    headers: { authorization: `Bearer ${INTERNAL}` },
+  }, response);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.ok, true);
+});
+
+test('scheduled-changes job rejects a wrong secret with 401', async () => {
+  process.env.CRON_SECRET = INTERNAL;
+  const handler = createInternoHandler({
+    getPool() {
+      throw new Error('pool should not run with a wrong secret');
+    },
+  });
+  const response = mockResponse();
+  await handler({
+    method: 'GET',
+    url: '/api/interno/processar-alteracoes-agendadas',
+    headers: { authorization: 'Bearer not-the-right-secret' },
+  }, response);
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.body.error, 'unauthorized');
+});
+
+test('scheduled-changes job ignores a secret passed as a query string', async () => {
+  process.env.CRON_SECRET = INTERNAL;
+  const handler = createInternoHandler({
+    getPool() {
+      throw new Error('pool should not run with a query-string secret');
+    },
+  });
+  const response = mockResponse();
+  await handler({
+    method: 'GET',
+    url: `/api/interno/processar-alteracoes-agendadas?secret=${INTERNAL}`,
+    query: { secret: INTERNAL },
+    headers: {},
+  }, response);
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.body.error, 'unauthorized');
+});
+
+test('an unauthorized attempt never logs the secret value', async () => {
+  process.env.CRON_SECRET = INTERNAL;
+  const logged = [];
+  const handler = createInternoHandler({
+    getPool: emptyPool,
+    logDatabaseError(scope, error) {
+      logged.push(scope, String(error?.message || error));
+    },
+  });
+  const response = mockResponse();
+  await handler({
+    method: 'GET',
+    url: '/api/interno/processar-alteracoes-agendadas',
+    headers: { authorization: 'Bearer not-the-right-secret' },
+  }, response);
+  assert.equal(response.statusCode, 401);
+  for (const entry of logged) {
+    assert.doesNotMatch(entry, new RegExp(INTERNAL));
+    assert.doesNotMatch(entry, /not-the-right-secret/);
+  }
+});

@@ -1,5 +1,6 @@
 import { computeFaturamento, listVendas } from './admin-sales.js';
 import { listScheduledChanges } from './admin-schedule.js';
+import { saoPauloDayStart } from './sao-paulo-time.js';
 
 function csvEscape(value) {
   const text = value == null ? '' : String(value);
@@ -15,31 +16,42 @@ export function toCsv(rows, columns) {
   return [header, ...lines].join('\n');
 }
 
-function startOfSaoPauloDay(now = new Date()) {
-  const day = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now);
-  return new Date(`${day}T00:00:00-03:00`);
+const saoPauloDayFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+// Dia civil de São Paulo (AAAA-MM-DD) de um timestamp de venda; null se ausente ou inválido.
+export function saleDateKeySaoPaulo(value) {
+  if (value == null || value === '') return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return saoPauloDayFormat.format(date);
 }
 
+function startOfSaoPauloDay(now = new Date()) {
+  return saoPauloDayStart(saoPauloDayFormat.format(now));
+}
+
+// Intervalo [start, end): início inclusivo, fim exclusivo (alinhado a periodBounds).
 function within(vendas, start, end) {
   return vendas.filter((item) => {
     const time = new Date(item.data_venda).getTime();
-    return time >= start.getTime() && time <= end.getTime();
+    return time >= start.getTime() && time < end.getTime();
   });
 }
 
-export async function getReports(queryable, query = {}) {
-  const now = new Date();
-  const vendas = await listVendas(queryable, { ...query, periodo: query.periodo || '30d' });
+// Auditoria só entra no relatório quando o chamador é SUPER_ADMIN (incluirAuditoria).
+// Default fail-closed: sem opção explícita, a consulta de auditoria não roda.
+export async function getReports(queryable, query = {}, { incluirAuditoria = false, now = new Date() } = {}) {
+  const vendas = await listVendas(queryable, { ...query, periodo: query.periodo || '30d' }, { now });
   const faturamento = computeFaturamento(vendas);
   const byDay = new Map();
   const byProduct = new Map();
   for (const venda of vendas) {
-    const day = venda.data_venda ? new Date(venda.data_venda).toISOString().slice(0, 10) : 'sem-data';
+    const day = saleDateKeySaoPaulo(venda.data_venda) || 'sem-data';
     const current = byDay.get(day) || { dia: day, pedidos: 0, confirmadas: 0, faturamento_centavos: 0 };
     current.pedidos += 1;
     if (venda.status_venda === 'CONFIRMADA') {
@@ -85,13 +97,15 @@ export async function getReports(queryable, query = {}) {
   `);
 
   const alteracoes = await listScheduledChanges(queryable, {});
-  const auditoria = await queryable.query(`
-    SELECT id_auditoria, id_usuario_admin, acao, entidade, id_registro, sucesso,
-           descricao_evento, data_evento
-    FROM app.tab_auditoria_admin
-    ORDER BY data_evento DESC
-    LIMIT 200
-  `);
+  const auditoria = incluirAuditoria
+    ? await queryable.query(`
+      SELECT id_auditoria, id_usuario_admin, acao, entidade, id_registro, sucesso,
+             descricao_evento, data_evento
+      FROM app.tab_auditoria_admin
+      ORDER BY data_evento DESC
+      LIMIT 200
+    `)
+    : null;
 
   const catalogo = {
     categorias_ativas: categorias.rows.filter((row) => row.ativo === true).length,
@@ -131,6 +145,6 @@ export async function getReports(queryable, query = {}) {
       erro: statusCount('ERRO'),
       itens: alteracoes,
     },
-    auditoria: auditoria.rows,
+    ...(auditoria ? { auditoria: auditoria.rows } : {}),
   };
 }
