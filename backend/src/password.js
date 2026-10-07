@@ -18,6 +18,7 @@ export function timingSafeEqualBuffer(left, right) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// Política de senha completa (SUPER_ADMIN). Não alterar sem decisão explícita.
 export function passwordPolicyError(password) {
   if (typeof password !== 'string' || password.length < 8) {
     return 'Senha deve ter pelo menos 8 caracteres.';
@@ -28,8 +29,26 @@ export function passwordPolicyError(password) {
   return null;
 }
 
+// PIN numérico para perfis administrativos que não são SUPER_ADMIN.
+// Tratado sempre como STRING: zeros à esquerda são preservados. Sem máximo.
+export const PIN_MIN_LENGTH = 4;
+const PIN_PATTERN = /^\d+$/;
+
+export function pinPolicyError(pin) {
+  if (typeof pin !== 'string' || pin.length === 0) {
+    return `Informe no mínimo ${PIN_MIN_LENGTH} dígitos.`;
+  }
+  if (!PIN_PATTERN.test(pin)) {
+    return 'Use somente números.';
+  }
+  if (pin.length < PIN_MIN_LENGTH) {
+    return `Informe no mínimo ${PIN_MIN_LENGTH} dígitos.`;
+  }
+  return null;
+}
+
 export async function hashPassword(password) {
-  if (typeof password !== 'string' || password.length < 8) {
+  if (typeof password !== 'string' || password.length < PIN_MIN_LENGTH) {
     throw new Error('password_too_short');
   }
   const salt = crypto.randomBytes(16).toString('hex');

@@ -57,6 +57,25 @@ export function perfilFormLabel(perfil) {
   return value;
 }
 
+// Espelho de backend/src/password.js (perfis com PIN e regra numerica). Manter alinhado.
+export const PERFIS_COM_PIN = Object.freeze(['ADMIN', 'GESTOR']);
+export const PIN_MIN_LENGTH = 4;
+export const PIN_HINT = 'Senha numérica com no mínimo 4 dígitos';
+export const SENHA_HINT = 'Mínimo de 10 caracteres, com letra e número.';
+
+export function isPerfilComPin(perfil) {
+  return PERFIS_COM_PIN.includes(String(perfil || '').trim().toUpperCase());
+}
+
+// Retorna a mensagem de validação do PIN ou null. Valor tratado sempre como string.
+export function pinValidationMessage(value) {
+  const pin = typeof value === 'string' ? value : '';
+  if (!pin) return `Informe no mínimo ${PIN_MIN_LENGTH} dígitos.`;
+  if (!/^\d+$/.test(pin)) return 'Use somente números.';
+  if (pin.length < PIN_MIN_LENGTH) return `Informe no mínimo ${PIN_MIN_LENGTH} dígitos.`;
+  return null;
+}
+
 export const DATA_LOAD_ERROR_MESSAGE = 'Não foi possível carregar os dados agora.';
 export const DIALOG_CLOSE_LABEL = 'Fechar';
 

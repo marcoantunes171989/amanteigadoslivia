@@ -7,8 +7,12 @@ import {
   canEnableProductionUpdateButton,
   creatablePerfisFor,
   decideSessionErrorAction,
+  PIN_HINT,
+  SENHA_HINT,
+  isPerfilComPin,
   perfilBadgeLabel,
   perfilFormLabel,
+  pinValidationMessage,
   publicationBadgeClass,
   publicationStatusLabel,
   releaseCheckTone,
@@ -1632,12 +1636,13 @@ import {
       ]),
       el('div', { className: 'table-wrap' }, [
         state.usuarios.length ? el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['Nome', 'E-mail', 'Perfil', 'Status', 'Protegido', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('thead', {}, [el('tr', {}, ['Nome', 'Usuário', 'E-mail', 'Perfil', 'Status', 'Protegido', 'Último login', 'Ações'].map((h) => el('th', { text: h })))]),
           el('tbody', {}, state.usuarios.map((user) => el('tr', {}, [
             el('td', {}, [
               el('span', { text: user.nome_usuario }),
               isSelfUser(user) ? el('span', { className: 'badge badge-you', text: 'Você' }) : null,
             ]),
+            el('td', { text: user.login_usuario || '—' }),
             el('td', { text: user.email_usuario }),
             el('td', {}, [userBadges(user)]),
             el('td', {}, [badge(user.ativo)]),
@@ -1649,6 +1654,7 @@ import {
         state.usuarios.length ? el('div', { className: 'user-cards' }, state.usuarios.map((user) => el('article', { className: 'mobile-card' }, [
           el('strong', { text: user.nome_usuario }),
           isSelfUser(user) ? el('span', { className: 'badge badge-you', text: 'Você' }) : null,
+          el('span', { text: `Usuário: ${user.login_usuario || '—'}` }),
           el('span', { text: user.email_usuario }),
           userBadges(user),
           badge(user.ativo),
@@ -1702,6 +1708,19 @@ import {
   function input(id, attrs = {}) { return el('input', { id, name: id, ...attrs }); }
   function checkbox(name, label, checked) {
     return el('label', {}, [el('input', { type: 'checkbox', name, checked }), document.createTextNode(label)]);
+  }
+
+  // Controle compacto para "Status ativo": checkbox pequeno alinhado ao texto (ver .status-toggle em admin.css).
+  function statusToggle(name, label, checked) {
+    return el('label', { className: 'status-toggle' }, [el('input', { type: 'checkbox', name, checked }), el('span', { text: label })]);
+  }
+
+  // Mesma regra do backend (backend/src/admin-users.js): 3 a 32 caracteres, a-z, 0-9, ponto, hífen e underline.
+  function usuarioValidationMessage(value) {
+    if (!value) return 'Usuário é obrigatório.';
+    if (value.length < 3 || value.length > 32) return 'Usuário deve ter entre 3 e 32 caracteres.';
+    if (!/^[a-z0-9._-]+$/.test(value)) return 'Use somente letras sem acento, números, ponto, hífen ou underline no usuário.';
+    return null;
   }
 
   function scheduleFields() {
@@ -1814,6 +1833,32 @@ import {
     formDialog.showModal();
   }
 
+  // Campos de senha/PIN. ADMIN e GESTOR usam PIN numérico (>= 4 dígitos);
+  // SUPER_ADMIN mantém a política completa. Validação real fica no backend.
+  function credentialFields(perfilInicial) {
+    const hint = el('p', { className: 'muted', id: 'senhaHint' });
+    const senha = input('senha', { type: 'password', required: true, autocomplete: 'new-password' });
+    const confirmacao = input('senha_confirmacao', { type: 'password', required: true, autocomplete: 'new-password' });
+    const apply = (perfil) => {
+      const pin = isPerfilComPin(perfil);
+      for (const campo of [senha, confirmacao]) {
+        if (pin) {
+          campo.setAttribute('inputmode', 'numeric');
+          campo.removeAttribute('minlength');
+        } else {
+          campo.removeAttribute('inputmode');
+          campo.setAttribute('minlength', '10');
+        }
+      }
+      hint.textContent = pin ? PIN_HINT : SENHA_HINT;
+    };
+    apply(perfilInicial);
+    return {
+      nodes: [field('senha', 'Senha *', senha), hint, field('senha_confirmacao', 'Confirmar senha *', confirmacao)],
+      apply,
+    };
+  }
+
   function openUserForm(user) {
     const protectedUser = user?.protegido === true;
     const session = currentSession();
@@ -1822,6 +1867,13 @@ import {
       ? ['SUPER_ADMIN']
       : (isRootSuperAdminSession(session) ? ['SUPER_ADMIN', 'ADMIN', 'GESTOR'] : creatablePerfisFor(session));
     const perfis = user ? editPerfis : createPerfis;
+    const perfilSelect = el('select', { id: 'perfil', name: 'perfil', required: true }, perfis.map((perfil) => el('option', {
+      value: perfil,
+      text: perfilFormLabel(perfil),
+      selected: (user?.perfil_usuario || perfis[0]) === perfil,
+    })));
+    const cred = user ? null : credentialFields(perfis[0]);
+    if (cred) perfilSelect.addEventListener('change', () => cred.apply(perfilSelect.value));
     resourceForm.replaceChildren(dialogFrame({
       eyebrow: 'Gestão',
       title: user ? 'Editar usuário' : 'Novo usuário',
@@ -1831,21 +1883,13 @@ import {
       children: [
         el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
         field('nome', 'Nome *', input('nome', { required: true, value: user?.nome_usuario || '' })),
+        field('usuario', 'Usuário *', input('usuario', { required: true, value: user?.login_usuario || '', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, maxLength: 32 })),
         field('email', 'E-mail *', input('email', { type: 'email', required: true, value: user?.email_usuario || '' })),
         protectedUser
           ? el('p', { className: 'muted', text: 'SUPER ADMIN protegido. Perfil, proteção e status não podem ser alterados.' })
-          : field('perfil', 'Perfil *', el('select', { id: 'perfil', name: 'perfil', required: true }, perfis.map((perfil) => el('option', {
-            value: perfil,
-            text: perfilFormLabel(perfil),
-            selected: (user?.perfil_usuario || perfis[0]) === perfil,
-          })))),
-        user
-          ? null
-          : field('senha', 'Senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-        user
-          ? null
-          : field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-        protectedUser ? null : checkbox('ativo', 'Status ativo', user ? user.ativo : true),
+          : field('perfil', 'Perfil *', perfilSelect),
+        ...(cred ? cred.nodes : []),
+        protectedUser ? null : statusToggle('ativo', 'Status ativo', user ? user.ativo : true),
       ],
     }));
     resourceForm.dataset.kind = 'usuario';
@@ -1866,8 +1910,7 @@ import {
       size: 'small',
       children: [
         el('input', { type: 'hidden', name: 'id_usuario_admin', value: user?.id_usuario_admin || '' }),
-        field('senha', 'Nova senha *', input('senha', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
-        field('senha_confirmacao', 'Confirmar senha *', input('senha_confirmacao', { type: 'password', required: true, minlength: '10', autocomplete: 'new-password' })),
+        ...credentialFields(user?.perfil_usuario).nodes,
       ],
     }));
     resourceForm.dataset.kind = 'reset-senha';
@@ -2002,12 +2045,26 @@ import {
         const id = data.get('id_usuario_admin');
         const senha = String(data.get('senha') || '');
         const senhaConfirmacao = String(data.get('senha_confirmacao') || '');
-        if (!id && senha !== senhaConfirmacao) {
-          formError('A confirmação da senha não confere.');
+        if (!id) {
+          const erroPin = isPerfilComPin(data.get('perfil')) ? pinValidationMessage(senha) : null;
+          if (erroPin) {
+            formError(erroPin);
+            return;
+          }
+          if (senha !== senhaConfirmacao) {
+            formError('As senhas não coincidem.');
+            return;
+          }
+        }
+        const usuarioLogin = String(data.get('usuario') || '').trim().toLowerCase();
+        const erroUsuario = usuarioValidationMessage(usuarioLogin);
+        if (erroUsuario) {
+          formError(erroUsuario);
           return;
         }
         const payload = {
           nome: String(data.get('nome') || ''),
+          usuario: usuarioLogin,
           email: String(data.get('email') || ''),
         };
         const current = state.usuarios.find((item) => String(item.id_usuario_admin) === String(id));
@@ -2034,8 +2091,14 @@ import {
         const id = data.get('id_usuario_admin');
         const senha = String(data.get('senha') || '');
         const senhaConfirmacao = String(data.get('senha_confirmacao') || '');
+        const alvo = state.usuarios.find((item) => String(item.id_usuario_admin) === String(id));
+        const erroPin = isPerfilComPin(alvo?.perfil_usuario) ? pinValidationMessage(senha) : null;
+        if (erroPin) {
+          formError(erroPin);
+          return;
+        }
         if (senha !== senhaConfirmacao) {
-          formError('A confirmação da senha não confere.');
+          formError('As senhas não coincidem.');
           return;
         }
         const result = await request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify({ acao: 'redefinir_senha', id, senha }) });
@@ -2126,7 +2189,7 @@ import {
       const payload = await request('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({
-          email: document.getElementById('adminEmail').value,
+          usuario: document.getElementById('adminLogin').value,
           senha: document.getElementById('adminPassword').value,
         }),
       });
@@ -2143,7 +2206,7 @@ import {
       await showApp();
     } catch (error) {
       loginError.hidden = false;
-      loginError.textContent = error.status === 401 ? 'E-mail ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.';
+      loginError.textContent = error.status === 401 ? 'Usuário ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.';
     } finally {
       loginButton.disabled = false;
       loginButton.textContent = 'Entrar';

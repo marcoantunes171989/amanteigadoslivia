@@ -17,14 +17,22 @@ import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
 import { cancelScheduledChange, listScheduledChanges, parseSaoPauloDateTime, processDueScheduledChanges, scheduleChange } from './admin-schedule.js';
 import { createSignedImageUpload } from './admin-storage.js';
-import { createUsuario, findUsuarioByEmail, listUsuarios, loadActor, canListUsuarios, resetUsuarioSenha, SQL_USERS, touchUltimoLogin, updateUsuario } from './admin-users.js';
+import { createUsuario, findUsuarioByLogin, listUsuarios, loadActor, canListUsuarios, resetUsuarioSenha, SQL_USERS, touchUltimoLogin, updateUsuario } from './admin-users.js';
 import { getCatalogPayload } from './catalog.js';
 import { broadcastCatalogUpdated, broadcastSiteUpdated, getCatalogRevision } from './catalog-revision.js';
 import { executeContentAction, getAdminSiteContent, getPublicSiteContent } from './site-content.js';
 import { createSolicitacaoEncomenda, listSolicitacoesEncomenda, updateSolicitacaoStatus } from './encomendas.js';
-import { verifyPassword } from './password.js';
+import { hashPassword, verifyPassword } from './password.js';
 
-const GENERIC_LOGIN_ERROR = 'E-mail ou senha inválidos.';
+const GENERIC_LOGIN_ERROR = 'Usuário ou senha inválidos.';
+
+let dummyLoginHashPromise = null;
+function dummyLoginHash() {
+  if (!dummyLoginHashPromise) {
+    dummyLoginHashPromise = hashPassword(crypto.randomBytes(16).toString('hex'));
+  }
+  return dummyLoginHashPromise;
+}
 
 function sendJson(response, status, payload) {
   response.setHeader('Cache-Control', 'no-store');
@@ -223,13 +231,14 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
     return;
   }
 
-  const email = typeof body?.email === 'string' ? body.email.trim() : '';
+  // Login é por USUÁRIO (normalizado no backend). E-mail não autentica.
+  const usuario = typeof body?.usuario === 'string' ? body.usuario.trim() : '';
   const senha = typeof body?.senha === 'string'
     ? body.senha
     : (typeof body?.password === 'string' ? body.password : '');
 
   try {
-    assertLoginRateLimit(request, email);
+    assertLoginRateLimit(request, usuario);
   } catch (error) {
     sendError(response, error);
     return;
@@ -248,7 +257,7 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
     sendJson(response, 401, { error: 'unauthorized', message: GENERIC_LOGIN_ERROR });
   };
 
-  if (!email || !senha) {
+  if (!usuario || !senha) {
     sendJson(response, 401, { error: 'unauthorized', message: GENERIC_LOGIN_ERROR });
     return;
   }
@@ -256,8 +265,15 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
   let pool = null;
   try {
     pool = requirePool(getPool);
-    const user = await findUsuarioByEmail(pool, email);
-    if (!user || user.ativo !== true || !(await verifyPassword(senha, user.senha_hash, user.senha_salt))) {
+    const user = await findUsuarioByLogin(pool, usuario);
+    // Sempre executa o scrypt, mesmo sem usuário/inativo, para não revelar por tempo se o usuário existe.
+    const dummy = await dummyLoginHash();
+    const senhaOk = await verifyPassword(
+      senha,
+      user?.senha_hash || dummy.senha_hash,
+      user?.senha_salt || dummy.senha_salt,
+    );
+    if (!user || user.ativo !== true || !senhaOk) {
       await fail(pool);
       return;
     }
@@ -524,7 +540,7 @@ export async function handleAdminAuditoria(request, response, deps = {}) {
     }
     if (query.usuario) {
       params.push(`%${query.usuario}%`);
-      where.push(`(u.email_usuario ILIKE $${params.length} OR u.nome_usuario ILIKE $${params.length})`);
+      where.push(`(u.login_usuario ILIKE $${params.length} OR u.email_usuario ILIKE $${params.length} OR u.nome_usuario ILIKE $${params.length})`);
     }
     if (query.periodo === 'hoje') {
       where.push(`a.data_evento >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`);

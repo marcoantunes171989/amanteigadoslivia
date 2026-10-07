@@ -44,9 +44,9 @@ function createUserPool(user) {
     auditoria,
     async query(sql, params = []) {
       const text = String(sql);
-      if (text.includes('op:get_usuario_email')) {
+      if (text.includes('op:get_usuario_login')) {
         return {
-          rows: user && String(params[0]).toLowerCase() === String(user.email_usuario).toLowerCase()
+          rows: user && String(params[0]).trim().toLowerCase() === String(user.login_usuario || '').toLowerCase()
             ? [user]
             : [],
         };
@@ -80,7 +80,7 @@ test('login rejects requests without a valid password', async () => {
   const pool = createUserPool({
     id_usuario_admin: '11111111-1111-4111-8111-111111111111',
     nome_usuario: 'Admin',
-    email_usuario: 'admin@example.com',
+    email_usuario: 'admin@example.com', login_usuario: 'admin',
     senha_hash: hashed.senha_hash,
     senha_salt: hashed.senha_salt,
     perfil_usuario: 'ADMIN',
@@ -90,11 +90,11 @@ test('login rejects requests without a valid password', async () => {
   await handleAdminLogin({
     method: 'POST',
     headers: {},
-    body: { email: 'admin@example.com', senha: 'outra-senha-errada' },
+    body: { usuario: 'admin', senha: 'outra-senha-errada' },
   }, response, { getPool: () => pool });
   assert.equal(response.statusCode, 401);
   assert.equal(response.body.error, 'unauthorized');
-  assert.equal(response.body.message, 'E-mail ou senha inválidos.');
+  assert.equal(response.body.message, 'Usuário ou senha inválidos.');
   assert.equal(response.headers['set-cookie'], undefined);
   assert.equal(pool.auditoria[0].acao, 'LOGIN_FALHA');
 });
@@ -105,7 +105,7 @@ test('login sets an HttpOnly session cookie', async () => {
   const pool = createUserPool({
     id_usuario_admin: '11111111-1111-4111-8111-111111111111',
     nome_usuario: 'Admin',
-    email_usuario: 'admin@example.com',
+    email_usuario: 'admin@example.com', login_usuario: 'admin',
     senha_hash: hashed.senha_hash,
     senha_salt: hashed.senha_salt,
     perfil_usuario: 'ADMIN',
@@ -115,7 +115,7 @@ test('login sets an HttpOnly session cookie', async () => {
   await handleAdminLogin({
     method: 'POST',
     headers: { 'x-forwarded-proto': 'https' },
-    body: { email: 'admin@example.com', senha: PASSWORD },
+    body: { usuario: 'admin', senha: PASSWORD },
   }, response, { getPool: () => pool });
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.ok, true);
@@ -283,7 +283,7 @@ test('SUPER_ADMIN login sets session cookie with perfil', async () => {
   const pool = createUserPool({
     id_usuario_admin: '22222222-2222-4222-8222-222222222222',
     nome_usuario: 'Super',
-    email_usuario: 'super@example.com',
+    email_usuario: 'super@example.com', login_usuario: 'super',
     senha_hash: hashed.senha_hash,
     senha_salt: hashed.senha_salt,
     perfil_usuario: 'SUPER_ADMIN',
@@ -294,7 +294,7 @@ test('SUPER_ADMIN login sets session cookie with perfil', async () => {
   await handleAdminLogin({
     method: 'POST',
     headers: { 'x-forwarded-proto': 'https' },
-    body: { email: 'super@example.com', senha: PASSWORD },
+    body: { usuario: 'super', senha: PASSWORD },
   }, response, { getPool: () => pool });
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.usuario.perfil_usuario, 'SUPER_ADMIN');
@@ -331,7 +331,7 @@ test('delete de usuario e bloqueado na API', async () => {
               rows: [{
                 id_usuario_admin: actorId,
                 nome_usuario: 'Super',
-                email_usuario: 'super@example.com',
+                email_usuario: 'super@example.com', login_usuario: 'super',
                 perfil_usuario: 'SUPER_ADMIN',
                 ativo: true,
                 protegido: true,

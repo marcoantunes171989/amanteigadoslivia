@@ -67,13 +67,14 @@ afterEach(() => {
   delete process.env.VERCEL;
 });
 
-test('login email/senha succeeds and inactive user is rejected', async () => {
+test('login usuario/senha: inactive user is rejected even with the correct password', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
   const hashed = await hashPassword('senha-forte-123');
   const user = {
     id_usuario_admin: 'u1',
     nome_usuario: 'Admin',
     email_usuario: 'livia@example.com',
+    login_usuario: 'livia',
     senha_hash: hashed.senha_hash,
     senha_salt: hashed.senha_salt,
     perfil_usuario: 'ADMIN',
@@ -83,11 +84,11 @@ test('login email/senha succeeds and inactive user is rejected', async () => {
   await handleAdminLogin({
     method: 'POST',
     headers: {},
-    body: { email: 'livia@example.com', senha: 'senha-forte-123' },
+    body: { usuario: 'livia', senha: 'senha-forte-123' },
   }, response, {
     getPool: () => ({
       async query(sql) {
-        if (String(sql).includes('get_usuario_email')) return { rows: [user] };
+        if (String(sql).includes('get_usuario_login')) return { rows: [user] };
         return { rows: [] };
       },
     }),
@@ -95,20 +96,20 @@ test('login email/senha succeeds and inactive user is rejected', async () => {
   assert.equal(response.statusCode, 401);
 });
 
-test('unknown email returns the same generic 401', async () => {
+test('unknown usuario returns the same generic 401', async () => {
   process.env.ADMIN_SESSION_SECRET = SECRET;
   const response = mockResponse();
   await handleAdminLogin({
     method: 'POST',
     headers: {},
-    body: { email: 'naoexiste@example.com', senha: 'qualquer-senha' },
+    body: { usuario: 'naoexiste', senha: 'qualquer-senha' },
   }, response, {
     getPool: () => ({
       async query() { return { rows: [] }; },
     }),
   });
   assert.equal(response.statusCode, 401);
-  assert.equal(response.body.message, 'E-mail ou senha inválidos.');
+  assert.equal(response.body.message, 'Usuário ou senha inválidos.');
 });
 
 test('upload metadata rejects files larger than 2MB and invalid mime', () => {

@@ -5,6 +5,8 @@ import {
   DIALOG_CLOSE_LABEL,
   canAccessUsuarios,
   creatablePerfisFor,
+  isPerfilComPin,
+  pinValidationMessage,
   decideBootAction,
   decideCatalogLoadAction,
   decideSessionErrorAction,
@@ -153,4 +155,30 @@ test('somente ROOT SUPER_ADMIN protegido habilita o gate de producao', () => {
   assert.equal(publicationStatusLabel('EM_EXECUCAO'), 'EM EXECUÇÃO');
   assert.equal(publicationBadgeClass('BLOQUEADA'), 'badge-off');
   assert.equal(shortGitSha('89d0a9152a2604d71e5898040fb95b5783e5e3d0'), '89d0a9152a26');
+});
+
+test('PIN na UI: perfis ADMIN e GESTOR usam PIN, SUPER_ADMIN nao', () => {
+  assert.equal(isPerfilComPin('GESTOR'), true);
+  assert.equal(isPerfilComPin('ADMIN'), true);
+  assert.equal(isPerfilComPin('SUPER_ADMIN'), false);
+  assert.equal(isPerfilComPin(undefined), false);
+});
+
+test('validacao de PIN na UI aceita e rejeita os casos do contrato', () => {
+  for (const pin of ['1234', '0123', '12345', '0000', '987654']) {
+    assert.equal(pinValidationMessage(pin), null, pin);
+  }
+  for (const pin of ['', '1', '123', '12a4', 'abcd', '12 34', '12-34']) {
+    assert.notEqual(pinValidationMessage(pin), null, JSON.stringify(pin));
+  }
+  assert.equal(pinValidationMessage('12a4'), 'Use somente números.');
+  assert.equal(pinValidationMessage('123'), 'Informe no mínimo 4 dígitos.');
+  assert.equal(pinValidationMessage(1234), 'Informe no mínimo 4 dígitos.');
+});
+
+test('mensagens de PIN da UI batem com o backend', async () => {
+  const backend = await import('./password.js');
+  for (const pin of ['', '1', '123', '12a4', 'abcd', '12 34', '12-34', '1234', '0123']) {
+    assert.equal(pinValidationMessage(pin), backend.pinPolicyError(pin), JSON.stringify(pin));
+  }
 });
