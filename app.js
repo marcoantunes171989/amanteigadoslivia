@@ -57,6 +57,11 @@ const sections = ['inicio', 'encomendas', 'festas-momentos', 'personalizados-his
   .filter(Boolean);
 const navLinks = nav ? [...nav.querySelectorAll('a')] : [];
 
+// Preenchida por setupAppNavigation() (abaixo) para manter a barra inferior
+// do app sincronizada com a mesma seção que o scroll-spy já detecta,
+// sem precisar de um segundo IntersectionObserver.
+let syncBottomNavActive = null;
+
 if (sections.length && 'IntersectionObserver' in window) {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
@@ -68,6 +73,7 @@ if (sections.length && 'IntersectionObserver' in window) {
           if (active) l.setAttribute('aria-current', 'page');
           else l.removeAttribute('aria-current');
         });
+        syncBottomNavActive?.(id);
       }
     });
   }, { rootMargin: '-45% 0px -50% 0px' });
@@ -97,22 +103,52 @@ if ('IntersectionObserver' in window && !prefersReduced) {
   const toggle = document.getElementById('appMoreToggle');
   if (!nav) return;
 
-  const path = window.location.pathname || '/';
-  const hash = window.location.hash || '';
-  let active = 'inicio';
-  if (path.startsWith('/carrinho')) active = 'carrinho';
-  else if (path.startsWith('/produtos')) active = 'cardapio';
-  else if (hash === '#encomendas') active = 'encomendas';
-  else if (hash === '#festas-momentos' || hash === '#personalizados-historia') active = 'mais';
+  const items = nav.querySelectorAll('[data-nav]');
+  let currentActive = 'inicio';
 
-  nav.querySelectorAll('[data-nav]').forEach((item) => {
-    item.classList.toggle('is-active', item.getAttribute('data-nav') === active);
-  });
+  function applyActive(active) {
+    currentActive = active;
+    items.forEach((item) => {
+      item.classList.toggle('is-active', item.getAttribute('data-nav') === active);
+    });
+  }
+
+  function computeActiveFromLocation() {
+    const path = window.location.pathname || '/';
+    const hash = window.location.hash || '';
+    if (path.startsWith('/carrinho')) return 'carrinho';
+    if (path.startsWith('/produtos')) return 'cardapio';
+    if (hash === '#encomendas') return 'encomendas';
+    if (hash === '#festas-momentos' || hash === '#personalizados-historia') return 'mais';
+    return 'inicio';
+  }
+
+  applyActive(computeActiveFromLocation());
+
+  // Mantém o indicador correto ao navegar por âncoras e pelo
+  // Voltar/Avançar do navegador (reaproveita o mesmo cálculo do load inicial).
+  window.addEventListener('hashchange', () => applyActive(computeActiveFromLocation()));
+  window.addEventListener('popstate', () => applyActive(computeActiveFromLocation()));
+
+  // Chamado pelo scroll-spy já existente (IntersectionObserver do menu
+  // superior) para sincronizar a seção em foco sem duplicar observadores.
+  const sectionToNav = {
+    inicio: 'inicio',
+    encomendas: 'encomendas',
+    'festas-momentos': 'mais',
+    'personalizados-historia': 'mais',
+  };
+  syncBottomNavActive = (sectionId) => {
+    const active = sectionToNav[sectionId];
+    if (active) applyActive(active);
+  };
 
   function setMoreOpen(open) {
     if (!more || !toggle) return;
     more.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) toggle.classList.add('is-active');
+    else applyActive(currentActive);
   }
 
   toggle?.addEventListener('click', () => setMoreOpen(more?.hidden !== false));
