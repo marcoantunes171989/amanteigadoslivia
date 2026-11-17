@@ -97,15 +97,13 @@
       el.setAttribute('aria-label', nome);
     });
 
-    const title = document.title || '';
-    if (title.includes('|')) {
-      document.title = title.replace(/^[^|]+/, nome.trim());
-    } else if (!title || title.includes('Amanteigados')) {
-      const page = document.body?.classList?.contains('pedido-page')
-        ? 'Acompanhar Pedido'
-        : (document.getElementById('pedidoTitle') ? 'Meu Pedido' : 'Cardápio');
-      document.title = `${nome} | ${page}`;
-    }
+    const page = document.body?.classList?.contains('pedido-page')
+      ? 'Acompanhar Pedido'
+      : (document.getElementById('pedidoTitle') ? 'Meu Pedido' : 'Cardápio');
+    document.title = `${nome} | ${page}`;
+    document.querySelectorAll('.sheet-panel__brand strong').forEach((el) => {
+      el.textContent = nome;
+    });
 
     const slug = empresa.slug || FALLBACK.empresa.slug;
     window.AmanteigadosStorefrontTheme = Object.freeze({
