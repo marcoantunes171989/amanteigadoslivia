@@ -64,7 +64,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-button, input, select, textarea { font-family: inherit; }
+button, input, select, textarea { font-family: inherit; touch-action: manipulation; }
 
 body.drawer-locked { overflow: hidden; }
 
@@ -1545,8 +1545,22 @@ th { font-size: var(--fs-sm); color: var(--muted); font-weight: var(--fw-semibol
   }
 }
 
-/* Toque: em telas pequenas mantem alvo >= 44px e input com 16px (evita zoom automatico no iOS). */
-@media (max-width: 767px) {
+/* Smartphone/tablet: sem zoom ao focar campos; alvos de toque confortáveis */
+@media (max-width: 1024px) {
+  html {
+    touch-action: pan-x pan-y;
+    -ms-touch-action: pan-x pan-y;
+  }
+
+  input,
+  select,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
   .btn,
   .chip,
   .login-card input,
@@ -1559,19 +1573,6 @@ th { font-size: var(--fs-sm); color: var(--muted); font-weight: var(--fw-semibol
   .audit-filters input,
   .audit-filters select {
     min-height: 44px;
-  }
-  .login-card input,
-  .admin-dialog input:not([type="checkbox"]),
-  .admin-dialog select,
-  .admin-dialog textarea,
-  .field input,
-  .field select,
-  .field textarea,
-  .search-input,
-  .period-custom input,
-  .audit-filters input,
-  .audit-filters select {
-    font-size: 16px;
   }
 }
 

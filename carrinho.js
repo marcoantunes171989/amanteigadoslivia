@@ -97,9 +97,32 @@
   }
 
   function shopWhatsAppPhone() {
-    return window.AmanteigadosWhatsApp?.phone
+    const configured = window.AmanteigadosStorefrontConfig?.whatsappPhone
+      || window.AmanteigadosWhatsApp?.phone
       || window.AmanteigadosSite?.get?.()?.configuracao?.whatsapp_telefone
-      || null;
+      || '5518981465499';
+    return String(configured).replace(/\D/g, '') || '5518981465499';
+  }
+
+  function maskWhatsApp(raw) {
+    const digits = String(raw || '').replace(/\D/g, '').slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)})${digits.slice(2)}`;
+    return `(${digits.slice(0, 2)})${digits.slice(2, 7)} - ${digits.slice(7)}`;
+  }
+
+  function bindFieldMasks() {
+    els.name?.addEventListener('input', () => {
+      const start = els.name.selectionStart;
+      const end = els.name.selectionEnd;
+      els.name.value = String(els.name.value || '').toLocaleUpperCase('pt-BR');
+      try { els.name.setSelectionRange(start, end); } catch { /* ignore */ }
+    });
+
+    els.phone?.addEventListener('input', () => {
+      els.phone.value = maskWhatsApp(els.phone.value);
+    });
   }
 
   function createQtyControl(item) {
@@ -229,15 +252,15 @@
   }
 
   function validateForm() {
-    const nome = els.name?.value?.trim() || '';
-    const telefone = els.phone?.value?.trim() || '';
+    const nome = String(els.name?.value || '').trim().toLocaleUpperCase('pt-BR');
+    const telefoneMasked = els.phone?.value?.trim() || '';
     if (!nome) {
       showMessage('Informe seu nome.', 'error');
       els.name?.focus();
       return null;
     }
-    const digits = telefone.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 13) {
+    const digits = telefoneMasked.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) {
       showMessage('Informe um WhatsApp válido com DDD.', 'error');
       els.phone?.focus();
       return null;
@@ -249,7 +272,7 @@
       els.address?.focus();
       return null;
     }
-    return { nome, telefone, modalidade, endereco };
+    return { nome, telefone: telefoneMasked, telefoneDigits: digits, modalidade, endereco };
   }
 
   async function submitOrder(event) {
@@ -276,7 +299,7 @@
       const payload = {
         chave_idempotencia: cartIdempotencyKey(),
         nome_cliente: formData.nome,
-        telefone_cliente: formData.telefone,
+        telefone_cliente: formData.telefoneDigits,
         modalidade: formData.modalidade,
         endereco_entrega: formData.endereco || null,
         itens: items.map((item) => ({
@@ -315,27 +338,30 @@
         endereco: formData.endereco,
       });
 
-      const phone = shopWhatsAppPhone() || '5511999990000';
-      const url = `https://wa.me/${String(phone).replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+      const phone = shopWhatsAppPhone();
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
       lastWhatsAppUrl = url;
-      els.submit.dataset.retry = '1';
-      els.submit.innerHTML = '<svg width="18" height="18" aria-hidden="true"><use href="#i-whatsapp"/></svg> Abrir WhatsApp novamente';
 
-      window.open(url, '_blank', 'noopener');
-      if (registered) {
-        showMessage(
-          data?.duplicated
-            ? 'Este pedido já havia sido registrado. O WhatsApp foi aberto novamente.'
-            : 'Pedido registrado. Continue a conversa no WhatsApp — o envio não é automático.',
-          'ok',
-        );
-        announce('Pedido registrado.');
-      } else {
-        showMessage(
-          'Servidor de pedidos indisponível no momento. Abrimos o WhatsApp com o rascunho do pedido; o carrinho foi mantido.',
-          'error',
-        );
-        announce('WhatsApp aberto em modo rascunho.');
+      const opened = window.open(url, '_blank', 'noopener');
+
+      Cart.clearCart();
+      lastWhatsAppUrl = null;
+      if (els.form) els.form.reset();
+      if (els.addressField) els.addressField.hidden = true;
+      renderCart();
+
+      const okText = registered
+        ? (data?.duplicated
+          ? 'Pedido já registrado. WhatsApp aberto e carrinho limpo.'
+          : 'Pedido enviado ao WhatsApp. Carrinho limpo.')
+        : 'WhatsApp aberto com o pedido. Carrinho limpo.';
+      const emptyCopy = els.empty?.querySelector('p');
+      if (emptyCopy) emptyCopy.textContent = okText;
+      announce(okText);
+
+      if (!opened) {
+        window.location.href = url;
+        return;
       }
     } catch (error) {
       lastWhatsAppUrl = null;
@@ -351,6 +377,7 @@
     if (els.addressField) els.addressField.hidden = !delivery;
   });
 
+  bindFieldMasks();
   els.form?.addEventListener('submit', submitOrder);
 
   Cart.loadCart();

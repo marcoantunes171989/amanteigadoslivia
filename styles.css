@@ -88,7 +88,11 @@ body{
 }
 body.nav-locked{ overflow:hidden; }
 [id]{ scroll-margin-top: calc(var(--header-h) + 12px); }
-input, select, textarea{ font-size:16px; }
+input, select, textarea, [contenteditable="true"], [contenteditable=""]{ font-size:16px; touch-action:manipulation; }
+@media (max-width:1024px){
+  html{ touch-action:pan-x pan-y; -ms-touch-action:pan-x pan-y; }
+  input, select, textarea, [contenteditable="true"], [contenteditable=""]{ font-size:16px !important; }
+}
 img{ display:block; max-width:100%; }
 a{ color:inherit; text-decoration:none; }
 .ico{ width:1em; height:1em; display:inline-block; fill:none; flex:0 0 auto; }

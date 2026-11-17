@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Cardápio | Amanteigados Lívia</title>
   <meta name="description" content="Escolha amanteigados artesanais, monte seu pedido e finalize pelo WhatsApp." />
   <meta name="theme-color" content="#800020" />
@@ -12,7 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="storefront.css?v=4" />
+  <link rel="stylesheet" href="storefront.css?v=8" />
+  <script src="no-zoom.js?v=8"></script>
+  <script src="storefront-config.js?v=8"></script>
   <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
   <link rel="apple-touch-icon" href="assets/brand/logo-topo.jpeg" />
 </head>
@@ -23,6 +25,9 @@
       <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
       <symbol id="i-cookie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8"/><circle cx="9" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="11" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
+      <symbol id="i-whatsapp" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.7 7.4L3.5 20l1.2-4.1A8.5 8.5 0 1 1 20.5 11.5Zm-8.4 6.3h.1a6.3 6.3 0 1 0-5.4-3l.3.6-.4 1.5 1.5-.4.6.3a6.3 6.3 0 0 0 3.3 1Z"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 10v6"/><circle cx="12" cy="7" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     </defs>
   </svg>
 
@@ -41,9 +46,6 @@
     </header>
 
     <div class="cat-rail" id="categoryRail" role="toolbar" aria-label="Categorias"></div>
-    <div class="demo-banner" id="demoBanner" hidden role="status">
-      Catálogo em modo demonstrativo — o banco de produção está temporariamente indisponível.
-    </div>
 
     <main class="app-main" id="catalogMain">
       <div class="catalog-state" id="catalogLoading">
@@ -73,20 +75,47 @@
   </div>
 
   <div class="sheet-backdrop" id="menuBackdrop" hidden></div>
-  <div class="sheet-panel" id="menuSheet" hidden role="dialog" aria-label="Menu">
-    <a href="/produtos">Cardápio</a>
-    <a href="/carrinho">Meu Pedido</a>
-    <a href="/landing">Sobre a loja</a>
-    <a href="/admin">Painel administrativo</a>
-  </div>
+  <aside class="sheet-panel sheet-panel--drawer" id="menuSheet" hidden role="dialog" aria-modal="true" aria-label="Menu">
+    <div class="sheet-panel__head">
+      <div class="sheet-panel__brand">
+        <img src="assets/brand/logo-topo.jpeg" alt="" width="40" height="40" />
+        <strong>Amanteigados Lívia</strong>
+      </div>
+      <button type="button" class="sheet-panel__close" id="menuClose" aria-label="Fechar menu">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <nav class="sheet-panel__nav" aria-label="Principal">
+      <a href="/produtos" class="sheet-panel__link is-active">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-cookie"/></svg>
+        Cardápio
+      </a>
+      <a href="/carrinho" class="sheet-panel__link cart-shortcut">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-cart"/></svg>
+        Meu Pedido
+        <span class="app-header__badge js-cart-count sheet-panel__badge" hidden>0</span>
+      </a>
+      <a href="https://wa.me/5518981465499" class="sheet-panel__link" target="_blank" rel="noopener" data-wa-shop>
+        <svg class="app-ico" aria-hidden="true"><use href="#i-whatsapp"/></svg>
+        WhatsApp
+      </a>
+      <a href="/landing" class="sheet-panel__link">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-info"/></svg>
+        Sobre a loja
+      </a>
+    </nav>
+    <div class="sheet-panel__foot">
+      <a href="/admin" class="sheet-panel__link sheet-panel__link--muted">Painel administrativo</a>
+    </div>
+  </aside>
 
   <p id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
-  <script src="catalog-demo-data.js?v=4"></script>
-  <script src="catalog-core.js?v=4"></script>
-  <script src="cart.js?v=4"></script>
-  <script src="produtos.js?v=4"></script>
-  <script type="module" src="catalog-sync.js?v=4"></script>
+  <script src="catalog-demo-data.js?v=8"></script>
+  <script src="catalog-core.js?v=8"></script>
+  <script src="cart.js?v=8"></script>
+  <script src="produtos.js?v=8"></script>
+  <script type="module" src="catalog-sync.js?v=8"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

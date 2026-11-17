@@ -11,12 +11,12 @@
     sections: document.getElementById('catalogSections'),
     loading: document.getElementById('catalogLoading'),
     unavailable: document.getElementById('catalogUnavailable'),
-    demoBanner: document.getElementById('demoBanner'),
     orderBar: document.getElementById('orderBar'),
     orderCount: document.getElementById('orderBarCount'),
     orderTotal: document.getElementById('orderBarTotal'),
     live: document.getElementById('liveRegion'),
     menuToggle: document.getElementById('menuToggle'),
+    menuClose: document.getElementById('menuClose'),
     menuSheet: document.getElementById('menuSheet'),
     menuBackdrop: document.getElementById('menuBackdrop'),
   };
@@ -303,36 +303,53 @@
     els.orderTotal.textContent = Catalog.formatPrice(total) || 'R$ 0,00';
   }
 
-  function renderDemoBanner() {
-    if (!els.demoBanner) return;
-    const demo = Catalog.getMode() === 'demo' || !apiOnline;
-    els.demoBanner.hidden = !(demo && getActiveProducts().length);
-  }
-
   function renderAll() {
     renderCategories();
     renderSections();
     renderOrderBar();
-    renderDemoBanner();
+  }
+
+  function syncShopWhatsAppLink() {
+    const phone = String(
+      window.AmanteigadosStorefrontConfig?.whatsappPhone
+      || window.AmanteigadosWhatsApp?.phone
+      || '5518981465499',
+    ).replace(/\D/g, '');
+    document.querySelectorAll('[data-wa-shop]').forEach((link) => {
+      link.href = `https://wa.me/${phone}`;
+    });
   }
 
   function bindMenu() {
     const open = () => {
+      if (!els.menuSheet) return;
       els.menuSheet.hidden = false;
       els.menuBackdrop.hidden = false;
-      els.menuToggle.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('menu-open');
+      els.menuToggle?.setAttribute('aria-expanded', 'true');
+      requestAnimationFrame(() => els.menuSheet.classList.add('is-open'));
     };
     const close = () => {
-      els.menuSheet.hidden = true;
-      els.menuBackdrop.hidden = true;
-      els.menuToggle.setAttribute('aria-expanded', 'false');
+      if (!els.menuSheet) return;
+      els.menuSheet.classList.remove('is-open');
+      document.body.classList.remove('menu-open');
+      els.menuToggle?.setAttribute('aria-expanded', 'false');
+      window.setTimeout(() => {
+        els.menuSheet.hidden = true;
+        if (els.menuBackdrop) els.menuBackdrop.hidden = true;
+      }, 180);
     };
     els.menuToggle?.addEventListener('click', () => {
       if (els.menuSheet.hidden) open();
       else close();
     });
+    els.menuClose?.addEventListener('click', close);
     els.menuBackdrop?.addEventListener('click', close);
     els.menuSheet?.querySelectorAll('a').forEach((link) => link.addEventListener('click', close));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !els.menuSheet?.hidden) close();
+    });
+    syncShopWhatsAppLink();
   }
 
   async function boot() {
@@ -357,7 +374,6 @@
       if (!Catalog.getProducts()?.length) {
         els.unavailable.hidden = false;
         els.sections.hidden = true;
-        if (els.demoBanner) els.demoBanner.hidden = true;
       } else {
         els.unavailable.hidden = true;
         renderAll();

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Meu Pedido | Amanteigados Lívia</title>
   <meta name="description" content="Confira seu pedido, informe seus dados e envie pelo WhatsApp." />
   <meta name="theme-color" content="#800020" />
@@ -12,7 +12,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="storefront.css?v=4" />
+  <link rel="stylesheet" href="storefront.css?v=8" />
+  <script src="no-zoom.js?v=8"></script>
+  <script src="storefront-config.js?v=8"></script>
   <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
   <link rel="apple-touch-icon" href="assets/brand/logo-topo.jpeg" />
 </head>
@@ -52,7 +54,7 @@
       <div class="empty-pedido" id="cartEmptyState" hidden>
         <h2>Seu pedido está vazio</h2>
         <p>Escolha seus amanteigados no cardápio para montar o pedido.</p>
-        <a href="/produtos">Ver cardápio</a>
+        <a href="/produtos" class="cat-chip empty-pedido__cta" aria-pressed="false">Ver cardápio</a>
       </div>
 
       <div id="cartLayout" hidden>
@@ -76,12 +78,12 @@
         <form class="pedido-form" id="checkoutForm" novalidate>
           <h3>Seus Dados</h3>
           <label class="field" for="checkoutName">
-            <span class="sr-only">Seu nome</span>
-            <input id="checkoutName" name="nome_cliente" type="text" autocomplete="name" required placeholder="Seu nome *" maxlength="80" />
+            <span class="sr-only">Nome completo</span>
+            <input id="checkoutName" name="nome_cliente" type="text" autocomplete="name" required placeholder="JOSÉ DA SILVA" maxlength="80" autocapitalize="characters" class="field-input--name" />
           </label>
           <label class="field" for="checkoutPhone">
-            <span class="sr-only">Seu WhatsApp</span>
-            <input id="checkoutPhone" name="telefone_cliente" type="tel" inputmode="tel" autocomplete="tel" required placeholder="Seu WhatsApp *" maxlength="20" />
+            <span class="sr-only">WhatsApp</span>
+            <input id="checkoutPhone" name="telefone_cliente" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="(18)99999 - 9999" maxlength="17" class="field-input--phone" />
           </label>
           <label class="field" for="checkoutModality">
             <span class="sr-only">Modalidade</span>
@@ -107,11 +109,11 @@
 
   <p id="cartLiveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
-  <script src="site-content.js?v=4"></script>
-  <script src="catalog-demo-data.js?v=4"></script>
-  <script src="catalog-core.js?v=4"></script>
-  <script src="cart.js?v=4"></script>
-  <script src="carrinho.js?v=4"></script>
-  <script type="module" src="catalog-sync.js?v=4"></script>
+  <script src="site-content.js?v=8"></script>
+  <script src="catalog-demo-data.js?v=8"></script>
+  <script src="catalog-core.js?v=8"></script>
+  <script src="cart.js?v=8"></script>
+  <script src="carrinho.js?v=8"></script>
+  <script type="module" src="catalog-sync.js?v=8"></script>
 </body>
 </html>
