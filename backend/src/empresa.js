@@ -84,7 +84,7 @@ export async function ensureEmpresaSupport(queryable) {
     const probe = await queryable.query(`
       SELECT 1
       FROM information_schema.tables
-      WHERE table_schema = 'app' AND table_name = 'tab_empresa'
+      WHERE table_schema = 'public' AND table_name = 'tab_empresa'
       LIMIT 1
     `);
     empresaSchemaReady = Boolean(probe.rows[0]);
@@ -106,8 +106,8 @@ export async function getEmpresaPadrao(queryable) {
         SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
                t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
                t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
-        FROM app.tab_empresa e
-        LEFT JOIN app.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+        FROM public.tab_empresa e
+        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
         WHERE e.id_empresa = $1 OR e.slug = $2
         ORDER BY CASE WHEN e.id_empresa = $1 THEN 0 ELSE 1 END
         LIMIT 1
@@ -153,8 +153,8 @@ export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
         SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
                t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
                t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
-        FROM app.tab_empresa e
-        LEFT JOIN app.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+        FROM public.tab_empresa e
+        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
         WHERE e.slug = $1 AND e.ativo = true
         LIMIT 1
       `,
@@ -178,7 +178,7 @@ export async function listEmpresas(queryable) {
   const result = await queryable.query(
     `-- op:list_empresas
       SELECT id_empresa, slug, nome_fantasia, ativo
-      FROM app.tab_empresa
+      FROM public.tab_empresa
       ORDER BY nome_fantasia ASC
     `,
   );
@@ -196,8 +196,8 @@ export async function getEmpresaTemaById(queryable, idEmpresa) {
       SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
              t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
              t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
-      FROM app.tab_empresa e
-      LEFT JOIN app.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+      FROM public.tab_empresa e
+      LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
       WHERE e.id_empresa = $1
       LIMIT 1
     `,
@@ -258,7 +258,7 @@ export async function updateEmpresaTema(queryable, idEmpresa, payload = {}) {
 
   await queryable.query(
     `-- op:upsert_empresa_tema
-      INSERT INTO app.tab_empresa_tema (
+      INSERT INTO public.tab_empresa_tema (
         id_empresa, nome_exibicao, cor_primaria, cor_primaria_escura, cor_fundo,
         cor_texto, cor_destaque, logo_topo_url, logo_favicon_url, whatsapp_telefone
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -293,7 +293,7 @@ export async function updateEmpresaTema(queryable, idEmpresa, payload = {}) {
     if (nome) {
       await queryable.query(
         `-- op:update_empresa_nome
-          UPDATE app.tab_empresa
+          UPDATE public.tab_empresa
           SET nome_fantasia = $2, data_atualizacao = now()
           WHERE id_empresa = $1
         `,

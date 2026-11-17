@@ -1,18 +1,20 @@
 -- =============================================================================
 -- 0009_adicionar_empresa_saas.sql
--- Fundação SaaS multi-estabelecimento (ADDITIVE ONLY).
+-- Fundação SaaS multi-estabelecimento (ADDITIVE ONLY) — SQL Editor Supabase.
 --
--- - Cria app.tab_empresa e app.tab_empresa_tema
--- - Seed da empresa padrão Amanteigados Lívia (slug amanteigados-livia)
--- - Adiciona id_empresa NULLABLE nas tabelas raiz
--- - Backfill id_empresa = empresa padrão onde NULL
+-- Motivo de public.*: o SQL Editor não tem CREATE/ALTER no schema app (42501).
+-- Mesmo padrão de 0008 (tab_pedido_numero em public).
 --
--- Sem DROP, sem NOT NULL, sem reescrita de dados de negócio.
--- Pode ser executada no SQL Editor (Owner) ou pelo fluxo Migrator.
+-- Este script:
+--   - Cria public.tab_empresa e public.tab_empresa_tema
+--   - Seed da empresa padrão Amanteigados Lívia
+--   - ADD id_empresa em public.tab_pedido_numero (se a tabela existir)
+--   - GRANTs para o role APP (quando existir)
+--
+-- Sem DROP, sem NOT NULL, sem ALTER em app.* (isso exige Migrator/Owner).
 -- =============================================================================
 
--- Empresa
-CREATE TABLE IF NOT EXISTS app.tab_empresa (
+CREATE TABLE IF NOT EXISTS public.tab_empresa (
   id_empresa uuid PRIMARY KEY,
   slug text NOT NULL,
   nome_fantasia text NOT NULL,
@@ -23,9 +25,8 @@ CREATE TABLE IF NOT EXISTS app.tab_empresa (
   CONSTRAINT tab_empresa_slug_uq UNIQUE (slug)
 );
 
--- Tema / branding por empresa
-CREATE TABLE IF NOT EXISTS app.tab_empresa_tema (
-  id_empresa uuid PRIMARY KEY REFERENCES app.tab_empresa (id_empresa) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS public.tab_empresa_tema (
+  id_empresa uuid PRIMARY KEY,
   nome_exibicao text NOT NULL,
   cor_primaria text NOT NULL DEFAULT '#800020',
   cor_primaria_escura text NOT NULL DEFAULT '#650019',
@@ -44,8 +45,9 @@ CREATE TABLE IF NOT EXISTS app.tab_empresa_tema (
   CONSTRAINT tab_empresa_tema_cor_destaque_chk CHECK (cor_destaque ~ '^#[0-9A-Fa-f]{6}$')
 );
 
--- Seed empresa padrão (idempotente)
-INSERT INTO app.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
+-- Sem FK REFERENCES (SQL Editor costuma negar). Integridade via app.
+
+INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
 VALUES (
   'a0000000-0000-4000-8000-000000000001',
   'amanteigados-livia',
@@ -54,7 +56,7 @@ VALUES (
 )
 ON CONFLICT (id_empresa) DO NOTHING;
 
-INSERT INTO app.tab_empresa_tema (
+INSERT INTO public.tab_empresa_tema (
   id_empresa,
   nome_exibicao,
   cor_primaria,
@@ -80,69 +82,34 @@ VALUES (
 )
 ON CONFLICT (id_empresa) DO NOTHING;
 
--- Colunas nullable id_empresa (ADDITIVE)
-ALTER TABLE app.tab_usuario_admin
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_categoria
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_produto
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_venda
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_configuracao_site
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_conteudo_site
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
-ALTER TABLE app.tab_solicitacao_encomenda
-  ADD COLUMN IF NOT EXISTS id_empresa uuid REFERENCES app.tab_empresa (id_empresa);
-
 ALTER TABLE public.tab_pedido_numero
   ADD COLUMN IF NOT EXISTS id_empresa uuid;
-
--- Backfill somente NULL -> empresa padrão (não altera demais campos)
-UPDATE app.tab_usuario_admin
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_categoria
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_produto
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_venda
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_configuracao_site
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_conteudo_site
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
-
-UPDATE app.tab_solicitacao_encomenda
-SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
-WHERE id_empresa IS NULL;
 
 UPDATE public.tab_pedido_numero
 SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
 WHERE id_empresa IS NULL;
 
-CREATE INDEX IF NOT EXISTS tab_usuario_admin_empresa_idx ON app.tab_usuario_admin (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_categoria_empresa_idx ON app.tab_categoria (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_produto_empresa_idx ON app.tab_produto (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_venda_empresa_idx ON app.tab_venda (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_configuracao_site_empresa_idx ON app.tab_configuracao_site (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_conteudo_site_empresa_idx ON app.tab_conteudo_site (id_empresa);
-CREATE INDEX IF NOT EXISTS tab_solicitacao_encomenda_empresa_idx ON app.tab_solicitacao_encomenda (id_empresa);
+CREATE INDEX IF NOT EXISTS tab_empresa_slug_idx ON public.tab_empresa (slug);
 CREATE INDEX IF NOT EXISTS tab_pedido_numero_empresa_idx ON public.tab_pedido_numero (id_empresa);
+
+ALTER TABLE public.tab_empresa DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tab_empresa_tema DISABLE ROW LEVEL SECURITY;
+
+-- GRANTs para roles APP conhecidos (ignora se o role não existir)
+DO $$
+DECLARE
+  role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY[
+    'amanteigados_prod_app',
+    'amanteigados_hml_app',
+    'amanteigados_dev_app'
+  ]
+  LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa TO %I', role_name);
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa_tema TO %I', role_name);
+    END IF;
+  END LOOP;
+END
+$$;
