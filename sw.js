@@ -1,5 +1,5 @@
 /* Service worker leve — HTML/API sempre da rede; CSS/JS com rede primeiro. */
-const SHELL = 'amanteigados-shell-v15';
+const SHELL = 'amanteigados-shell-v16';
 const ASSETS = [
   '/storefront.css?v=14',
   '/no-zoom.js?v=14',

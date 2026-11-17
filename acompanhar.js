@@ -9,6 +9,7 @@
     submit: document.getElementById('trackSubmit'),
     message: document.getElementById('trackMessage'),
     history: document.getElementById('trackHistory'),
+    historyTitle: document.querySelector('#trackHistory .track-history__title'),
     historyList: document.getElementById('trackHistoryList'),
     card: document.getElementById('trackCard'),
     status: document.getElementById('trackStatus'),
@@ -45,9 +46,13 @@
     return `(${digits.slice(0, 2)})${digits.slice(2, 7)} - ${digits.slice(7)}`;
   }
 
-  function fillLookupFields({ numero = '', telefone = '' } = {}) {
-    if (els.numero && numero) {
-      els.numero.value = String(numero).replace(/\D/g, '').slice(0, 12);
+  function fillLookupFields({ numero, telefone, clearNumero = false } = {}) {
+    if (els.numero) {
+      if (clearNumero) {
+        els.numero.value = '';
+      } else if (numero != null && numero !== '') {
+        els.numero.value = String(numero).replace(/\D/g, '').slice(0, 12);
+      }
     }
     if (els.phone && telefone) {
       els.phone.value = maskWhatsApp(telefone);
@@ -68,7 +73,7 @@
     pollTimer = null;
   }
 
-  function renderPedidoCard(entry) {
+  function renderPedidoCard(entry, { phoneOnly = false } = {}) {
     const venda = entry?.venda;
     const info = entry?.acompanhamento;
     if (!venda || !els.card) return;
@@ -86,9 +91,11 @@
       els.items.appendChild(li);
     });
 
+    // Em busca só por telefone, mantém o campo número vazio para não misturar o filtro.
     fillLookupFields({
-      numero: venda.numero_pedido,
+      numero: phoneOnly ? '' : venda.numero_pedido,
       telefone: venda.telefone_cliente,
+      clearNumero: phoneOnly,
     });
 
     const finalizado = Boolean(info?.finalizado);
@@ -184,7 +191,7 @@
     return groups;
   }
 
-  function renderHistorico(payload, selectedNumero) {
+  function renderHistorico(payload, selectedNumero, { phoneOnly = false } = {}) {
     const pedidos = Array.isArray(payload?.pedidos) ? payload.pedidos : [];
     if (!els.history || !els.historyList) return;
 
@@ -196,6 +203,12 @@
 
     els.history.hidden = false;
     els.historyList.replaceChildren();
+
+    if (els.historyTitle) {
+      els.historyTitle.textContent = phoneOnly || pedidos.length > 1
+        ? `Pedidos deste WhatsApp (${pedidos.length})`
+        : 'Histórico de pedidos';
+    }
 
     groupPedidosByDay(pedidos).forEach((group) => {
       const section = document.createElement('section');
@@ -225,14 +238,21 @@
           <span class="track-history__meta">${timeLabel ? `${timeLabel} · ` : ''}${info?.rotulo_status || venda.status_venda} · ${money(venda.valor_total_centavos)}</span>
         `;
         btn.addEventListener('click', () => {
-          renderPedidoCard(entry);
-          renderHistorico(payload, venda.numero_pedido);
+          renderPedidoCard(entry, { phoneOnly });
+          renderHistorico(payload, venda.numero_pedido, { phoneOnly });
           stopPoll();
-          if (entry.acompanhamento?.ativo) {
+          if (phoneOnly) {
+            lastQuery = {
+              numero: '',
+              telefone: toLocalPhoneDigits(venda.telefone_cliente || lastQuery.telefone || ''),
+            };
+          } else {
             lastQuery = {
               numero: String(venda.numero_pedido),
               telefone: toLocalPhoneDigits(venda.telefone_cliente || lastQuery.telefone || ''),
             };
+          }
+          if (entry.acompanhamento?.ativo || phoneOnly) {
             startPoll();
           }
         });
@@ -275,34 +295,49 @@
   async function consultar({ numero = '', telefone = '', silent = false, selectedNumero = '' } = {}) {
     const numeroDigits = String(numero || '').replace(/\D/g, '');
     const telefoneDigits = toLocalPhoneDigits(telefone);
+    const phoneOnly = !numeroDigits && telefoneDigits.length >= 10;
     if (!silent) showMessage('Consultando…', '');
     try {
-      const data = await fetchPedidos({ numero: numeroDigits, telefone: telefoneDigits });
+      const data = await fetchPedidos({
+        numero: phoneOnly ? '' : numeroDigits,
+        telefone: telefoneDigits,
+      });
       lastPayload = data;
-      lastQuery = { numero: numeroDigits, telefone: telefoneDigits };
 
       const pedidos = Array.isArray(data.pedidos) && data.pedidos.length
         ? data.pedidos
         : (data.venda ? [{ venda: data.venda, acompanhamento: data.acompanhamento }] : []);
       const selected = selectedNumero
-        || (numeroDigits || String(data.venda?.numero_pedido || pedidos[0]?.venda?.numero_pedido || ''));
+        || (phoneOnly
+          ? String(pedidos[0]?.venda?.numero_pedido || data.venda?.numero_pedido || '')
+          : (numeroDigits || String(data.venda?.numero_pedido || pedidos[0]?.venda?.numero_pedido || '')));
       const entry = pedidos.find((item) => String(item.venda?.numero_pedido) === String(selected))
         || pedidos[0]
         || { venda: data.venda, acompanhamento: data.acompanhamento };
 
-      renderHistorico({ ...data, pedidos }, entry?.venda?.numero_pedido);
-      renderPedidoCard(entry);
+      // Busca só por telefone: mantém filtro só no WhatsApp e lista todos os pedidos.
+      lastQuery = phoneOnly
+        ? { numero: '', telefone: telefoneDigits }
+        : {
+            numero: String(entry?.venda?.numero_pedido || numeroDigits || ''),
+            telefone: toLocalPhoneDigits(entry?.venda?.telefone_cliente || telefoneDigits || ''),
+          };
+
+      renderHistorico({ ...data, pedidos }, entry?.venda?.numero_pedido, { phoneOnly });
+      renderPedidoCard(entry, { phoneOnly });
       showMessage(
-        pedidos.length > 1
-          ? `${pedidos.length} pedidos encontrados para este WhatsApp.`
-          : '',
+        phoneOnly
+          ? (pedidos.length > 1
+            ? `${pedidos.length} pedidos encontrados para este WhatsApp.`
+            : (pedidos.length === 1 ? '1 pedido encontrado para este WhatsApp.' : ''))
+          : (pedidos.length > 1
+            ? `${pedidos.length} pedidos encontrados para este WhatsApp.`
+            : ''),
         'ok',
       );
 
       stopPoll();
-      if (entry?.acompanhamento?.ativo) {
-        lastQuery.numero = String(entry.venda.numero_pedido || numeroDigits || '');
-        lastQuery.telefone = toLocalPhoneDigits(entry.venda.telefone_cliente || telefoneDigits || '');
+      if (phoneOnly || entry?.acompanhamento?.ativo) {
         startPoll();
       }
       return data;

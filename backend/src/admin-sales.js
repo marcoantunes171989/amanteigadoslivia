@@ -446,8 +446,8 @@ async function listPedidosPorTelefoneKeys(queryable, phoneKeys) {
       INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
       WHERE n.telefone_normalizado = ANY($1::text[])
          OR v.telefone_cliente = ANY($1::text[])
-      ORDER BY n.numero_pedido DESC
-      LIMIT 30
+      ORDER BY v.data_venda DESC, n.numero_pedido DESC
+      LIMIT 50
     `,
     [phoneKeys],
   );
