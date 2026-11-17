@@ -1,28 +1,14 @@
--- =============================================================================
--- 0009_adicionar_empresa_saas.sql
--- Fundação SaaS multi-estabelecimento (ADDITIVE ONLY) — SQL Editor Supabase.
---
--- Motivo de public.*: o SQL Editor não tem CREATE/ALTER no schema app (42501).
--- Mesmo padrão de 0008 (tab_pedido_numero em public).
---
--- Este script:
---   - Cria public.tab_empresa e public.tab_empresa_tema
---   - Seed da empresa padrão Amanteigados Lívia
---   - ADD id_empresa em public.tab_pedido_numero (se a tabela existir)
---   - GRANTs para o role APP (quando existir)
---
--- Sem DROP, sem NOT NULL, sem ALTER em app.* (isso exige Migrator/Owner).
--- =============================================================================
+-- 0009 SaaS empresa (public) — SQL Editor Supabase
+-- Rode SOMENTE este arquivo (cole em query NOVA, limpa).
+-- Sem schema app (SQL Editor nega CREATE em app).
 
 CREATE TABLE IF NOT EXISTS public.tab_empresa (
   id_empresa uuid PRIMARY KEY,
-  slug text NOT NULL,
+  slug text NOT NULL UNIQUE,
   nome_fantasia text NOT NULL,
   ativo boolean NOT NULL DEFAULT true,
   data_criacao timestamptz NOT NULL DEFAULT now(),
-  data_atualizacao timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT tab_empresa_slug_chk CHECK (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
-  CONSTRAINT tab_empresa_slug_uq UNIQUE (slug)
+  data_atualizacao timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.tab_empresa_tema (
@@ -37,15 +23,8 @@ CREATE TABLE IF NOT EXISTS public.tab_empresa_tema (
   logo_favicon_url text NOT NULL DEFAULT 'assets/brand/logo-topo.jpeg',
   whatsapp_telefone text NOT NULL DEFAULT '5518981465499',
   data_criacao timestamptz NOT NULL DEFAULT now(),
-  data_atualizacao timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT tab_empresa_tema_cor_primaria_chk CHECK (cor_primaria ~ '^#[0-9A-Fa-f]{6}$'),
-  CONSTRAINT tab_empresa_tema_cor_escura_chk CHECK (cor_primaria_escura ~ '^#[0-9A-Fa-f]{6}$'),
-  CONSTRAINT tab_empresa_tema_cor_fundo_chk CHECK (cor_fundo ~ '^#[0-9A-Fa-f]{6}$'),
-  CONSTRAINT tab_empresa_tema_cor_texto_chk CHECK (cor_texto ~ '^#[0-9A-Fa-f]{6}$'),
-  CONSTRAINT tab_empresa_tema_cor_destaque_chk CHECK (cor_destaque ~ '^#[0-9A-Fa-f]{6}$')
+  data_atualizacao timestamptz NOT NULL DEFAULT now()
 );
-
--- Sem FK REFERENCES (SQL Editor costuma negar). Integridade via app.
 
 INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
 VALUES (
@@ -89,27 +68,14 @@ UPDATE public.tab_pedido_numero
 SET id_empresa = 'a0000000-0000-4000-8000-000000000001'
 WHERE id_empresa IS NULL;
 
-CREATE INDEX IF NOT EXISTS tab_empresa_slug_idx ON public.tab_empresa (slug);
-CREATE INDEX IF NOT EXISTS tab_pedido_numero_empresa_idx ON public.tab_pedido_numero (id_empresa);
+CREATE INDEX IF NOT EXISTS tab_empresa_slug_idx
+  ON public.tab_empresa (slug);
+
+CREATE INDEX IF NOT EXISTS tab_pedido_numero_empresa_idx
+  ON public.tab_pedido_numero (id_empresa);
 
 ALTER TABLE public.tab_empresa DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tab_empresa_tema DISABLE ROW LEVEL SECURITY;
 
--- GRANTs para roles APP conhecidos (ignora se o role não existir)
-DO $$
-DECLARE
-  role_name text;
-BEGIN
-  FOREACH role_name IN ARRAY ARRAY[
-    'amanteigados_prod_app',
-    'amanteigados_hml_app',
-    'amanteigados_dev_app'
-  ]
-  LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
-      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa TO %I', role_name);
-      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa_tema TO %I', role_name);
-    END IF;
-  END LOOP;
-END
-$$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa TO amanteigados_prod_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tab_empresa_tema TO amanteigados_prod_app;
