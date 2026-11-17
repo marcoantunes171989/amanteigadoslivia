@@ -1,11 +1,4 @@
-import {
-  buildCartWhatsAppMessage as buildSharedCartWhatsAppMessage,
-  buildEncomendaWhatsAppMessage as buildSharedEncomendaWhatsAppMessage,
-  isPlaceholderWhatsAppDigits,
-  moneyPtBr,
-} from '../../ui-core.js';
-
-export { moneyPtBr };
+import { buildEncomendaWhatsAppMessage as buildSharedEncomendaWhatsAppMessage } from '../../ui-core.js';
 
 const DIGITS = /\D/g;
 
@@ -33,16 +26,56 @@ export function formatWhatsAppDisplay(raw) {
   return `+${digits}`;
 }
 
-export function buildCartWhatsAppMessage(payload = {}) {
-  return buildSharedCartWhatsAppMessage(payload);
+export function moneyPtBr(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'R$ 0,00';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
 }
 
-// Destino comercial do checkout: número normalizado, nunca placeholder
-// (ex.: 5500000000000). Retorna null quando ausente/inválido.
-export function resolveCommercialWhatsAppPhone(raw) {
-  const digits = normalizeWhatsAppPhone(raw);
-  if (!digits || isPlaceholderWhatsAppDigits(digits)) return null;
-  return digits;
+export function buildCartWhatsAppMessage({
+  items = [],
+  total,
+  nome,
+  telefone,
+  numeroPedido,
+  modalidade,
+  endereco,
+} = {}) {
+  const lines = ['*NOVO PEDIDO — AMANTEIGADOS LÍVIA*', ''];
+  if (numeroPedido != null) {
+    const label = typeof numeroPedido === 'number'
+      ? `#${String(numeroPedido).padStart(6, '0')}`
+      : String(numeroPedido);
+    lines.push(`Pedido: ${label}`);
+  }
+  if (nome) lines.push(`Cliente: ${String(nome).trim()}`);
+  if (telefone) lines.push(`WhatsApp: ${String(telefone).trim()}`);
+  lines.push('', '*PRODUTOS*', '');
+  for (const item of items) {
+    const qty = Number(item.quantity) || 0;
+    const name = String(item.name || 'Produto').trim() || 'Produto';
+    const weight = String(item.weight || item.unit || '').trim();
+    const unit = Number(item.unitPrice);
+    const subtotal = Number.isFinite(unit) ? unit * qty : Number(item.subtotal);
+    lines.push(`${qty}x ${name}${weight ? ` — ${weight}` : ''}`);
+    if (qty > 1 && Number.isFinite(unit)) {
+      lines.push(`Valor unitário: ${moneyPtBr(unit)}`);
+      lines.push(`Subtotal: ${moneyPtBr(subtotal)}`);
+    } else {
+      lines.push(`Valor: ${moneyPtBr(subtotal)}`);
+    }
+    lines.push('');
+  }
+  lines.push(`*TOTAL DOS PRODUTOS: ${moneyPtBr(total)}*`);
+  if (modalidade === 'entrega') {
+    lines.push(`Entrega: A combinar${endereco ? ` — ${String(endereco).trim()}` : ''}`);
+  } else if (modalidade === 'retirada') {
+    lines.push('Retirada');
+  } else {
+    lines.push('Entrega: A combinar');
+  }
+  lines.push('Aguardando confirmação do atendimento.');
+  return lines.join('\n');
 }
 
 export function buildEncomendaWhatsAppMessage(payload = {}) {

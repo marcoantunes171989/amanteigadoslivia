@@ -1,0 +1,19 @@
+-- DRAFT — NÃO EXECUTAR sem autorização explícita.
+-- Objetivo: numeração sequencial atômica de pedidos (#000345).
+-- Ambiente alvo após aprovação: DEV → HOMOLOG (nunca PROD neste passo).
+
+-- BEGIN DRAFT
+-- CREATE SEQUENCE IF NOT EXISTS app.seq_numero_pedido START WITH 1 INCREMENT BY 1;
+-- ALTER TABLE app.tab_venda
+--   ADD COLUMN IF NOT EXISTS numero_pedido bigint;
+-- ALTER TABLE app.tab_venda
+--   ADD CONSTRAINT unq_tab_venda_numero_pedido UNIQUE (numero_pedido);
+-- UPDATE app.tab_venda
+--   SET numero_pedido = nextval('app.seq_numero_pedido')
+--   WHERE numero_pedido IS NULL;
+-- ALTER TABLE app.tab_venda
+--   ALTER COLUMN numero_pedido SET NOT NULL;
+-- ALTER TABLE app.tab_venda
+--   ALTER COLUMN numero_pedido SET DEFAULT nextval('app.seq_numero_pedido');
+-- GRANT USAGE ON SEQUENCE app.seq_numero_pedido TO CURRENT_USER; -- ajustar para app_role no release
+-- END DRAFT
