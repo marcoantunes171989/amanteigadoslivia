@@ -42,14 +42,33 @@
   let CATALOG_SOURCE = emptyCatalogSource();
   loadCatalogSource();
 
-  const CATALOG_CACHE_KEY = 'amanteigados_catalogo_live_v1';
+  const CATALOG_CACHE_PREFIX = 'amanteigados_catalogo_live_v2:';
+
+  function currentEmpresaSlug() {
+    try {
+      const fromTheme = window.AmanteigadosStorefrontTheme?.empresaSlug;
+      if (fromTheme) return String(fromTheme);
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('empresa') || params.get('slug');
+      if (fromQuery) return fromQuery;
+      const match = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
+      return match ? match[1] : 'amanteigados-livia';
+    } catch {
+      return 'amanteigados-livia';
+    }
+  }
+
+  function catalogCacheKey(slug = currentEmpresaSlug()) {
+    return `${CATALOG_CACHE_PREFIX}${slug || 'amanteigados-livia'}`;
+  }
 
   function readLiveCache() {
     try {
-      const raw = window.localStorage.getItem(CATALOG_CACHE_KEY);
+      const raw = window.localStorage.getItem(catalogCacheKey());
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (parsed?.payload?.mode !== 'live' || !Array.isArray(parsed.payload.products)) return null;
+      if (parsed.empresaSlug && parsed.empresaSlug !== currentEmpresaSlug()) return null;
       return parsed;
     } catch {
       return null;
@@ -59,7 +78,9 @@
   function writeLiveCache(data) {
     if (!data || data.mode !== 'live') return;
     try {
-      window.localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({
+      const slug = currentEmpresaSlug();
+      window.localStorage.setItem(catalogCacheKey(slug), JSON.stringify({
+        empresaSlug: slug,
         payload: {
           mode: 'live',
           categories: data.categories,
@@ -82,20 +103,6 @@
       window.CATALOG_DATA = cached.payload;
     }
     return cached;
-  }
-
-  function currentEmpresaSlug() {
-    try {
-      const fromTheme = window.AmanteigadosStorefrontTheme?.empresaSlug;
-      if (fromTheme) return String(fromTheme);
-      const params = new URLSearchParams(window.location.search);
-      const fromQuery = params.get('empresa') || params.get('slug');
-      if (fromQuery) return fromQuery;
-      const match = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
-      return match ? match[1] : '';
-    } catch {
-      return '';
-    }
   }
 
   async function loadFromApi() {
