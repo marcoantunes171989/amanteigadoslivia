@@ -1,0 +1,26 @@
+{
+  "name": "Amanteigados Lívia",
+  "short_name": "Amanteigados",
+  "description": "Cardápio artesanal e pedidos pelo WhatsApp",
+  "start_url": "/produtos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFF9F3",
+  "theme_color": "#800020",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/assets/brand/logo-topo.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/logo-topo.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -32,18 +32,49 @@ export function moneyPtBr(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
 }
 
-export function buildCartWhatsAppMessage({ items = [], total, nome, telefone } = {}) {
-  const lines = ['Olá! Gostaria de fazer este pedido:', ''];
+export function buildCartWhatsAppMessage({
+  items = [],
+  total,
+  nome,
+  telefone,
+  numeroPedido,
+  modalidade,
+  endereco,
+} = {}) {
+  const lines = ['*NOVO PEDIDO — AMANTEIGADOS LÍVIA*', ''];
+  if (numeroPedido != null) {
+    const label = typeof numeroPedido === 'number'
+      ? `#${String(numeroPedido).padStart(6, '0')}`
+      : String(numeroPedido);
+    lines.push(`Pedido: ${label}`);
+  }
+  if (nome) lines.push(`Cliente: ${String(nome).trim()}`);
+  if (telefone) lines.push(`WhatsApp: ${String(telefone).trim()}`);
+  lines.push('', '*PRODUTOS*', '');
   for (const item of items) {
     const qty = Number(item.quantity) || 0;
     const name = String(item.name || 'Produto').trim() || 'Produto';
+    const weight = String(item.weight || item.unit || '').trim();
     const unit = Number(item.unitPrice);
     const subtotal = Number.isFinite(unit) ? unit * qty : Number(item.subtotal);
-    lines.push(`${qty}x ${name} — ${moneyPtBr(subtotal)}`);
+    lines.push(`${qty}x ${name}${weight ? ` — ${weight}` : ''}`);
+    if (qty > 1 && Number.isFinite(unit)) {
+      lines.push(`Valor unitário: ${moneyPtBr(unit)}`);
+      lines.push(`Subtotal: ${moneyPtBr(subtotal)}`);
+    } else {
+      lines.push(`Valor: ${moneyPtBr(subtotal)}`);
+    }
+    lines.push('');
   }
-  lines.push('', `Total: ${moneyPtBr(total)}`);
-  if (nome) lines.push('', `Nome: ${String(nome).trim()}`);
-  if (telefone) lines.push(`Telefone: ${String(telefone).trim()}`);
+  lines.push(`*TOTAL DOS PRODUTOS: ${moneyPtBr(total)}*`);
+  if (modalidade === 'entrega') {
+    lines.push(`Entrega: A combinar${endereco ? ` — ${String(endereco).trim()}` : ''}`);
+  } else if (modalidade === 'retirada') {
+    lines.push('Retirada');
+  } else {
+    lines.push('Entrega: A combinar');
+  }
+  lines.push('Aguardando confirmação do atendimento.');
   return lines.join('\n');
 }
 

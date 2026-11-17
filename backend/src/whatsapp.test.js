@@ -23,9 +23,10 @@ test('builds encoded cart whatsapp URL with items and total', () => {
     total: 25,
     nome: 'Marco',
   });
+  assert.match(message, /NOVO PEDIDO — AMANTEIGADOS LÍVIA/);
   assert.match(message, /1x Produto A/);
   assert.match(message, /2x Produto B/);
-  assert.match(message, /Total: R\$\s?25,00/);
+  assert.match(message, /TOTAL DOS PRODUTOS: R\$\s?25,00/);
   const url = buildWhatsAppUrl('5511999990000', message);
   assert.ok(url.startsWith('https://wa.me/5511999990000?text='));
   assert.ok(url.includes(encodeURIComponent('Produto A')));
