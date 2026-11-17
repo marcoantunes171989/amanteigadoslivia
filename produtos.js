@@ -11,6 +11,7 @@
     sections: document.getElementById('catalogSections'),
     loading: document.getElementById('catalogLoading'),
     unavailable: document.getElementById('catalogUnavailable'),
+    demoBanner: document.getElementById('demoBanner'),
     orderBar: document.getElementById('orderBar'),
     orderCount: document.getElementById('orderBarCount'),
     orderTotal: document.getElementById('orderBarTotal'),
@@ -19,6 +20,8 @@
     menuSheet: document.getElementById('menuSheet'),
     menuBackdrop: document.getElementById('menuBackdrop'),
   };
+
+  let apiOnline = false;
 
   let selectedCategory = 'all';
 
@@ -299,10 +302,17 @@
     els.orderTotal.textContent = Catalog.formatPrice(total) || 'R$ 0,00';
   }
 
+  function renderDemoBanner() {
+    if (!els.demoBanner) return;
+    const demo = Catalog.getMode() === 'demo' || !apiOnline;
+    els.demoBanner.hidden = !(demo && getActiveProducts().length);
+  }
+
   function renderAll() {
     renderCategories();
     renderSections();
     renderOrderBar();
+    renderDemoBanner();
   }
 
   function bindMenu() {
@@ -330,19 +340,25 @@
     Catalog.hydrateFromCache?.();
     if (Catalog.getProducts()?.length) {
       els.loading.hidden = true;
+      els.unavailable.hidden = true;
       renderAll();
     }
 
     try {
       await Catalog.loadFromApi();
+      apiOnline = Catalog.getMode() === 'live';
       els.loading.hidden = true;
+      els.unavailable.hidden = true;
       renderAll();
     } catch {
+      apiOnline = false;
       els.loading.hidden = true;
       if (!Catalog.getProducts()?.length) {
         els.unavailable.hidden = false;
         els.sections.hidden = true;
+        if (els.demoBanner) els.demoBanner.hidden = true;
       } else {
+        els.unavailable.hidden = true;
         renderAll();
       }
     }

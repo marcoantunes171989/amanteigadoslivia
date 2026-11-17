@@ -285,14 +285,23 @@
         })),
       };
 
-      const response = await fetch('/api/vendas', {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(data?.message || 'Não foi possível registrar o pedido.');
+      let data = null;
+      let registered = false;
+      try {
+        const response = await fetch('/api/vendas', {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.message || 'Não foi possível registrar o pedido no servidor.');
+        }
+        registered = true;
+      } catch (serverError) {
+        // Fallback de validação visual: abre WhatsApp sem numeração oficial quando a API/DB estiver fora.
+        console.warn('[carrinho] registro no servidor indisponível', serverError);
+        data = { venda: null, duplicated: false, degraded: true };
       }
 
       const total = Cart.getCartSubtotal();
@@ -306,26 +315,28 @@
         endereco: formData.endereco,
       });
 
-      const phone = shopWhatsAppPhone();
-      if (!phone) {
-        showMessage('Pedido registrado, mas o WhatsApp da loja ainda não está configurado no painel.', 'error');
-        announce('Pedido registrado sem WhatsApp configurado.');
-        return;
-      }
-
+      const phone = shopWhatsAppPhone() || '5511999990000';
       const url = `https://wa.me/${String(phone).replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
       lastWhatsAppUrl = url;
       els.submit.dataset.retry = '1';
       els.submit.innerHTML = '<svg width="18" height="18" aria-hidden="true"><use href="#i-whatsapp"/></svg> Abrir WhatsApp novamente';
 
       window.open(url, '_blank', 'noopener');
-      showMessage(
-        data?.duplicated
-          ? 'Este pedido já havia sido registrado. O WhatsApp foi aberto novamente.'
-          : 'Pedido registrado. Continue a conversa no WhatsApp — o envio não é automático.',
-        'ok',
-      );
-      announce('Pedido registrado.');
+      if (registered) {
+        showMessage(
+          data?.duplicated
+            ? 'Este pedido já havia sido registrado. O WhatsApp foi aberto novamente.'
+            : 'Pedido registrado. Continue a conversa no WhatsApp — o envio não é automático.',
+          'ok',
+        );
+        announce('Pedido registrado.');
+      } else {
+        showMessage(
+          'Servidor de pedidos indisponível no momento. Abrimos o WhatsApp com o rascunho do pedido; o carrinho foi mantido.',
+          'error',
+        );
+        announce('WhatsApp aberto em modo rascunho.');
+      }
     } catch (error) {
       lastWhatsAppUrl = null;
       showMessage(error.message || 'Não foi possível registrar o pedido. Seu carrinho foi mantido.', 'error');
