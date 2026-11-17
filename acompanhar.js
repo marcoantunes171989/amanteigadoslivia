@@ -29,12 +29,29 @@
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   }
 
+  function toLocalPhoneDigits(raw) {
+    let digits = String(raw || '').replace(/\D/g, '');
+    if (digits.startsWith('55') && digits.length >= 12) {
+      digits = digits.slice(2);
+    }
+    return digits.slice(0, 11);
+  }
+
   function maskWhatsApp(raw) {
-    const digits = String(raw || '').replace(/\D/g, '').slice(0, 11);
+    const digits = toLocalPhoneDigits(raw);
     if (!digits) return '';
     if (digits.length <= 2) return `(${digits}`;
     if (digits.length <= 7) return `(${digits.slice(0, 2)})${digits.slice(2)}`;
     return `(${digits.slice(0, 2)})${digits.slice(2, 7)} - ${digits.slice(7)}`;
+  }
+
+  function fillLookupFields({ numero = '', telefone = '' } = {}) {
+    if (els.numero && numero) {
+      els.numero.value = String(numero).replace(/\D/g, '').slice(0, 12);
+    }
+    if (els.phone && telefone) {
+      els.phone.value = maskWhatsApp(telefone);
+    }
   }
 
   function showMessage(text, tone) {
@@ -47,8 +64,8 @@
   function stopPoll() {
     if (pollTimer) {
       clearInterval(pollTimer);
-      pollTimer = null;
     }
+    pollTimer = null;
   }
 
   function renderPedidoCard(entry) {
@@ -69,6 +86,11 @@
       els.items.appendChild(li);
     });
 
+    fillLookupFields({
+      numero: venda.numero_pedido,
+      telefone: venda.telefone_cliente,
+    });
+
     const finalizado = Boolean(info?.finalizado);
     els.hint.textContent = finalizado
       ? 'Pedido finalizado pelo estabelecimento.'
@@ -78,7 +100,7 @@
     Track?.write({
       id_venda: venda.id_venda,
       numero_pedido: venda.numero_pedido,
-      telefone: venda.telefone_cliente,
+      telefone: toLocalPhoneDigits(venda.telefone_cliente),
       nome: venda.nome_cliente,
       status_venda: venda.status_venda,
     });
@@ -116,7 +138,7 @@
         if (entry.acompanhamento?.ativo) {
           lastQuery = {
             numero: String(venda.numero_pedido),
-            telefone: String(venda.telefone_cliente || lastQuery.telefone || '').replace(/\D/g, ''),
+            telefone: toLocalPhoneDigits(venda.telefone_cliente || lastQuery.telefone || ''),
           };
           startPoll();
         }
@@ -135,7 +157,7 @@
         silent: true,
         selectedNumero: lastQuery.numero,
       }).catch(() => {});
-    }, 12000);
+    }, 20000);
   }
 
   async function fetchPedidos({ numero, telefone }) {
@@ -144,6 +166,7 @@
     if (telefone) params.set('telefone', telefone);
     const response = await fetch(`/api/pedido?${params.toString()}`, {
       headers: { Accept: 'application/json' },
+      cache: 'no-store',
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
@@ -153,17 +176,19 @@
   }
 
   async function consultar({ numero = '', telefone = '', silent = false, selectedNumero = '' } = {}) {
+    const numeroDigits = String(numero || '').replace(/\D/g, '');
+    const telefoneDigits = toLocalPhoneDigits(telefone);
     if (!silent) showMessage('Consultando…', '');
     try {
-      const data = await fetchPedidos({ numero, telefone });
+      const data = await fetchPedidos({ numero: numeroDigits, telefone: telefoneDigits });
       lastPayload = data;
-      lastQuery = { numero, telefone };
+      lastQuery = { numero: numeroDigits, telefone: telefoneDigits };
 
       const pedidos = Array.isArray(data.pedidos) && data.pedidos.length
         ? data.pedidos
         : (data.venda ? [{ venda: data.venda, acompanhamento: data.acompanhamento }] : []);
       const selected = selectedNumero
-        || (numero || String(data.venda?.numero_pedido || pedidos[0]?.venda?.numero_pedido || ''));
+        || (numeroDigits || String(data.venda?.numero_pedido || pedidos[0]?.venda?.numero_pedido || ''));
       const entry = pedidos.find((item) => String(item.venda?.numero_pedido) === String(selected))
         || pedidos[0]
         || { venda: data.venda, acompanhamento: data.acompanhamento };
@@ -179,8 +204,8 @@
 
       stopPoll();
       if (entry?.acompanhamento?.ativo) {
-        lastQuery.numero = String(entry.venda.numero_pedido || numero || '');
-        lastQuery.telefone = String(entry.venda.telefone_cliente || telefone || '').replace(/\D/g, '');
+        lastQuery.numero = String(entry.venda.numero_pedido || numeroDigits || '');
+        lastQuery.telefone = toLocalPhoneDigits(entry.venda.telefone_cliente || telefoneDigits || '');
         startPoll();
       }
       return data;
@@ -205,7 +230,7 @@
   els.form?.addEventListener('submit', (event) => {
     event.preventDefault();
     const numero = String(els.numero.value || '').replace(/\D/g, '');
-    const telefone = String(els.phone.value || '').replace(/\D/g, '');
+    const telefone = toLocalPhoneDigits(els.phone.value);
     if (!numero && telefone.length < 10) {
       showMessage('Informe o número do pedido ou o WhatsApp da compra.', 'error');
       return;
@@ -229,14 +254,22 @@
   function boot() {
     const params = new URLSearchParams(window.location.search);
     const saved = Track?.read?.();
-    const numero = params.get('numero') || (saved?.numero_pedido != null ? String(saved.numero_pedido) : '');
-    const telefone = params.get('telefone') || saved?.telefone || '';
-    if (els.numero && numero) els.numero.value = String(numero).replace(/\D/g, '');
-    if (els.phone && telefone) els.phone.value = maskWhatsApp(telefone);
-    if (numero || (telefone && String(telefone).replace(/\D/g, '').length >= 10)) {
+    const numero = params.get('numero')
+      || (saved?.numero_pedido != null ? String(saved.numero_pedido) : '');
+    const telefone = params.get('telefone')
+      || params.get('whatsapp')
+      || saved?.telefone
+      || '';
+
+    // Prefill imediato a partir do link (WhatsApp) ou do pedido salvo.
+    fillLookupFields({ numero, telefone });
+
+    const numeroDigits = String(numero || '').replace(/\D/g, '');
+    const telefoneDigits = toLocalPhoneDigits(telefone);
+    if (numeroDigits || telefoneDigits.length >= 10) {
       consultar({
-        numero: String(numero || '').replace(/\D/g, ''),
-        telefone: String(telefone || '').replace(/\D/g, ''),
+        numero: numeroDigits,
+        telefone: telefoneDigits,
       }).catch(() => {});
     }
     Track?.syncUi?.();

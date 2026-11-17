@@ -1,16 +1,16 @@
 /* Service worker leve — HTML/API sempre da rede; CSS/JS com rede primeiro. */
-const SHELL = 'amanteigados-shell-v13';
+const SHELL = 'amanteigados-shell-v14';
 const ASSETS = [
-  '/storefront.css?v=12',
-  '/no-zoom.js?v=12',
-  '/storefront-config.js?v=12',
-  '/order-track.js?v=12',
-  '/acompanhar.js?v=12',
-  '/produtos.js?v=12',
-  '/carrinho.js?v=12',
-  '/catalog-core.js?v=12',
-  '/catalog-demo-data.js?v=12',
-  '/cart.js?v=12',
+  '/storefront.css?v=14',
+  '/no-zoom.js?v=14',
+  '/storefront-config.js?v=14',
+  '/order-track.js?v=14',
+  '/acompanhar.js?v=14',
+  '/produtos.js?v=14',
+  '/carrinho.js?v=14',
+  '/catalog-core.js?v=14',
+  '/catalog-demo-data.js?v=14',
+  '/cart.js?v=14',
   '/assets/brand/logo-topo.jpeg',
 ];
 
@@ -41,6 +41,7 @@ self.addEventListener('fetch', (event) => {
     || url.pathname === '/'
     || url.pathname === '/produtos'
     || url.pathname === '/carrinho'
+    || url.pathname === '/acompanhar'
     || url.pathname.endsWith('.html');
 
   if (isDocument) {

@@ -6,12 +6,17 @@ import {
   buildWhatsAppUrl,
   formatWhatsAppDisplay,
   normalizeWhatsAppPhone,
+  toLocalWhatsAppDigits,
+  whatsappPhoneLookupKeys,
 } from './whatsapp.js';
 
 test('normalizes and displays international whatsapp numbers', () => {
   assert.equal(normalizeWhatsAppPhone('+55 (11) 99999-0000'), '5511999990000');
   assert.equal(formatWhatsAppDisplay('5511999990000'), '+55 11 99999-0000');
   assert.equal(normalizeWhatsAppPhone('123'), null);
+  assert.equal(toLocalWhatsAppDigits('5511981460002'), '11981460002');
+  assert.deepEqual(whatsappPhoneLookupKeys('18981460002').sort(), ['18981460002', '5518981460002'].sort());
+  assert.deepEqual(whatsappPhoneLookupKeys('5518981460002').sort(), ['18981460002', '5518981460002'].sort());
 });
 
 test('builds encoded cart whatsapp URL with items and total', () => {

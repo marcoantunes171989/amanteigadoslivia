@@ -13,7 +13,7 @@ import { computeProdutoAlteracaoDelta, executeAdminAction, getAdminCatalog } fro
 import { assertSameOrigin, isMutableMethod } from './admin-csrf.js';
 import { AdminError, toClientError } from './admin-errors.js';
 import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, readinessFromDeps, validatePromotionDryRun } from './admin-publish.js';
-import { assertLoginRateLimit, assertPublicFormRateLimit } from './admin-rate-limit.js';
+import { assertLoginRateLimit, assertPublicFormRateLimit, PEDIDO_TRACK_MAX_ATTEMPTS } from './admin-rate-limit.js';
 import { getReports, toCsv } from './admin-reports.js';
 import { captureVenda, getPedidoAcompanhamento, listVendas, updateVendaStatus } from './admin-sales.js';
 import { cancelScheduledChange, listScheduledChanges, parseSaoPauloDateTime, processDueScheduledChanges, scheduleChange } from './admin-schedule.js';
@@ -953,7 +953,7 @@ export async function handlePublicPedido(request, response, deps = {}) {
     return;
   }
   try {
-    assertPublicFormRateLimit(request, 'pedido-acompanhamento');
+    assertPublicFormRateLimit(request, 'pedido-acompanhamento', { max: PEDIDO_TRACK_MAX_ATTEMPTS });
     const url = new URL(request.url || 'http://localhost/api/pedido', 'http://localhost');
     const result = await getPedidoAcompanhamento(requirePool(deps.getPool), {
       numero_pedido: url.searchParams.get('numero') || url.searchParams.get('numero_pedido'),

@@ -59,7 +59,8 @@
     const params = new URLSearchParams();
     const numero = formatPedidoNumber(venda);
     if (numero) params.set('numero', numero);
-    const phone = String(telefoneDigits || '').replace(/\D/g, '');
+    let phone = String(telefoneDigits || venda?.telefone_cliente || '').replace(/\D/g, '');
+    if (phone.startsWith('55') && phone.length >= 12) phone = phone.slice(2);
     if (phone) params.set('telefone', phone);
     const query = params.toString();
     return query ? `${base}?${query}` : base;
@@ -93,7 +94,8 @@
       lines.push('🏪 Retirada');
     }
     lines.push('');
-    lines.push(`🔗 *Status do pedido:* ${statusUrl}`);
+    lines.push('🔗 *Status do pedido:*');
+    lines.push(statusUrl);
     lines.push('');
     lines.push('🙏 Obrigado pela preferência, se precisar de algo é só chamar.');
     return lines.join('\n');
@@ -376,7 +378,7 @@
 
       const numero = formatPedidoNumber(data?.venda);
       const okText = registered && numero
-        ? `Pedido ${numero} registrado. Acompanhe pelo ícone do relógio.`
+        ? `Pedido ${numero} registrado. Acompanhe em Acompanhar pedido.`
         : registered
           ? 'Pedido registrado. WhatsApp aberto e carrinho limpo.'
           : 'WhatsApp aberto com o pedido. Carrinho limpo.';
@@ -385,8 +387,11 @@
         emptyCopy.textContent = okText;
         els.empty.querySelectorAll('a[data-track-cta]').forEach((node) => node.remove());
         if (numero) {
+          const trackParams = new URLSearchParams({ numero });
+          const phoneDigits = String(formData.telefoneDigits || '').replace(/\D/g, '');
+          if (phoneDigits) trackParams.set('telefone', phoneDigits);
           const link = document.createElement('a');
-          link.href = `/acompanhar?numero=${encodeURIComponent(numero)}`;
+          link.href = `/acompanhar?${trackParams.toString()}`;
           link.className = 'cat-chip empty-pedido__cta';
           link.dataset.trackCta = '1';
           link.textContent = 'Acompanhar pedido';

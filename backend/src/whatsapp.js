@@ -10,6 +10,27 @@ export function normalizeWhatsAppPhone(raw) {
   return digits;
 }
 
+/** Variantes BR com/sem 55 para bater telefone_normalizado e telefone_cliente. */
+export function whatsappPhoneLookupKeys(raw) {
+  const phone = normalizeWhatsAppPhone(raw);
+  if (!phone) return [];
+  const keys = new Set([phone]);
+  if (phone.startsWith('55') && phone.length >= 12) {
+    keys.add(phone.slice(2));
+  } else if (phone.length === 10 || phone.length === 11) {
+    keys.add(`55${phone}`);
+  }
+  return [...keys];
+}
+
+/** Dígitos locais (DDD+número) para formulário/máscara. */
+export function toLocalWhatsAppDigits(raw) {
+  const phone = normalizeWhatsAppPhone(raw);
+  if (!phone) return '';
+  if (phone.startsWith('55') && phone.length >= 12) return phone.slice(2);
+  return phone;
+}
+
 export function formatWhatsAppDisplay(raw) {
   const digits = normalizeWhatsAppPhone(raw);
   if (!digits) return '';

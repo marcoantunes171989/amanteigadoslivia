@@ -3,7 +3,7 @@ import { getCatalogPayload } from './catalog.js';
 import { AdminError, mapDatabaseError } from './admin-errors.js';
 import { withTransaction } from './db-tx.js';
 import { CHECKOUT_MESSAGES, CHECKOUT_NAME_MIN, normalizeCustomerName } from '../../ui-core.js';
-import { normalizeWhatsAppPhone } from './whatsapp.js';
+import { normalizeWhatsAppPhone, whatsappPhoneLookupKeys } from './whatsapp.js';
 import {
   endExclusiveOfBoundary,
   saoPauloDayKey,
@@ -438,10 +438,27 @@ function wrapPedido(row, itens = []) {
   };
 }
 
+async function listPedidosPorTelefoneKeys(queryable, phoneKeys) {
+  const result = await queryable.query(
+    `-- op:list_pedidos_por_telefone
+      SELECT ${VENDA_BASE_COLS}, n.numero_pedido
+      FROM public.tab_pedido_numero n
+      INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
+      WHERE n.telefone_normalizado = ANY($1::text[])
+         OR v.telefone_cliente = ANY($1::text[])
+      ORDER BY n.numero_pedido DESC
+      LIMIT 30
+    `,
+    [phoneKeys],
+  );
+  return result.rows;
+}
+
 export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefone } = {}) {
   const numeroRaw = String(numero_pedido || '').trim();
   const numero = numeroRaw ? Number.parseInt(numeroRaw, 10) : null;
-  const phone = normalizeWhatsAppPhone(telefone || '');
+  const phoneKeys = whatsappPhoneLookupKeys(telefone || '');
+  const phone = phoneKeys[0] || null;
   const hasNumero = Number.isInteger(numero) && numero > 0;
   if (!hasNumero && !phone) {
     throw new AdminError(400, 'validation_error', 'Informe o número do pedido ou o WhatsApp.');
@@ -457,35 +474,25 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
 
   // Busca por telefone: histórico ordenado pelo número do pedido (mais recente primeiro).
   if (phone && !hasNumero) {
-    const result = await queryable.query(
-      `-- op:list_pedidos_por_telefone
-        SELECT ${VENDA_BASE_COLS}, n.numero_pedido
-        FROM public.tab_pedido_numero n
-        INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
-        WHERE n.telefone_normalizado = $1
-        ORDER BY n.numero_pedido DESC
-        LIMIT 30
-      `,
-      [phone],
-    );
-    if (!result.rows.length) {
+    const rows = await listPedidosPorTelefoneKeys(queryable, phoneKeys);
+    if (!rows.length) {
       throw new AdminError(404, 'not_found', 'Nenhum pedido encontrado para este WhatsApp.');
     }
     const itensByVenda = await loadItensByVendaIds(
       queryable,
-      result.rows.map((row) => row.id_venda),
+      rows.map((row) => row.id_venda),
     );
-    const pedidos = result.rows.map((row) => wrapPedido(row, itensByVenda.get(String(row.id_venda)) || []));
+    const pedidos = rows.map((row) => wrapPedido(row, itensByVenda.get(String(row.id_venda)) || []));
     return {
       modo: 'historico',
-      telefone: phone,
+      telefone: normalizeWhatsAppPhone(rows[0].telefone_cliente) || phone,
       pedidos,
       venda: pedidos[0].venda,
       acompanhamento: pedidos[0].acompanhamento,
     };
   }
 
-  // Busca por número (opcionalmente validando telefone).
+  // Busca por número (opcionalmente validando telefone — com variantes 55).
   const params = [numero];
   let sql = `-- op:get_pedido_acompanhamento
     SELECT ${VENDA_BASE_COLS}, n.numero_pedido
@@ -494,8 +501,8 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
     WHERE n.numero_pedido = $1
   `;
   if (phone) {
-    params.push(phone);
-    sql += ` AND n.telefone_normalizado = $2`;
+    params.push(phoneKeys);
+    sql += ` AND (n.telefone_normalizado = ANY($2::text[]) OR v.telefone_cliente = ANY($2::text[]))`;
   }
   sql += ' LIMIT 1';
 
@@ -511,24 +518,15 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
 
   // Se houver telefone do pedido, devolve também o histórico desse número.
   const telefonePedido = normalizeWhatsAppPhone(row.telefone_cliente || phone || '');
+  const histKeys = whatsappPhoneLookupKeys(telefonePedido || phone || '');
   let historico = [selected];
-  if (telefonePedido) {
-    const hist = await queryable.query(
-      `-- op:list_pedidos_por_telefone
-        SELECT ${VENDA_BASE_COLS}, n.numero_pedido
-        FROM public.tab_pedido_numero n
-        INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
-        WHERE n.telefone_normalizado = $1
-        ORDER BY n.numero_pedido DESC
-        LIMIT 30
-      `,
-      [telefonePedido],
-    );
+  if (histKeys.length) {
+    const histRows = await listPedidosPorTelefoneKeys(queryable, histKeys);
     const itensHist = await loadItensByVendaIds(
       queryable,
-      hist.rows.map((item) => item.id_venda),
+      histRows.map((item) => item.id_venda),
     );
-    historico = hist.rows.map((item) => wrapPedido(item, itensHist.get(String(item.id_venda)) || []));
+    historico = histRows.map((item) => wrapPedido(item, itensHist.get(String(item.id_venda)) || []));
   }
 
   return {

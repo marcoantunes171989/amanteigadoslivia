@@ -10,6 +10,7 @@ const WINDOW_MS = 15 * 60 * 1000;
 export const LOGIN_IDENTITY_MAX_ATTEMPTS = 10;
 export const LOGIN_ORIGIN_MAX_ATTEMPTS = 50;
 const PUBLIC_FORM_MAX_ATTEMPTS = 8;
+export const PEDIDO_TRACK_MAX_ATTEMPTS = 180;
 const MAX_TRACKED_BUCKETS = 10_000;
 
 const buckets = new Map();
@@ -80,9 +81,9 @@ export function assertLoginRateLimit(request, usuario, { now = Date.now() } = {}
   }
 }
 
-export function assertPublicFormRateLimit(request, extra = 'encomenda', { now = Date.now() } = {}) {
+export function assertPublicFormRateLimit(request, extra = 'encomenda', { now = Date.now(), max = PUBLIC_FORM_MAX_ATTEMPTS } = {}) {
   const ip = trustedClientIp(request) || 'unknown';
-  consume(`form:${ip}|${extra}`, { max: PUBLIC_FORM_MAX_ATTEMPTS, now });
+  consume(`form:${ip}|${extra}`, { max, now });
 }
 
 export function resetLoginRateLimitForTests() {

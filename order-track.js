@@ -48,7 +48,9 @@
       // Ícone sempre visível para o cliente consultar/acompanhar.
       el.hidden = false;
       if (order?.numero_pedido) {
-        el.setAttribute('href', `/acompanhar?numero=${encodeURIComponent(order.numero_pedido)}`);
+        const params = new URLSearchParams({ numero: String(order.numero_pedido) });
+        if (order.telefone) params.set('telefone', String(order.telefone).replace(/\D/g, ''));
+        el.setAttribute('href', `/acompanhar?${params.toString()}`);
         el.setAttribute(
           'aria-label',
           active
