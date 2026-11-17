@@ -4,6 +4,7 @@ import {
   handleAdminAuditoria,
   handleAdminCatalog,
   handleAdminConteudo,
+  handleAdminEmpresa,
   handleAdminLogin,
   handleAdminLogout,
   handleAdminPublicacoes,
@@ -31,6 +32,7 @@ export const ADMIN_ROUTES = {
   'imagens/upload-url': handleAdminUploadUrl,
   conteudo: handleAdminConteudo,
   solicitacoes: handleAdminSolicitacoes,
+  empresa: handleAdminEmpresa,
 };
 
 function firstQueryValue(value) {

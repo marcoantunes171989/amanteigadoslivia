@@ -3,6 +3,7 @@ import { getCatalogPayload } from './catalog.js';
 import { AdminError, mapDatabaseError } from './admin-errors.js';
 import { withTransaction } from './db-tx.js';
 import { CHECKOUT_MESSAGES, CHECKOUT_NAME_MIN, normalizeCustomerName } from '../../ui-core.js';
+import { EMPRESA_PADRAO_ID, ensureEmpresaSupport } from './empresa.js';
 import { normalizeWhatsAppPhone, whatsappPhoneLookupKeys } from './whatsapp.js';
 import {
   endExclusiveOfBoundary,
@@ -235,6 +236,26 @@ export async function captureVenda(pool, payload = {}) {
       if (numberingReady) {
         numeroPedido = await attachNumeroPedido(client, { idVenda, telefone: telefoneCliente });
       }
+      // SaaS: associa empresa sem alterar demais campos (nullable / backfill).
+      if (await ensureEmpresaSupport(client)) {
+        const idEmpresa = payload.id_empresa || EMPRESA_PADRAO_ID;
+        await client.query(
+          `-- op:set_venda_empresa
+            UPDATE app.tab_venda
+            SET id_empresa = COALESCE(id_empresa, $2)
+            WHERE id_venda = $1
+          `,
+          [idVenda, idEmpresa],
+        ).catch(() => null);
+        await client.query(
+          `-- op:set_pedido_numero_empresa
+            UPDATE public.tab_pedido_numero
+            SET id_empresa = COALESCE(id_empresa, $2)
+            WHERE id_venda = $1
+          `,
+          [idVenda, idEmpresa],
+        ).catch(() => null);
+      }
       return {
         duplicated: false,
         venda: publicSale({ ...inserted.rows[0], numero_pedido: numeroPedido }, itens),
@@ -305,9 +326,13 @@ export async function listVendas(queryable, query = {}, { now = new Date() } = {
     params.push(status);
     sql += ` AND v.status_venda = $${params.length}`;
   }
+  if (query.id_empresa) {
+    params.push(String(query.id_empresa));
+    sql += ` AND (v.id_empresa = $${params.length} OR v.id_empresa IS NULL)`;
+  }
   sql += ' ORDER BY v.data_venda DESC';
   const result = await queryable.query(sql, params).catch(async (error) => {
-    if (error?.code !== '42P01') throw error;
+    if (error?.code !== '42P01' && error?.code !== '42703') throw error;
     let legacy = `-- op:list_vendas_legacy
       SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
              telefone_cliente, valor_total_centavos, data_venda, data_atualizacao,
@@ -315,11 +340,13 @@ export async function listVendas(queryable, query = {}, { now = new Date() } = {
       FROM app.tab_venda
       WHERE data_venda >= $1 AND data_venda < $2
     `;
+    const legacyParams = [params[0], params[1]];
     if (status && ['PENDENTE', 'CONFIRMADA', 'CANCELADA'].includes(status)) {
+      legacyParams.push(status);
       legacy += ` AND status_venda = $3`;
     }
     legacy += ' ORDER BY data_venda DESC';
-    return queryable.query(legacy, params);
+    return queryable.query(legacy, legacyParams);
   });
   const ids = result.rows.map((row) => row.id_venda);
   let itens = [];

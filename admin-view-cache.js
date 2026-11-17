@@ -6,7 +6,7 @@ export const VIEW_RESOURCES = Object.freeze({
   overview: Object.freeze(['catalog', 'dashboard']),
   categories: Object.freeze(['catalog']),
   products: Object.freeze(['catalog']),
-  branding: Object.freeze(['content']),
+  branding: Object.freeze(['content', 'empresa']),
   homeContent: Object.freeze(['content']),
   encomendasContent: Object.freeze(['content']),
   festasContent: Object.freeze(['content']),
@@ -24,6 +24,7 @@ export const VIEW_RESOURCES = Object.freeze({
 export const VIEW_CACHE_TTL_MS = Object.freeze({
   catalog: 30000,
   content: 30000,
+  empresa: 30000,
   dashboard: 0,
   sales: 0,
   requests: 0,

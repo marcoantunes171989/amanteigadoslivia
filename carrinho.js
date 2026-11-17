@@ -70,7 +70,7 @@
     const pedido = formatPedidoNumber(venda) || '—';
     const statusUrl = statusPedidoUrl(venda, telefoneDigits);
     const lines = [
-      '🍪 *Amanteigados Lívia*',
+      `🍪 *${window.AmanteigadosStorefrontTheme?.nomeExibicao || window.AmanteigadosStorefrontConfig?.nomeExibicao || 'Amanteigados Lívia'}*`,
       '',
       `Olá${nome ? `, *${nome}*` : ''}! Seu pedido está *EM PREPARAÇÃO!* ⏳`,
       '',
@@ -110,7 +110,8 @@
   }
 
   function shopWhatsAppPhone() {
-    const configured = window.AmanteigadosStorefrontConfig?.whatsappPhone
+    const configured = window.AmanteigadosStorefrontTheme?.whatsappPhone
+      || window.AmanteigadosStorefrontConfig?.whatsappPhone
       || window.AmanteigadosWhatsApp?.phone
       || window.AmanteigadosSite?.get?.()?.configuracao?.whatsapp_telefone
       || '5518981465499';

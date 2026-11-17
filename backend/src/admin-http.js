@@ -23,7 +23,40 @@ import { getCatalogPayload } from './catalog.js';
 import { broadcastCatalogUpdated, broadcastSiteUpdated, getCatalogRevision } from './catalog-revision.js';
 import { executeContentAction, getAdminSiteContent, getPublicSiteContent } from './site-content.js';
 import { createSolicitacaoEncomenda, listSolicitacoesEncomenda, updateSolicitacaoStatus } from './encomendas.js';
+import {
+  DEFAULT_EMPRESA,
+  DEFAULT_TEMA,
+  EMPRESA_PADRAO_ID,
+  ensureEmpresaSupport,
+  getEmpresaTemaById,
+  listEmpresas,
+  publicEmpresaPayload,
+  resolveEmpresa,
+  updateEmpresaTema,
+} from './empresa.js';
 import { hashPassword, verifyPassword } from './password.js';
+
+async function resolveUsuarioEmpresaId(pool, idUsuarioAdmin) {
+  if (!(await ensureEmpresaSupport(pool))) return EMPRESA_PADRAO_ID;
+  try {
+    const result = await pool.query(
+      `-- op:get_usuario_empresa
+        SELECT id_empresa
+        FROM app.tab_usuario_admin
+        WHERE id_usuario_admin = $1
+        LIMIT 1
+      `,
+      [idUsuarioAdmin],
+    );
+    return result.rows[0]?.id_empresa || EMPRESA_PADRAO_ID;
+  } catch {
+    return EMPRESA_PADRAO_ID;
+  }
+}
+
+function sessionEmpresaId(session) {
+  return session?.id_empresa || EMPRESA_PADRAO_ID;
+}
 
 const GENERIC_LOGIN_ERROR = 'Usuário ou senha inválidos.';
 
@@ -290,12 +323,14 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
       identificador_requisicao: requestId(request),
     });
 
+    const idEmpresa = await resolveUsuarioEmpresaId(pool, user.id_usuario_admin);
     const token = signSession(process.env.ADMIN_SESSION_SECRET, {
       id_usuario_admin: String(user.id_usuario_admin),
       email: user.email_usuario,
       perfil: user.perfil_usuario,
       protegido: user.protegido === true,
       nome_usuario: user.nome_usuario || null,
+      id_empresa: String(idEmpresa),
     });
     response.setHeader('Set-Cookie', buildSessionCookie(token, {
       secure: isSecureRequest(request),
@@ -308,6 +343,7 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
         email_usuario: user.email_usuario,
         perfil_usuario: user.perfil_usuario,
         protegido: user.protegido === true,
+        id_empresa: String(idEmpresa),
       },
     });
   } catch (error) {
@@ -350,7 +386,7 @@ export async function handleAdminLogout(request, response, { getPool } = {}) {
   sendJson(response, 200, { ok: true });
 }
 
-export async function handleAdminSessao(request, response) {
+export async function handleAdminSessao(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'GET') {
     sendJson(response, 405, { error: 'method_not_allowed' });
@@ -358,6 +394,13 @@ export async function handleAdminSessao(request, response) {
   }
   try {
     const session = assertAdminSession(request);
+    let idEmpresa = sessionEmpresaId(session);
+    if (!session.id_empresa && typeof deps.getPool === 'function') {
+      idEmpresa = await resolveUsuarioEmpresaId(requirePool(deps.getPool), session.id_usuario_admin);
+    }
+    const empresaPayload = typeof deps.getPool === 'function'
+      ? await getEmpresaTemaById(requirePool(deps.getPool), idEmpresa)
+      : null;
     sendJson(response, 200, {
       autenticado: true,
       ambiente: resolveAmbiente(),
@@ -367,11 +410,106 @@ export async function handleAdminSessao(request, response) {
         perfil: session.perfil,
         protegido: session.protegido === true,
         nome_usuario: session.nome_usuario || null,
+        id_empresa: String(idEmpresa),
       },
+      empresa: empresaPayload?.empresa || null,
+      tema: empresaPayload?.tema || null,
     });
   } catch (error) {
     sendError(response, error);
   }
+}
+
+export async function handlePublicEmpresa(request, response, deps = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  if (request.method !== 'GET') {
+    sendJson(response, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  try {
+    const url = new URL(request.url || 'http://localhost/api/empresa', 'http://localhost');
+    const host = request.headers?.host || request.headers?.['x-forwarded-host'] || '';
+    const payload = await resolveEmpresa(requirePool(deps.getPool), {
+      slug: url.searchParams.get('empresa') || url.searchParams.get('slug') || '',
+      host: Array.isArray(host) ? host[0] : host,
+    });
+    sendJson(response, 200, { ok: true, ...payload });
+  } catch (error) {
+    if (typeof deps.logDatabaseError === 'function') {
+      deps.logDatabaseError('[empresa] public request failed', error);
+    }
+    // Fallback permanente: nunca quebra a loja atual.
+    sendJson(response, 200, { ok: true, ...publicEmpresaPayload(DEFAULT_EMPRESA, DEFAULT_TEMA) });
+  }
+}
+
+export async function handleAdminEmpresa(request, response, deps = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    sendJson(response, 405, { error: 'method_not_allowed' });
+    return;
+  }
+
+  await withAdmin(request, response, deps, async ({ pool, session }) => {
+    const idEmpresaSessao = sessionEmpresaId(session);
+
+    if (request.method === 'GET') {
+      const atual = await getEmpresaTemaById(pool, idEmpresaSessao);
+      const empresas = isSuperAdminPerfil(session.perfil)
+        ? await listEmpresas(pool)
+        : [atual.empresa];
+      sendJson(response, 200, {
+        ok: true,
+        ...atual,
+        empresas,
+      });
+      return;
+    }
+
+    const body = await readJsonBody(request);
+    const acao = String(body?.acao || '').trim();
+
+    if (acao === 'selecionar_empresa') {
+      if (!isSuperAdminPerfil(session.perfil)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode trocar de empresa.');
+      }
+      const idEmpresa = String(body?.id_empresa || '').trim() || EMPRESA_PADRAO_ID;
+      const selected = await getEmpresaTemaById(pool, idEmpresa);
+      const token = signSession(process.env.ADMIN_SESSION_SECRET, {
+        id_usuario_admin: session.id_usuario_admin,
+        email: session.email,
+        perfil: session.perfil,
+        protegido: session.protegido === true,
+        nome_usuario: session.nome_usuario || null,
+        id_empresa: selected.empresa.id_empresa,
+      });
+      response.setHeader('Set-Cookie', buildSessionCookie(token, {
+        secure: isSecureRequest(request),
+      }));
+      sendJson(response, 200, { ok: true, ...selected });
+      return;
+    }
+
+    if (acao === 'salvar_tema') {
+      const updated = await updateEmpresaTema(pool, idEmpresaSessao, body?.dados || body || {});
+      await recordAudit(pool, {
+        id_usuario_admin: session.id_usuario_admin,
+        acao: 'alterar_branding',
+        entidade: 'empresa_tema',
+        id_registro: idEmpresaSessao,
+        sucesso: true,
+        descricao_evento: 'Tema da empresa atualizado.',
+        identificador_requisicao: requestId(request),
+      });
+      try {
+        await broadcastSiteUpdated(pool);
+      } catch { /* ignore */ }
+      sendJson(response, 200, { ok: true, ...updated });
+      return;
+    }
+
+    throw new AdminError(400, 'validation_error', 'Ação de empresa inválida.');
+  });
 }
 
 export async function handleAdminCatalog(request, response, deps = {}) {
@@ -465,7 +603,10 @@ export async function handleAdminVendas(request, response, deps = {}) {
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
       const url = new URL(request.url || 'http://localhost/api/admin/vendas', 'http://localhost');
-      const vendas = await listVendas(pool, Object.fromEntries(url.searchParams.entries()));
+      const vendas = await listVendas(pool, {
+        ...Object.fromEntries(url.searchParams.entries()),
+        id_empresa: sessionEmpresaId(session),
+      });
       sendJson(response, 200, { vendas });
       return;
     }

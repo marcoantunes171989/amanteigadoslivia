@@ -89,7 +89,7 @@ import {
     overview: ['Painel', 'Dashboard', 'Indicadores e desempenho da operação.'],
     categories: ['Catálogo', 'Categorias', 'Organize as categorias ativas do cardápio.'],
     products: ['Catálogo', 'Produtos', 'Gerencie nomes, preços, imagens e disponibilidade.'],
-    branding: ['Conteúdo', 'Branding', 'Logos e WhatsApp comercial do site.'],
+    branding: ['Conteúdo', 'Branding', 'Cores, logo, nome e WhatsApp do estabelecimento.'],
     homeContent: ['Conteúdo', 'Página Inicial', 'Hero, destaques e chamadas da home.'],
     encomendasContent: ['Conteúdo', 'Encomendas', 'Chamada, galeria e textos da seção.'],
     festasContent: ['Conteúdo', 'Festas', 'Aniversário, presente, celebrações, eventos e lembranças.'],
@@ -112,6 +112,7 @@ import {
     solicitacoes: [],
     requestStatus: 'NOVA',
     conteudo: { configuracoes: [], conteudos: [] },
+    empresa: { empresa: null, tema: null, empresas: [] },
     usuarios: [],
     auditoria: [],
     publicacoes: null,
@@ -799,6 +800,20 @@ import {
     return true;
   }
 
+  async function loadEmpresa(isCurrent = () => true) {
+    const payload = await request('/api/admin/empresa');
+    if (!isCurrent()) return false;
+    state.empresa = {
+      empresa: payload.empresa || null,
+      tema: payload.tema || null,
+      empresas: payload.empresas || [],
+    };
+    if (payload.empresa?.id_empresa && state.sessao) {
+      state.sessao.id_empresa = payload.empresa.id_empresa;
+    }
+    return true;
+  }
+
   async function loadRequests(isCurrent = () => true) {
     const payload = await request('/api/admin/solicitacoes');
     if (!isCurrent()) return false;
@@ -810,6 +825,7 @@ import {
     catalog: (isCurrent) => loadCatalog(isCurrent),
     dashboard: () => loadDashboard(currentDashboardRange()),
     content: (isCurrent) => loadContent(isCurrent),
+    empresa: (isCurrent) => loadEmpresa(isCurrent),
     sales: (isCurrent) => loadSales(isCurrent),
     requests: (isCurrent) => loadRequests(isCurrent),
     reports: (isCurrent) => loadReports(isCurrent),
@@ -935,6 +951,7 @@ import {
     state.vendas = [];
     state.solicitacoes = [];
     state.conteudo = { configuracoes: [], conteudos: [] };
+    state.empresa = { empresa: null, tema: null, empresas: [] };
     state.usuarios = [];
     state.auditoria = [];
     state.publicacoes = null;
@@ -1333,12 +1350,49 @@ import {
     const target = views[view];
     if (!target) return;
     if (view === 'branding') {
+      const tema = state.empresa?.tema || {};
+      const empresa = state.empresa?.empresa || {};
+      const empresas = state.empresa?.empresas || [];
+      const isSuper = canAccessGestao(state.sessao);
+      const switcher = isSuper && empresas.length
+        ? el('article', { className: 'card content-admin-card' }, [
+          el('strong', { text: 'Estabelecimento ativo' }),
+          el('p', { className: 'muted', text: 'SUPER_ADMIN pode alternar entre empresas sem alterar dados.' }),
+          field('empresa_switch', 'Empresa', el('select', {
+            id: 'empresa_switch',
+            onChange: async (event) => {
+              try {
+                await request('/api/admin/empresa', {
+                  method: 'POST',
+                  body: JSON.stringify({ acao: 'selecionar_empresa', id_empresa: event.target.value }),
+                });
+                viewCache.invalidateAll();
+                toast('Empresa selecionada.');
+                await refreshView();
+              } catch (error) {
+                toast(error.message || 'Não foi possível trocar de empresa.', false);
+              }
+            },
+          }, empresas.map((item) => el('option', {
+            value: item.id_empresa,
+            selected: String(item.id_empresa) === String(empresa.id_empresa),
+            text: item.nome_fantasia || item.slug,
+          })))),
+        ])
+        : el('article', { className: 'card content-admin-card' }, [
+          el('strong', { text: 'Estabelecimento' }),
+          el('p', { className: 'muted', text: empresa.nome_fantasia || 'Amanteigados Lívia' }),
+          el('p', { className: 'muted', text: `Slug: ${empresa.slug || 'amanteigados-livia'}` }),
+        ]);
+
       target.replaceChildren(
         pageHeading('branding'),
         el('div', { className: 'content-admin-grid' }, [
-          brandingEditor('logo_topo_url', 'Logo do topo', configValue('logo_topo_url'), true, 'round'),
-          brandingEditor('logo_rodape_url', 'Logo do rodapé', configValue('logo_rodape_url'), true, 'wide'),
-          brandingEditor('whatsapp_telefone', 'WhatsApp comercial', configValue('whatsapp_telefone'), false),
+          switcher,
+          empresaTemaEditor(tema),
+          brandingEditor('logo_topo_url', 'Logo do topo (conteúdo legado)', configValue('logo_topo_url') || tema.logo_topo_url, true, 'round'),
+          brandingEditor('logo_rodape_url', 'Logo do rodapé (conteúdo legado)', configValue('logo_rodape_url'), true, 'wide'),
+          brandingEditor('whatsapp_telefone', 'WhatsApp (conteúdo legado)', configValue('whatsapp_telefone') || tema.whatsapp_telefone, false),
         ]),
       );
       return;
@@ -1446,7 +1500,7 @@ import {
       isImage ? el('div', { className: `brand-preview-shell ${shape === 'round' ? 'is-round' : 'is-wide'}` }, [
         value ? el('img', { src: value, alt: label }) : el('span', { className: 'muted', text: 'Sem imagem' }),
       ]) : null,
-      field(chave, isImage ? 'URL da imagem' : 'Telefone com DDI', el('input', { id: chave, name: chave, value, type: 'text' })),
+      field(chave, isImage ? 'URL da imagem' : 'Telefone com DDI', el('input', { id: chave, name: chave, value: value || '', type: 'text' })),
       isImage ? el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', onChange: async (event) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -1462,6 +1516,94 @@ import {
       el('button', { className: 'btn btn-primary', type: 'button', text: 'Salvar', onClick: async () => {
         await saveConfig(chave, document.getElementById(chave).value);
       } }),
+    ]);
+  }
+
+  function empresaTemaEditor(tema = {}) {
+    const colorField = (id, label, value) => field(id, label, el('input', {
+      id,
+      type: 'text',
+      value: value || '',
+      placeholder: '#800020',
+      maxlength: '7',
+    }));
+    return el('article', { className: 'card content-admin-card' }, [
+      el('strong', { text: 'Identidade do estabelecimento (SaaS)' }),
+      el('p', { className: 'muted', text: 'Altera cores, logo e WhatsApp do fluxo de pedido sem mudar a estrutura.' }),
+      el('div', { className: `brand-preview-shell is-round` }, [
+        tema.logo_topo_url
+          ? el('img', { src: tema.logo_topo_url, alt: tema.nome_exibicao || 'Logo' })
+          : el('span', { className: 'muted', text: 'Sem logo' }),
+      ]),
+      field('tema_nome_exibicao', 'Nome exibido', el('input', {
+        id: 'tema_nome_exibicao',
+        type: 'text',
+        value: tema.nome_exibicao || '',
+      })),
+      colorField('tema_cor_primaria', 'Cor primária', tema.cor_primaria),
+      colorField('tema_cor_primaria_escura', 'Cor primária escura', tema.cor_primaria_escura),
+      colorField('tema_cor_fundo', 'Cor de fundo', tema.cor_fundo),
+      colorField('tema_cor_texto', 'Cor de texto', tema.cor_texto),
+      colorField('tema_cor_destaque', 'Cor de destaque', tema.cor_destaque),
+      field('tema_logo_topo_url', 'URL do logo', el('input', {
+        id: 'tema_logo_topo_url',
+        type: 'text',
+        value: tema.logo_topo_url || '',
+      })),
+      el('input', {
+        type: 'file',
+        accept: 'image/jpeg,image/png,image/webp',
+        onChange: async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          state.pendingFile = file;
+          try {
+            const url = await uploadSelectedImage('site/branding');
+            state.pendingFile = null;
+            const input = document.getElementById('tema_logo_topo_url');
+            if (input) input.value = url;
+          } catch (error) {
+            toast(error.message || 'Falha no upload.', false);
+          }
+        },
+      }),
+      field('tema_whatsapp_telefone', 'WhatsApp com DDI', el('input', {
+        id: 'tema_whatsapp_telefone',
+        type: 'text',
+        value: tema.whatsapp_telefone || '',
+      })),
+      el('button', {
+        className: 'btn btn-primary',
+        type: 'button',
+        text: 'Salvar identidade',
+        onClick: async () => {
+          try {
+            await request('/api/admin/empresa', {
+              method: 'POST',
+              body: JSON.stringify({
+                acao: 'salvar_tema',
+                dados: {
+                  nome_exibicao: document.getElementById('tema_nome_exibicao')?.value,
+                  nome_fantasia: document.getElementById('tema_nome_exibicao')?.value,
+                  cor_primaria: document.getElementById('tema_cor_primaria')?.value,
+                  cor_primaria_escura: document.getElementById('tema_cor_primaria_escura')?.value,
+                  cor_fundo: document.getElementById('tema_cor_fundo')?.value,
+                  cor_texto: document.getElementById('tema_cor_texto')?.value,
+                  cor_destaque: document.getElementById('tema_cor_destaque')?.value,
+                  logo_topo_url: document.getElementById('tema_logo_topo_url')?.value,
+                  logo_favicon_url: document.getElementById('tema_logo_topo_url')?.value,
+                  whatsapp_telefone: document.getElementById('tema_whatsapp_telefone')?.value,
+                },
+              }),
+            });
+            viewCache.invalidateAll();
+            toast('Identidade do estabelecimento salva.');
+            await refreshView();
+          } catch (error) {
+            toast(error.message || 'Não foi possível salvar o tema.', false);
+          }
+        },
+      }),
     ]);
   }
 
@@ -2727,6 +2869,7 @@ import {
           perfil: payload.usuario.perfil_usuario,
           protegido: payload.usuario.protegido === true,
           nome_usuario: payload.usuario.nome_usuario,
+          id_empresa: payload.usuario.id_empresa || null,
         };
       }
       renderAmbiente((await request('/api/admin/sessao').catch(() => null))?.ambiente);
@@ -2814,7 +2957,15 @@ import {
       perfil: usuario.perfil || usuario.perfil_usuario,
       protegido: usuario.protegido === true,
       nome_usuario: usuario.nome_usuario || state.sessao?.nome_usuario || null,
+      id_empresa: usuario.id_empresa || payload?.empresa?.id_empresa || null,
     };
+    if (payload?.empresa || payload?.tema) {
+      state.empresa = {
+        empresa: payload.empresa || state.empresa?.empresa || null,
+        tema: payload.tema || state.empresa?.tema || null,
+        empresas: state.empresa?.empresas || [],
+      };
+    }
     renderAdminUser();
   }
 
