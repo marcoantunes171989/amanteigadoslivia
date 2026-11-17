@@ -470,7 +470,7 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
 
     if (request.method === 'GET') {
       const atual = await getEmpresaTemaById(pool, idEmpresaSessao);
-      const empresas = isSuperAdminPerfil(session.perfil)
+      const empresas = isSuperAdminPerfil(session)
         ? await listEmpresas(pool)
         : [atual.empresa];
       sendJson(response, 200, {
@@ -485,7 +485,7 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
     const acao = String(body?.acao || '').trim();
 
     if (acao === 'selecionar_empresa') {
-      if (!isSuperAdminPerfil(session.perfil)) {
+      if (!isSuperAdminPerfil(session)) {
         throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode trocar de empresa.');
       }
       const idEmpresa = String(body?.id_empresa || '').trim() || EMPRESA_PADRAO_ID;
@@ -524,7 +524,7 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
     }
 
     if (acao === 'criar_empresa') {
-      if (!isSuperAdminPerfil(session.perfil)) {
+      if (!isSuperAdminPerfil(session)) {
         throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode cadastrar empresa.');
       }
       const created = await createEmpresa(pool, body?.dados || body || {});
@@ -542,7 +542,7 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
     }
 
     if (acao === 'ativar_empresa' || acao === 'desativar_empresa') {
-      if (!isSuperAdminPerfil(session.perfil)) {
+      if (!isSuperAdminPerfil(session)) {
         throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode ativar/desativar empresa.');
       }
       const idEmpresa = String(body?.id_empresa || '').trim();
@@ -552,7 +552,7 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
     }
 
     if (acao === 'vincular_usuario') {
-      if (!isSuperAdminPerfil(session.perfil)) {
+      if (!isSuperAdminPerfil(session)) {
         throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode vincular usuários.');
       }
       const idUsuario = String(body?.id_usuario_admin || body?.id_usuario || '').trim();
@@ -560,6 +560,35 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
       if (!idUsuario) throw new AdminError(400, 'validation_error', 'Usuário obrigatório.');
       await linkUsuarioEmpresa(pool, idUsuario, idEmpresa);
       sendJson(response, 200, { ok: true, id_usuario_admin: idUsuario, id_empresa: idEmpresa });
+      return;
+    }
+
+    if (acao === 'backfill_vinculos_padrao') {
+      if (!isSuperAdminPerfil(session)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode sincronizar vínculos.');
+      }
+      const idPadrao = EMPRESA_PADRAO_ID;
+      await pool.query(`
+        INSERT INTO public.tab_usuario_empresa (id_usuario_admin, id_empresa)
+        SELECT u.id_usuario_admin, $1 FROM app.tab_usuario_admin u
+        ON CONFLICT (id_usuario_admin) DO NOTHING
+      `, [idPadrao]);
+      await pool.query(`
+        INSERT INTO public.tab_categoria_empresa (id_categoria, id_empresa)
+        SELECT c.id_categoria, $1 FROM app.tab_categoria c
+        ON CONFLICT (id_categoria) DO NOTHING
+      `, [idPadrao]);
+      await pool.query(`
+        INSERT INTO public.tab_produto_empresa (id_produto, id_empresa)
+        SELECT p.id_produto, $1 FROM app.tab_produto p
+        ON CONFLICT (id_produto) DO NOTHING
+      `, [idPadrao]);
+      await pool.query(`
+        INSERT INTO public.tab_venda_empresa (id_venda, id_empresa)
+        SELECT v.id_venda, $1 FROM app.tab_venda v
+        ON CONFLICT (id_venda) DO NOTHING
+      `, [idPadrao]);
+      sendJson(response, 200, { ok: true, id_empresa: idPadrao });
       return;
     }
 
