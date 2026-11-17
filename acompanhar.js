@@ -106,11 +106,89 @@
     });
   }
 
+  function pedidoInstant(venda) {
+    const raw = venda?.data_venda || venda?.data_atualizacao;
+    const date = raw ? new Date(raw) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+
+  function saoPauloParts(date) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const get = (type) => parts.find((part) => part.type === type)?.value || '';
+    return {
+      year: get('year'),
+      month: get('month'),
+      day: get('day'),
+      hour: get('hour'),
+      minute: get('minute'),
+    };
+  }
+
+  function dayKey(date) {
+    if (!date) return 'sem-data';
+    const { year, month, day } = saoPauloParts(date);
+    return `${year}-${month}-${day}`;
+  }
+
+  function formatDayLabel(date) {
+    if (!date) return 'Data não informada';
+    const todayKey = dayKey(new Date());
+    const key = dayKey(date);
+    if (key === todayKey) return 'Hoje';
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (key === dayKey(yesterday)) return 'Ontem';
+    const label = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(date);
+    return label.replace(/^./u, (char) => char.toUpperCase());
+  }
+
+  function formatOrderTime(date) {
+    if (!date) return '';
+    const { hour, minute } = saoPauloParts(date);
+    return `${hour}:${minute}`;
+  }
+
+  function groupPedidosByDay(pedidos) {
+    const sorted = [...pedidos].sort((a, b) => {
+      const dateA = pedidoInstant(a.venda)?.getTime() || 0;
+      const dateB = pedidoInstant(b.venda)?.getTime() || 0;
+      if (dateB !== dateA) return dateB - dateA;
+      return Number(b.venda?.numero_pedido || 0) - Number(a.venda?.numero_pedido || 0);
+    });
+
+    const groups = [];
+    const indexByKey = new Map();
+    sorted.forEach((entry) => {
+      const instant = pedidoInstant(entry.venda);
+      const key = dayKey(instant);
+      if (!indexByKey.has(key)) {
+        indexByKey.set(key, groups.length);
+        groups.push({ key, label: formatDayLabel(instant), items: [] });
+      }
+      groups[indexByKey.get(key)].items.push(entry);
+    });
+    return groups;
+  }
+
   function renderHistorico(payload, selectedNumero) {
     const pedidos = Array.isArray(payload?.pedidos) ? payload.pedidos : [];
     if (!els.history || !els.historyList) return;
 
-    if (pedidos.length <= 1) {
+    if (!pedidos.length) {
       els.history.hidden = true;
       els.historyList.replaceChildren();
       return;
@@ -118,32 +196,51 @@
 
     els.history.hidden = false;
     els.historyList.replaceChildren();
-    pedidos.forEach((entry) => {
-      const venda = entry.venda;
-      const info = entry.acompanhamento;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'track-history__item';
-      if (String(venda.numero_pedido) === String(selectedNumero)) {
-        btn.classList.add('is-active');
-      }
-      btn.innerHTML = `
-        <span class="track-history__pedido">Pedido Nº ${venda.numero_pedido}</span>
-        <span class="track-history__meta">${info?.rotulo_status || venda.status_venda} · ${money(venda.valor_total_centavos)}</span>
-      `;
-      btn.addEventListener('click', () => {
-        renderPedidoCard(entry);
-        renderHistorico(payload, venda.numero_pedido);
-        stopPoll();
-        if (entry.acompanhamento?.ativo) {
-          lastQuery = {
-            numero: String(venda.numero_pedido),
-            telefone: toLocalPhoneDigits(venda.telefone_cliente || lastQuery.telefone || ''),
-          };
-          startPoll();
+
+    groupPedidosByDay(pedidos).forEach((group) => {
+      const section = document.createElement('section');
+      section.className = 'track-history__group';
+
+      const heading = document.createElement('h3');
+      heading.className = 'track-history__day';
+      heading.textContent = group.label;
+      section.appendChild(heading);
+
+      const list = document.createElement('div');
+      list.className = 'track-history__day-list';
+
+      group.items.forEach((entry) => {
+        const venda = entry.venda;
+        const info = entry.acompanhamento;
+        const instant = pedidoInstant(venda);
+        const timeLabel = formatOrderTime(instant);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'track-history__item';
+        if (String(venda.numero_pedido) === String(selectedNumero)) {
+          btn.classList.add('is-active');
         }
+        btn.innerHTML = `
+          <span class="track-history__pedido">Pedido Nº ${venda.numero_pedido}</span>
+          <span class="track-history__meta">${timeLabel ? `${timeLabel} · ` : ''}${info?.rotulo_status || venda.status_venda} · ${money(venda.valor_total_centavos)}</span>
+        `;
+        btn.addEventListener('click', () => {
+          renderPedidoCard(entry);
+          renderHistorico(payload, venda.numero_pedido);
+          stopPoll();
+          if (entry.acompanhamento?.ativo) {
+            lastQuery = {
+              numero: String(venda.numero_pedido),
+              telefone: toLocalPhoneDigits(venda.telefone_cliente || lastQuery.telefone || ''),
+            };
+            startPoll();
+          }
+        });
+        list.appendChild(btn);
       });
-      els.historyList.appendChild(btn);
+
+      section.appendChild(list);
+      els.historyList.appendChild(section);
     });
   }
 

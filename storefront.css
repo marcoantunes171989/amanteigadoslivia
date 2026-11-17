@@ -1036,7 +1036,29 @@ body.menu-open {
 .track-history__list {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 1.15rem;
+}
+
+.track-history__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.track-history__day {
+  margin: 0;
+  padding: 0.15rem 0.1rem 0.35rem;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--bordo);
+  border-bottom: 1px solid rgba(128, 0, 32, 0.14);
+}
+
+.track-history__day-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .track-history__item {
