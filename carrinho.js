@@ -57,43 +57,48 @@
     return null;
   }
 
-  function buildWhatsAppMessage({ venda, items, total, nome, telefone, modalidade, endereco }) {
-    const pedido = formatPedidoNumber(venda);
+  function fallbackPedidoNumber() {
+    return String(Date.now()).slice(-6);
+  }
+
+  function buildWhatsAppMessage({ venda, items, total, nome, modalidade, endereco }) {
+    const pedidoRaw = formatPedidoNumber(venda) || `#${fallbackPedidoNumber()}`;
+    const pedido = String(pedidoRaw).replace(/^#/, '');
     const lines = [
-      '*NOVO PEDIDO — AMANTEIGADOS LÍVIA*',
+      '🍪 *Amanteigados Lívia*',
       '',
+      `Olá${nome ? `, *${nome}*` : ''}! Seu pedido está *EM PREPARAÇÃO!* ⏳`,
+      '',
+      `📦 *Pedido Nº ${pedido}*`,
+      '',
+      '🛒 *Itens:*',
     ];
-    if (pedido) lines.push(`Pedido: ${pedido}`);
-    lines.push(`Cliente: ${nome}`);
-    lines.push(`WhatsApp: ${telefone}`);
-    lines.push('');
-    lines.push('*PRODUTOS*');
-    lines.push('');
 
     items.forEach((item) => {
       const name = item.product?.name || item.name || 'Produto';
       const weight = weightLabel(item.product) || item.product?.unit || '';
-      const unit = Catalog.formatPrice(item.unitPrice) || '';
       const sub = Catalog.formatPrice(item.subtotal) || '';
-      if (item.quantity === 1) {
-        lines.push(`1x ${name}${weight ? ` — ${weight}` : ''}`);
-        lines.push(`Valor: ${sub}`);
-      } else {
-        lines.push(`${item.quantity}x ${name}${weight ? ` — ${weight}` : ''}`);
-        lines.push(`Valor unitário: ${unit}`);
-        lines.push(`Subtotal: ${sub}`);
-      }
-      lines.push('');
+      lines.push(`• ${item.quantity}x ${name}${weight ? ` (${weight})` : ''} — ${sub}`);
     });
 
-    lines.push(`*TOTAL DOS PRODUTOS: ${Catalog.formatPrice(total) || 'R$ 0,00'}*`);
+    lines.push('');
+    lines.push(`💰 *Total: ${Catalog.formatPrice(total) || 'R$ 0,00'}*`);
     if (modalidade === 'entrega') {
-      lines.push(`Entrega: A combinar${endereco ? ` — ${endereco}` : ''}`);
+      lines.push(`🚚 Entrega: A combinar${endereco ? ` — ${endereco}` : ''}`);
     } else {
-      lines.push('Retirada');
+      lines.push('🏪 Retirada');
     }
-    lines.push('Aguardando confirmação do atendimento.');
+    lines.push('');
+    lines.push('🙏 Obrigado pela preferência, se precisar de algo é só chamar.');
     return lines.join('\n');
+  }
+
+  function toWhatsAppMePhone(digits) {
+    const d = String(digits || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.startsWith('55')) return d;
+    if (d.length === 10 || d.length === 11) return `55${d}`;
+    return d;
   }
 
   function shopWhatsAppPhone() {
@@ -333,12 +338,12 @@
         items,
         total,
         nome: formData.nome,
-        telefone: formData.telefone,
         modalidade: formData.modalidade,
         endereco: formData.endereco,
       });
 
-      const phone = shopWhatsAppPhone();
+      // Mensagem de acompanhamento vai para o WhatsApp do cliente informado no formulário.
+      const phone = toWhatsAppMePhone(formData.telefoneDigits) || shopWhatsAppPhone();
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
       lastWhatsAppUrl = url;
 
