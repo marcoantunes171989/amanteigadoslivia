@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="storefront.css?v=11" />
-  <script src="no-zoom.js?v=11"></script>
-  <script src="storefront-config.js?v=11"></script>
+  <link rel="stylesheet" href="storefront.css?v=12" />
+  <script src="no-zoom.js?v=12"></script>
+  <script src="storefront-config.js?v=12"></script>
   <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
 </head>
 <body class="app-storefront pedido-page">
@@ -43,20 +43,26 @@
         <svg class="app-ico" aria-hidden="true"><use href="#i-track"/></svg>
         <span>Acompanhar pedido</span>
       </h1>
+      <p class="track-intro">Consulte pelo <strong>número do pedido</strong> ou pelo <strong>WhatsApp</strong> para ver o histórico.</p>
 
       <form class="track-lookup pedido-form" id="trackForm">
         <label class="field" for="trackNumero">
           <span class="sr-only">Número do pedido</span>
-          <input id="trackNumero" name="numero" type="text" inputmode="numeric" autocomplete="off" required placeholder="NÚMERO DO PEDIDO" maxlength="12" class="field-input--plain" />
+          <input id="trackNumero" name="numero" type="text" inputmode="numeric" autocomplete="off" placeholder="NÚMERO DO PEDIDO (opcional)" maxlength="12" class="field-input--plain" />
         </label>
         <label class="field" for="trackPhone">
           <span class="sr-only">WhatsApp</span>
-          <input id="trackPhone" name="telefone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="(18)99999 - 9999" maxlength="17" class="field-input--phone" />
+          <input id="trackPhone" name="telefone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(18)99999 - 9999 (opcional)" maxlength="17" class="field-input--phone" />
         </label>
-        <button type="submit" class="wa-submit track-lookup__btn" id="trackSubmit">Consultar pedido</button>
+        <button type="submit" class="wa-submit track-lookup__btn" id="trackSubmit">Consultar</button>
       </form>
 
       <p id="trackMessage" class="checkout-msg" hidden></p>
+
+      <section class="track-history" id="trackHistory" hidden>
+        <h2 class="track-history__title">Histórico de pedidos</h2>
+        <div class="track-history__list" id="trackHistoryList"></div>
+      </section>
 
       <section class="track-card" id="trackCard" hidden>
         <div class="track-card__status" id="trackStatus">Em preparação</div>
@@ -73,8 +79,8 @@
     </main>
   </div>
 
-  <script src="order-track.js?v=11"></script>
-  <script src="cart.js?v=11"></script>
-  <script src="acompanhar.js?v=11"></script>
+  <script src="order-track.js?v=12"></script>
+  <script src="cart.js?v=12"></script>
+  <script src="acompanhar.js?v=12"></script>
 </body>
 </html>

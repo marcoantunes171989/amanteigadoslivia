@@ -392,11 +392,62 @@ export async function updateVendaStatus(queryable, id, status) {
   return publicSale({ ...updated.rows[0], numero_pedido: row.numero_pedido }, []);
 }
 
+function acompanhamentoMeta(statusVenda) {
+  const status = String(statusVenda || '').toUpperCase();
+  const terminal = status === 'CONFIRMADA' || status === 'CANCELADA';
+  return {
+    ativo: !terminal,
+    finalizado: terminal,
+    rotulo_status: status === 'PENDENTE'
+      ? 'Em preparação'
+      : status === 'CONFIRMADA'
+        ? 'Finalizado'
+        : status === 'CANCELADA'
+          ? 'Cancelado'
+          : status || '—',
+  };
+}
+
+async function loadItensByVendaIds(queryable, ids) {
+  if (!ids.length) return new Map();
+  const itemsResult = await queryable.query(
+    `-- op:list_venda_itens_many
+      SELECT id_item_venda, id_venda, id_produto, nome_produto, quantidade,
+             valor_unitario_centavos, valor_total_centavos
+      FROM app.tab_venda_item
+      WHERE id_venda = ANY($1::uuid[])
+      ORDER BY data_criacao ASC
+    `,
+    [ids],
+  );
+  const byVenda = new Map();
+  for (const item of itemsResult.rows) {
+    const key = String(item.id_venda);
+    const list = byVenda.get(key) || [];
+    list.push(item);
+    byVenda.set(key, list);
+  }
+  return byVenda;
+}
+
+function wrapPedido(row, itens = []) {
+  const venda = publicSale(row, itens);
+  return {
+    venda,
+    acompanhamento: acompanhamentoMeta(venda.status_venda),
+  };
+}
+
 export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefone } = {}) {
-  const numero = Number.parseInt(String(numero_pedido || ''), 10);
+  const numeroRaw = String(numero_pedido || '').trim();
+  const numero = numeroRaw ? Number.parseInt(numeroRaw, 10) : null;
   const phone = normalizeWhatsAppPhone(telefone || '');
-  if (!Number.isInteger(numero) || numero <= 0 || !phone) {
-    throw new AdminError(400, 'validation_error', 'Informe número do pedido e WhatsApp válidos.');
+  const hasNumero = Number.isInteger(numero) && numero > 0;
+  if (!hasNumero && !phone) {
+    throw new AdminError(400, 'validation_error', 'Informe o número do pedido ou o WhatsApp.');
+  }
+  if (numeroRaw && !hasNumero) {
+    throw new AdminError(400, 'validation_error', 'Número do pedido inválido.');
   }
 
   const ready = await ensureNumeroPedidoSupport(queryable);
@@ -404,46 +455,87 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
     throw new AdminError(503, 'schema_unavailable', 'Acompanhamento de pedidos em atualização. Tente novamente em instantes.');
   }
 
-  const result = await queryable.query(
-    `-- op:get_pedido_acompanhamento
-      SELECT ${VENDA_BASE_COLS}, n.numero_pedido
-      FROM public.tab_pedido_numero n
-      INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
-      WHERE n.numero_pedido = $1
-        AND n.telefone_normalizado = $2
-      LIMIT 1
-    `,
-    [numero, phone],
-  );
+  // Busca por telefone: histórico ordenado pelo número do pedido (mais recente primeiro).
+  if (phone && !hasNumero) {
+    const result = await queryable.query(
+      `-- op:list_pedidos_por_telefone
+        SELECT ${VENDA_BASE_COLS}, n.numero_pedido
+        FROM public.tab_pedido_numero n
+        INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
+        WHERE n.telefone_normalizado = $1
+        ORDER BY n.numero_pedido DESC
+        LIMIT 30
+      `,
+      [phone],
+    );
+    if (!result.rows.length) {
+      throw new AdminError(404, 'not_found', 'Nenhum pedido encontrado para este WhatsApp.');
+    }
+    const itensByVenda = await loadItensByVendaIds(
+      queryable,
+      result.rows.map((row) => row.id_venda),
+    );
+    const pedidos = result.rows.map((row) => wrapPedido(row, itensByVenda.get(String(row.id_venda)) || []));
+    return {
+      modo: 'historico',
+      telefone: phone,
+      pedidos,
+      venda: pedidos[0].venda,
+      acompanhamento: pedidos[0].acompanhamento,
+    };
+  }
+
+  // Busca por número (opcionalmente validando telefone).
+  const params = [numero];
+  let sql = `-- op:get_pedido_acompanhamento
+    SELECT ${VENDA_BASE_COLS}, n.numero_pedido
+    FROM public.tab_pedido_numero n
+    INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
+    WHERE n.numero_pedido = $1
+  `;
+  if (phone) {
+    params.push(phone);
+    sql += ` AND n.telefone_normalizado = $2`;
+  }
+  sql += ' LIMIT 1';
+
+  const result = await queryable.query(sql, params);
   const row = result.rows[0];
   if (!row) {
-    throw new AdminError(404, 'not_found', 'Pedido não encontrado para este WhatsApp.');
+    throw new AdminError(404, 'not_found', phone
+      ? 'Pedido não encontrado para este WhatsApp.'
+      : 'Pedido não encontrado.');
   }
-  const itens = await queryable.query(
-    `-- op:list_venda_itens
-      SELECT id_item_venda, id_venda, id_produto, nome_produto, quantidade,
-             valor_unitario_centavos, valor_total_centavos
-      FROM app.tab_venda_item
-      WHERE id_venda = $1
-      ORDER BY data_criacao ASC
-    `,
-    [row.id_venda],
-  );
-  const venda = publicSale(row, itens.rows);
-  const terminal = venda.status_venda === 'CONFIRMADA' || venda.status_venda === 'CANCELADA';
+  const itensByVenda = await loadItensByVendaIds(queryable, [row.id_venda]);
+  const selected = wrapPedido(row, itensByVenda.get(String(row.id_venda)) || []);
+
+  // Se houver telefone do pedido, devolve também o histórico desse número.
+  const telefonePedido = normalizeWhatsAppPhone(row.telefone_cliente || phone || '');
+  let historico = [selected];
+  if (telefonePedido) {
+    const hist = await queryable.query(
+      `-- op:list_pedidos_por_telefone
+        SELECT ${VENDA_BASE_COLS}, n.numero_pedido
+        FROM public.tab_pedido_numero n
+        INNER JOIN app.tab_venda v ON v.id_venda = n.id_venda
+        WHERE n.telefone_normalizado = $1
+        ORDER BY n.numero_pedido DESC
+        LIMIT 30
+      `,
+      [telefonePedido],
+    );
+    const itensHist = await loadItensByVendaIds(
+      queryable,
+      hist.rows.map((item) => item.id_venda),
+    );
+    historico = hist.rows.map((item) => wrapPedido(item, itensHist.get(String(item.id_venda)) || []));
+  }
+
   return {
-    venda,
-    acompanhamento: {
-      ativo: !terminal,
-      finalizado: terminal,
-      rotulo_status: venda.status_venda === 'PENDENTE'
-        ? 'Em preparação'
-        : venda.status_venda === 'CONFIRMADA'
-          ? 'Finalizado'
-          : venda.status_venda === 'CANCELADA'
-            ? 'Cancelado'
-            : venda.status_venda,
-    },
+    modo: historico.length > 1 ? 'historico' : 'pedido',
+    telefone: telefonePedido || null,
+    pedidos: historico,
+    ...selected,
   };
 }
 

@@ -984,8 +984,62 @@ body.menu-open {
   font-size: var(--fs-xs);
 }
 
+.track-intro {
+  margin: -0.35rem 0 1rem;
+  color: var(--texto-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
 .track-lookup {
   margin-top: 0.25rem;
+}
+
+.track-history {
+  margin: 1rem 0 0.85rem;
+}
+
+.track-history__title {
+  margin: 0 0 0.65rem;
+  font-size: var(--fs-sm);
+  color: var(--bordo);
+  font-weight: 800;
+}
+
+.track-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.track-history__item {
+  width: 100%;
+  text-align: left;
+  border: 1.5px solid var(--linha);
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.track-history__item.is-active {
+  border-color: var(--bordo);
+  box-shadow: 0 0 0 1px rgba(128, 0, 32, 0.15);
+}
+
+.track-history__pedido {
+  font-weight: 800;
+  color: var(--bordo);
+  font-size: var(--fs-sm);
+}
+
+.track-history__meta {
+  color: var(--texto-2);
+  font-size: var(--fs-xs);
 }
 
 .track-lookup__btn {

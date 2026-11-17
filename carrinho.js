@@ -54,8 +54,20 @@
     return null;
   }
 
-  function buildWhatsAppMessage({ venda, items, total, nome, modalidade, endereco }) {
+  function statusPedidoUrl(venda, telefoneDigits) {
+    const base = `${window.location.origin}/acompanhar`;
+    const params = new URLSearchParams();
+    const numero = formatPedidoNumber(venda);
+    if (numero) params.set('numero', numero);
+    const phone = String(telefoneDigits || '').replace(/\D/g, '');
+    if (phone) params.set('telefone', phone);
+    const query = params.toString();
+    return query ? `${base}?${query}` : base;
+  }
+
+  function buildWhatsAppMessage({ venda, items, total, nome, modalidade, endereco, telefoneDigits }) {
     const pedido = formatPedidoNumber(venda) || '—';
+    const statusUrl = statusPedidoUrl(venda, telefoneDigits);
     const lines = [
       '🍪 *Amanteigados Lívia*',
       '',
@@ -80,6 +92,8 @@
     } else {
       lines.push('🏪 Retirada');
     }
+    lines.push('');
+    lines.push(`🔗 *Status do pedido:* ${statusUrl}`);
     lines.push('');
     lines.push('🙏 Obrigado pela preferência, se precisar de algo é só chamar.');
     return lines.join('\n');
@@ -332,6 +346,7 @@
         nome: formData.nome,
         modalidade: formData.modalidade,
         endereco: formData.endereco,
+        telefoneDigits: formData.telefoneDigits,
       });
 
       // Mensagem de acompanhamento vai para o WhatsApp do cliente informado no formulário.
