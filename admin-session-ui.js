@@ -170,9 +170,9 @@ export function requestStatusLabel(status) {
 
 export function saleStatusLabel(status) {
   const value = String(status || '').trim().toUpperCase();
-  if (value === 'PENDENTE') return 'Pendente';
-  if (value === 'CONFIRMADA') return 'Confirmada';
-  if (value === 'CANCELADA') return 'Cancelada';
+  if (value === 'PENDENTE') return 'Em preparação';
+  if (value === 'CONFIRMADA') return 'Finalizado';
+  if (value === 'CANCELADA') return 'Cancelado';
   return status || '—';
 }
 

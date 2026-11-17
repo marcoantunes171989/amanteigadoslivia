@@ -15,6 +15,7 @@ import {
   handleProcessPublications,
   handleProcessScheduledChanges,
   handlePublicCatalog,
+  handlePublicPedido,
   handlePublicVenda,
 } from './admin-http.js';
 import { safeDatabaseErrorLog } from './admin-errors.js';
@@ -47,6 +48,7 @@ app.get('/health', (_request, response) => {
 app.get('/api/catalogo', (request, response) => handlePublicCatalog(request, response, deps));
 app.get('/api/catalogo/revisao', (request, response) => handleCatalogRevision(request, response, deps));
 app.post('/api/vendas', (request, response) => handlePublicVenda(request, response, deps));
+app.get('/api/pedido', (request, response) => handlePublicPedido(request, response, deps));
 app.post('/api/admin/login', (request, response) => handleAdminLogin(request, response, deps));
 app.post('/api/admin/logout', (request, response) => handleAdminLogout(request, response, deps));
 app.get('/api/admin/sessao', (request, response) => handleAdminSessao(request, response, deps));

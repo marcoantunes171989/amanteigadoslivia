@@ -177,7 +177,7 @@ textarea {
   height: auto;
   padding: calc(0.35rem + var(--safe-t)) var(--pad-x) 0.55rem;
   display: grid;
-  grid-template-columns: var(--tap) 1fr var(--tap);
+  grid-template-columns: var(--tap) 1fr auto;
   align-items: center;
   gap: 0.25rem;
   border-bottom-left-radius: 1.15rem;
@@ -220,8 +220,20 @@ textarea {
   contain: paint;
 }
 
-.app-header__cart {
+.app-header__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  justify-self: end;
+}
+
+.app-header__cart,
+.order-track-btn {
   position: relative;
+}
+
+.order-track-btn[hidden] {
+  display: none !important;
 }
 
 .app-header__badge {
@@ -973,6 +985,86 @@ body.menu-open {
   color: var(--texto-2);
   font-weight: 600;
   font-size: var(--fs-xs);
+}
+
+.track-lookup {
+  margin-top: 0.25rem;
+}
+
+.track-lookup__btn {
+  background: var(--bordo);
+}
+
+.track-lookup__btn:hover:not(:disabled) {
+  background: var(--bordo-escuro);
+}
+
+.track-card {
+  margin-top: 0.85rem;
+  background: #fff;
+  border-radius: 0.875rem;
+  padding: 0.9rem;
+  box-shadow: var(--sombra);
+}
+
+.track-card__status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(128, 0, 32, 0.1);
+  color: var(--bordo);
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  margin-bottom: 0.65rem;
+}
+
+.track-card__status[data-status="CONFIRMADA"] {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--whatsapp);
+}
+
+.track-card__status[data-status="CANCELADA"] {
+  background: rgba(168, 62, 62, 0.12);
+  color: #a83e3e;
+}
+
+.track-card__number {
+  margin: 0 0 0.35rem;
+  font-size: var(--fs-md);
+  font-weight: 800;
+  color: var(--bordo);
+}
+
+.track-card__client {
+  margin: 0 0 0.65rem;
+  color: var(--texto-2);
+  font-size: var(--fs-sm);
+}
+
+.track-card__items {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: var(--fs-sm);
+}
+
+.track-card__total {
+  margin-top: 0;
+}
+
+.track-card__hint {
+  margin: 0.75rem 0 0;
+  color: var(--texto-2);
+  font-size: var(--fs-xs);
+}
+
+.track-card__clear {
+  margin-top: 0.75rem;
 }
 
 /* =========================================================

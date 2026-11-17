@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Acompanhar Pedido | Amanteigados Lívia</title>
+  <meta name="theme-color" content="#800020" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="storefront.css?v=10" />
+  <script src="no-zoom.js?v=10"></script>
+  <script src="storefront-config.js?v=10"></script>
+  <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
+</head>
+<body class="app-storefront pedido-page">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></symbol>
+      <symbol id="i-track" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M12 18v3"/><circle cx="12" cy="12" r="7"/><path d="M12 8v4l2.5 1.5"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app-shell is-empty-cart" id="appShell">
+    <header class="app-header">
+      <a href="/produtos" class="app-header__btn" aria-label="Voltar ao cardápio">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-back"/></svg>
+      </a>
+      <a href="/produtos" class="app-header__logo" aria-label="Amanteigados Lívia">
+        <img src="assets/brand/logo-topo.jpeg" alt="Amanteigados Lívia" width="56" height="56" decoding="async" fetchpriority="high" />
+      </a>
+      <a href="/carrinho" class="app-header__btn app-header__cart cart-shortcut" aria-label="Carrinho">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-cart"/></svg>
+        <span class="app-header__badge js-cart-count" hidden>0</span>
+      </a>
+    </header>
+
+    <main class="app-main">
+      <h1 class="pedido-title">
+        <svg class="app-ico" aria-hidden="true"><use href="#i-track"/></svg>
+        <span>Acompanhar pedido</span>
+      </h1>
+
+      <form class="track-lookup pedido-form" id="trackForm">
+        <label class="field" for="trackNumero">
+          <span class="sr-only">Número do pedido</span>
+          <input id="trackNumero" name="numero" type="text" inputmode="numeric" autocomplete="off" required placeholder="NÚMERO DO PEDIDO" maxlength="12" class="field-input--plain" />
+        </label>
+        <label class="field" for="trackPhone">
+          <span class="sr-only">WhatsApp</span>
+          <input id="trackPhone" name="telefone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="(18)99999 - 9999" maxlength="17" class="field-input--phone" />
+        </label>
+        <button type="submit" class="wa-submit track-lookup__btn" id="trackSubmit">Consultar pedido</button>
+      </form>
+
+      <p id="trackMessage" class="checkout-msg" hidden></p>
+
+      <section class="track-card" id="trackCard" hidden>
+        <div class="track-card__status" id="trackStatus">Em preparação</div>
+        <p class="track-card__number">Pedido Nº <strong id="trackNumberValue">—</strong></p>
+        <p class="track-card__client" id="trackClient"></p>
+        <ul class="track-card__items" id="trackItems"></ul>
+        <div class="pedido-summary__total track-card__total">
+          <strong>Total</strong>
+          <strong id="trackTotal">R$ 0,00</strong>
+        </div>
+        <p class="track-card__hint" id="trackHint">Atualizamos automaticamente até o estabelecimento finalizar.</p>
+        <button type="button" class="cat-chip track-card__clear" id="trackClear" hidden>Limpar acompanhamento</button>
+      </section>
+    </main>
+  </div>
+
+  <script src="order-track.js?v=10"></script>
+  <script src="cart.js?v=10"></script>
+  <script src="acompanhar.js?v=10"></script>
+</body>
+</html>

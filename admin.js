@@ -1664,27 +1664,28 @@ import {
       ]),
       el('div', { className: 'table-wrap' }, [
         state.vendas.length ? el('table', {}, [
-          el('thead', {}, [el('tr', {}, ['ID', 'Data', 'Cliente', 'Itens', 'Total', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
+          el('thead', {}, [el('tr', {}, ['Pedido', 'Data', 'Cliente', 'Itens', 'Total', 'Status', 'Ações'].map((h) => el('th', { text: h })))]),
           el('tbody', {}, state.vendas.map((venda) => el('tr', {}, [
-            el('td', { text: String(venda.id_venda).slice(0, 8) }),
+            el('td', { text: venda.numero_pedido != null ? String(venda.numero_pedido) : String(venda.id_venda).slice(0, 8) }),
             el('td', { text: formatDate(venda.data_venda) }),
             el('td', { text: venda.nome_cliente || '—' }),
             el('td', { text: String(venda.quantidade_itens || 0) }),
             el('td', { text: money(venda.valor_total_centavos) }),
             el('td', {}, [el('span', { className: `badge ${saleStatusBadgeClass(venda.status_venda)}`, text: saleStatusLabel(venda.status_venda) })]),
             el('td', {}, venda.status_venda === 'PENDENTE' ? [
-              el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
+              el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Finalizar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
               el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
             ] : [el('span', { className: 'muted', text: '—' })]),
           ]))),
         ]) : emptyState('Nenhuma venda encontrada para este período.'),
         state.vendas.length ? el('div', { className: 'sales-cards' }, state.vendas.map((venda) => el('article', { className: 'mobile-card' }, [
-          el('strong', { text: venda.nome_cliente || String(venda.id_venda).slice(0, 8) }),
+          el('strong', { text: `Pedido ${venda.numero_pedido != null ? venda.numero_pedido : String(venda.id_venda).slice(0, 8)}` }),
+          el('span', { text: venda.nome_cliente || '—' }),
           el('span', { text: formatDate(venda.data_venda) }),
           el('span', { text: money(venda.valor_total_centavos) }),
           el('span', { className: `badge ${saleStatusBadgeClass(venda.status_venda)}`, text: saleStatusLabel(venda.status_venda) }),
           venda.status_venda === 'PENDENTE' ? el('div', { className: 'actions' }, [
-            el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Confirmar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
+            el('button', { className: 'btn btn-primary btn-small', type: 'button', text: 'Finalizar', onClick: () => changeSale(venda.id_venda, 'CONFIRMADA') }),
             el('button', { className: 'btn btn-danger btn-small', type: 'button', text: 'Cancelar', onClick: () => changeSale(venda.id_venda, 'CANCELADA') }),
           ]) : null,
         ]))) : null,

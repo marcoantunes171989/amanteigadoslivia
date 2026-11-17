@@ -48,22 +48,14 @@
   }
 
   function formatPedidoNumber(venda) {
-    if (venda?.numero_pedido != null) {
-      return `#${String(venda.numero_pedido).padStart(6, '0')}`;
-    }
-    if (venda?.id_venda) {
-      return `#${String(venda.id_venda).replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+    if (venda?.numero_pedido != null && Number.isFinite(Number(venda.numero_pedido))) {
+      return String(Number(venda.numero_pedido));
     }
     return null;
   }
 
-  function fallbackPedidoNumber() {
-    return String(Date.now()).slice(-6);
-  }
-
   function buildWhatsAppMessage({ venda, items, total, nome, modalidade, endereco }) {
-    const pedidoRaw = formatPedidoNumber(venda) || `#${fallbackPedidoNumber()}`;
-    const pedido = String(pedidoRaw).replace(/^#/, '');
+    const pedido = formatPedidoNumber(venda) || '—';
     const lines = [
       '🍪 *Amanteigados Lívia*',
       '',
@@ -347,6 +339,16 @@
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
       lastWhatsAppUrl = url;
 
+      if (data?.venda?.numero_pedido != null) {
+        window.AmanteigadosOrderTrack?.write({
+          id_venda: data.venda.id_venda,
+          numero_pedido: data.venda.numero_pedido,
+          telefone: formData.telefoneDigits,
+          nome: formData.nome,
+          status_venda: data.venda.status_venda || 'PENDENTE',
+        });
+      }
+
       const opened = window.open(url, '_blank', 'noopener');
 
       Cart.clearCart();
@@ -355,13 +357,25 @@
       if (els.addressField) els.addressField.hidden = true;
       renderCart();
 
-      const okText = registered
-        ? (data?.duplicated
-          ? 'Pedido já registrado. WhatsApp aberto e carrinho limpo.'
-          : 'Pedido enviado ao WhatsApp. Carrinho limpo.')
-        : 'WhatsApp aberto com o pedido. Carrinho limpo.';
+      const numero = formatPedidoNumber(data?.venda);
+      const okText = registered && numero
+        ? `Pedido ${numero} registrado. Acompanhe pelo ícone do relógio.`
+        : registered
+          ? 'Pedido registrado. WhatsApp aberto e carrinho limpo.'
+          : 'WhatsApp aberto com o pedido. Carrinho limpo.';
       const emptyCopy = els.empty?.querySelector('p');
-      if (emptyCopy) emptyCopy.textContent = okText;
+      if (emptyCopy) {
+        emptyCopy.textContent = okText;
+        els.empty.querySelectorAll('a[data-track-cta]').forEach((node) => node.remove());
+        if (numero) {
+          const link = document.createElement('a');
+          link.href = `/acompanhar?numero=${encodeURIComponent(numero)}`;
+          link.className = 'cat-chip empty-pedido__cta';
+          link.dataset.trackCta = '1';
+          link.textContent = 'Acompanhar pedido';
+          emptyCopy.insertAdjacentElement('afterend', link);
+        }
+      }
       announce(okText);
 
       if (!opened) {

@@ -15,7 +15,7 @@ import { AdminError, toClientError } from './admin-errors.js';
 import { getPublicationStatus, createPublicacao, processDuePublications, promoteToProduction, readinessFromDeps, validatePromotionDryRun } from './admin-publish.js';
 import { assertLoginRateLimit, assertPublicFormRateLimit } from './admin-rate-limit.js';
 import { getReports, toCsv } from './admin-reports.js';
-import { captureVenda, listVendas, updateVendaStatus } from './admin-sales.js';
+import { captureVenda, getPedidoAcompanhamento, listVendas, updateVendaStatus } from './admin-sales.js';
 import { cancelScheduledChange, listScheduledChanges, parseSaoPauloDateTime, processDueScheduledChanges, scheduleChange } from './admin-schedule.js';
 import { createSignedImageUpload } from './admin-storage.js';
 import { assertSuperAdmin, createUsuario, findUsuarioByLogin, isSuperAdminPerfil, listUsuarios, loadActor, resetUsuarioSenha, SQL_USERS, touchUltimoLogin, updateUsuario } from './admin-users.js';
@@ -942,6 +942,26 @@ export async function handlePublicVenda(request, response, deps = {}) {
     sendJson(response, 200, { ok: true, ...result });
   } catch (error) {
     logRequestFailure(deps.logDatabaseError, '[vendas] request failed', error);
+    sendError(response, error);
+  }
+}
+
+export async function handlePublicPedido(request, response, deps = {}) {
+  response.setHeader('Cache-Control', 'no-store');
+  if (request.method !== 'GET') {
+    sendJson(response, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  try {
+    assertPublicFormRateLimit(request, 'pedido-acompanhamento');
+    const url = new URL(request.url || 'http://localhost/api/pedido', 'http://localhost');
+    const result = await getPedidoAcompanhamento(requirePool(deps.getPool), {
+      numero_pedido: url.searchParams.get('numero') || url.searchParams.get('numero_pedido'),
+      telefone: url.searchParams.get('telefone') || url.searchParams.get('whatsapp'),
+    });
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    logRequestFailure(deps.logDatabaseError, '[pedido] request failed', error);
     sendError(response, error);
   }
 }

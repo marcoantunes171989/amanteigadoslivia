@@ -21,8 +21,10 @@ function toCentavos(value) {
 }
 
 function publicSale(row, itens = []) {
+  const numero = row.numero_pedido == null ? null : Number(row.numero_pedido);
   return {
     id_venda: String(row.id_venda),
+    numero_pedido: Number.isFinite(numero) ? numero : null,
     chave_idempotencia: row.chave_idempotencia,
     status_venda: row.status_venda,
     origem_venda: row.origem_venda,
@@ -34,6 +36,74 @@ function publicSale(row, itens = []) {
     data_atualizacao: row.data_atualizacao,
     itens,
   };
+}
+
+const VENDA_SELECT_COLS = `id_venda, numero_pedido, chave_idempotencia, status_venda, origem_venda, nome_cliente,
+                 telefone_cliente, valor_total_centavos, data_venda, data_atualizacao`;
+
+let numeroPedidoReady = false;
+
+export async function ensureNumeroPedidoSupport(queryable) {
+  if (numeroPedidoReady) return true;
+  try {
+    await queryable.query('CREATE SEQUENCE IF NOT EXISTS app.seq_numero_pedido AS bigint START WITH 1 INCREMENT BY 1');
+    await queryable.query('ALTER TABLE app.tab_venda ADD COLUMN IF NOT EXISTS numero_pedido bigint');
+    await queryable.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'unq_tab_venda_numero_pedido'
+        ) THEN
+          ALTER TABLE app.tab_venda
+            ADD CONSTRAINT unq_tab_venda_numero_pedido UNIQUE (numero_pedido);
+        END IF;
+      END
+      $$;
+    `);
+    await queryable.query(`
+      UPDATE app.tab_venda
+      SET numero_pedido = nextval('app.seq_numero_pedido')
+      WHERE numero_pedido IS NULL
+    `);
+    await queryable.query(`
+      ALTER TABLE app.tab_venda
+      ALTER COLUMN numero_pedido SET DEFAULT nextval('app.seq_numero_pedido')
+    `);
+    await queryable.query('CREATE INDEX IF NOT EXISTS tab_venda_numero_pedido_idx ON app.tab_venda (numero_pedido)');
+    numeroPedidoReady = true;
+    return true;
+  } catch (error) {
+    // Ambiente sem permissão de DDL: ainda tentamos o fluxo com MAX+1 se a coluna existir.
+    console.warn('[vendas] ensureNumeroPedidoSupport', error?.code || error?.message || error);
+    try {
+      const probe = await queryable.query(`
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'app' AND table_name = 'tab_venda' AND column_name = 'numero_pedido'
+        LIMIT 1
+      `);
+      numeroPedidoReady = Boolean(probe.rows[0]);
+      return numeroPedidoReady;
+    } catch {
+      return false;
+    }
+  }
+}
+
+async function nextNumeroPedido(client) {
+  try {
+    const seq = await client.query('SELECT nextval(\'app.seq_numero_pedido\') AS numero');
+    const value = Number(seq.rows[0]?.numero);
+    if (Number.isFinite(value) && value > 0) return value;
+  } catch {
+    // fallback abaixo
+  }
+  await client.query('SELECT pg_advisory_xact_lock(872341)');
+  const locked = await client.query(`
+    SELECT COALESCE(MAX(numero_pedido), 0) + 1 AS numero
+    FROM app.tab_venda
+  `);
+  return Number(locked.rows[0]?.numero) || 1;
 }
 
 function effectiveUnitCentavos(product) {
@@ -70,10 +140,10 @@ export async function captureVenda(pool, payload = {}) {
 
   try {
     return await withTransaction(pool, async (client) => {
+      await ensureNumeroPedidoSupport(client);
       const existing = await client.query(
         `-- op:get_venda_chave
-          SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-                 telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+          SELECT ${VENDA_SELECT_COLS}
           FROM app.tab_venda
           WHERE chave_idempotencia = $1
         `,
@@ -122,14 +192,14 @@ export async function captureVenda(pool, payload = {}) {
       }
 
       const idVenda = payload.id_venda || randomUUID();
+      const numeroPedido = await nextNumeroPedido(client);
       const inserted = await client.query(
         `-- op:insert_venda
           INSERT INTO app.tab_venda (
             id_venda, chave_idempotencia, status_venda, origem_venda,
-            nome_cliente, telefone_cliente, valor_total_centavos
-          ) VALUES ($1, $2, 'PENDENTE', $3, $4, $5, $6)
-          RETURNING id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-                    telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+            nome_cliente, telefone_cliente, valor_total_centavos, numero_pedido
+          ) VALUES ($1, $2, 'PENDENTE', $3, $4, $5, $6, $7)
+          RETURNING ${VENDA_SELECT_COLS}
         `,
         [
           idVenda,
@@ -138,6 +208,7 @@ export async function captureVenda(pool, payload = {}) {
           nomeCliente,
           telefoneCliente,
           total,
+          numeroPedido,
         ],
       );
 
@@ -171,8 +242,7 @@ export async function captureVenda(pool, payload = {}) {
     if (error?.code === '23505') {
       const existing = await pool.query(
         `-- op:get_venda_chave
-          SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-                 telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+          SELECT ${VENDA_SELECT_COLS}
           FROM app.tab_venda
           WHERE chave_idempotencia = $1
         `,
@@ -218,12 +288,12 @@ export function periodBounds(query = {}, now = new Date()) {
 }
 
 export async function listVendas(queryable, query = {}, { now = new Date() } = {}) {
+  await ensureNumeroPedidoSupport(queryable);
   const { start, end } = periodBounds(query, now);
   const status = query.status && query.status !== 'todos' ? String(query.status).toUpperCase() : null;
   const params = [start.toISOString(), end.toISOString()];
   let sql = `-- op:list_vendas
-    SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-           telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+    SELECT ${VENDA_SELECT_COLS}
     FROM app.tab_venda
     WHERE data_venda >= $1 AND data_venda < $2
   `;
@@ -262,10 +332,10 @@ export async function updateVendaStatus(queryable, id, status) {
   if (!['CONFIRMADA', 'CANCELADA'].includes(next)) {
     throw new AdminError(400, 'validation_error', 'Status de venda inválido.');
   }
+  await ensureNumeroPedidoSupport(queryable);
   const current = await queryable.query(
     `-- op:get_venda
-      SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-             telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+      SELECT ${VENDA_SELECT_COLS}
       FROM app.tab_venda
       WHERE id_venda = $1
     `,
@@ -283,12 +353,62 @@ export async function updateVendaStatus(queryable, id, status) {
       UPDATE app.tab_venda
       SET status_venda = $2, data_atualizacao = now()
       WHERE id_venda = $1
-      RETURNING id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-                telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+      RETURNING ${VENDA_SELECT_COLS}
     `,
     [id, next],
   );
   return publicSale(updated.rows[0]);
+}
+
+export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefone } = {}) {
+  const numero = Number.parseInt(String(numero_pedido || ''), 10);
+  const phone = normalizeWhatsAppPhone(telefone || '');
+  if (!Number.isInteger(numero) || numero <= 0 || !phone) {
+    throw new AdminError(400, 'validation_error', 'Informe número do pedido e WhatsApp válidos.');
+  }
+
+  await ensureNumeroPedidoSupport(queryable);
+
+  const result = await queryable.query(
+    `-- op:get_pedido_acompanhamento
+      SELECT ${VENDA_SELECT_COLS}
+      FROM app.tab_venda
+      WHERE numero_pedido = $1
+        AND regexp_replace(COALESCE(telefone_cliente, ''), '\\D', '', 'g') = $2
+      LIMIT 1
+    `,
+    [numero, phone],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new AdminError(404, 'not_found', 'Pedido não encontrado para este WhatsApp.');
+  }
+  const itens = await queryable.query(
+    `-- op:list_venda_itens
+      SELECT id_item_venda, id_venda, id_produto, nome_produto, quantidade,
+             valor_unitario_centavos, valor_total_centavos
+      FROM app.tab_venda_item
+      WHERE id_venda = $1
+      ORDER BY data_criacao ASC
+    `,
+    [row.id_venda],
+  );
+  const venda = publicSale(row, itens.rows);
+  const terminal = venda.status_venda === 'CONFIRMADA' || venda.status_venda === 'CANCELADA';
+  return {
+    venda,
+    acompanhamento: {
+      ativo: !terminal,
+      finalizado: terminal,
+      rotulo_status: venda.status_venda === 'PENDENTE'
+        ? 'Em preparação'
+        : venda.status_venda === 'CONFIRMADA'
+          ? 'Finalizado'
+          : venda.status_venda === 'CANCELADA'
+            ? 'Cancelado'
+            : venda.status_venda,
+    },
+  };
 }
 
 export function computeFaturamento(vendas) {

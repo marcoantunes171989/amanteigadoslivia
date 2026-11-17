@@ -127,7 +127,7 @@ test('status amigaveis e fechamento de dialog', () => {
   assert.equal(requestStatusLabel('EM_ATENDIMENTO'), 'Em atendimento');
   assert.equal(requestStatusLabel('CONCLUIDA'), 'Concluída');
   assert.equal(requestStatusLabel('CANCELADA'), 'Cancelada');
-  assert.equal(saleStatusLabel('PENDENTE'), 'Pendente');
+  assert.equal(saleStatusLabel('PENDENTE'), 'Em preparação');
   assert.equal(shouldCloseDialogOnBackdrop(false), true);
   assert.equal(shouldCloseDialogOnBackdrop(true), false);
   assert.equal(DIALOG_CLOSE_LABEL, 'Fechar');
