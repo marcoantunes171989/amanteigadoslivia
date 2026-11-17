@@ -33,7 +33,13 @@ export async function listIdsByEmpresa(queryable, table, idColumn, idEmpresa) {
     `SELECT ${idColumn} AS id FROM public.${table} WHERE id_empresa = $1`,
     [String(idEmpresa || EMPRESA_PADRAO_ID)],
   );
-  return new Set(result.rows.map((row) => String(row.id)));
+  const ids = new Set(result.rows.map((row) => String(row.id)));
+  // Tabela criada sem backfill: não isola (evita loja padrão vazia).
+  if (ids.size === 0) {
+    const any = await queryable.query(`SELECT 1 FROM public.${table} LIMIT 1`);
+    if (!any.rows[0]) return null;
+  }
+  return ids;
 }
 
 export function filterRowsByEmpresaIds(rows, idField, allowedIds) {
