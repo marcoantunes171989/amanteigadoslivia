@@ -227,9 +227,36 @@ textarea {
   justify-self: end;
 }
 
-.app-header__cart,
+.app-header__cart {
+  position: relative;
+}
+
 .order-track-btn {
   position: relative;
+  width: auto;
+  height: auto;
+  min-height: var(--tap);
+  padding: 0.2rem 0.4rem;
+  margin-right: 0.15rem;
+  border-radius: 0.65rem;
+  text-decoration: none;
+}
+
+.order-track-btn__label {
+  display: block;
+  max-width: 5.1rem;
+  color: #fff;
+  font-size: 0.625rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.order-track-btn .order-track-badge {
+  top: -0.05rem;
+  right: -0.05rem;
 }
 
 

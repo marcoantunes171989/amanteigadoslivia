@@ -12,10 +12,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="storefront.css?v=12" />
-  <script src="no-zoom.js?v=12"></script>
-  <script src="storefront-config.js?v=12"></script>
-  <script src="order-track.js?v=12"></script>
+  <link rel="stylesheet" href="storefront.css?v=13" />
+  <script src="no-zoom.js?v=13"></script>
+  <script src="storefront-config.js?v=13"></script>
+  <script src="order-track.js?v=13"></script>
   <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
   <link rel="apple-touch-icon" href="assets/brand/logo-topo.jpeg" />
 </head>
@@ -43,7 +43,7 @@
       </a>
       <div class="app-header__actions">
         <a href="/acompanhar" class="app-header__btn order-track-btn" data-order-track aria-label="Acompanhar pedido">
-          <svg class="app-ico" aria-hidden="true"><use href="#i-track"/></svg>
+          <span class="order-track-btn__label">Acompanhar<br />pedido</span>
           <span class="app-header__badge order-track-badge" data-order-track-badge hidden>1</span>
         </a>
         <a href="/carrinho" class="app-header__btn app-header__cart cart-shortcut" aria-label="Carrinho, 0 itens">
@@ -124,11 +124,11 @@
 
   <p id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
-  <script src="catalog-demo-data.js?v=12"></script>
-  <script src="catalog-core.js?v=12"></script>
-  <script src="cart.js?v=12"></script>
-  <script src="produtos.js?v=12"></script>
-  <script type="module" src="catalog-sync.js?v=12"></script>
+  <script src="catalog-demo-data.js?v=13"></script>
+  <script src="catalog-core.js?v=13"></script>
+  <script src="cart.js?v=13"></script>
+  <script src="produtos.js?v=13"></script>
+  <script type="module" src="catalog-sync.js?v=13"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
