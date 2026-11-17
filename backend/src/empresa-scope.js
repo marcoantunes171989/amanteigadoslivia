@@ -49,13 +49,22 @@ export function filterRowsByEmpresaIds(rows, idField, allowedIds) {
 
 export async function linkRecursoEmpresa(queryable, table, idColumn, idRecurso, idEmpresa) {
   if (!(await ensureEmpresaVinculosSupport(queryable))) return;
-  await queryable.query(
-    `INSERT INTO public.${table} (${idColumn}, id_empresa)
-     VALUES ($1, $2)
-     ON CONFLICT (${idColumn}) DO UPDATE
-       SET id_empresa = EXCLUDED.id_empresa`,
-    [idRecurso, String(idEmpresa || EMPRESA_PADRAO_ID)],
-  );
+  try {
+    await queryable.query(
+      `INSERT INTO public.${table} (${idColumn}, id_empresa)
+       VALUES ($1, $2)
+       ON CONFLICT (${idColumn}) DO UPDATE
+         SET id_empresa = EXCLUDED.id_empresa`,
+      [idRecurso, String(idEmpresa || EMPRESA_PADRAO_ID)],
+    );
+  } catch (error) {
+    // Sem GRANT/RLS ainda: não derruba o cadastro; isolamento fica pendente do SQL 0010/0010b.
+    if (error?.code === '42501' || error?.code === '42P01') {
+      vinculosReady = false;
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function linkUsuarioEmpresa(queryable, idUsuario, idEmpresa) {

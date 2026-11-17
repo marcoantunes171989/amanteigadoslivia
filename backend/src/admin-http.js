@@ -506,16 +506,24 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
     }
 
     if (acao === 'salvar_tema') {
-      const updated = await updateEmpresaTema(pool, idEmpresaSessao, body?.dados || body || {});
-      await recordAudit(pool, {
-        id_usuario_admin: session.id_usuario_admin,
-        acao: 'alterar_branding',
-        entidade: 'empresa_tema',
-        id_registro: idEmpresaSessao,
-        sucesso: true,
-        descricao_evento: 'Tema da empresa atualizado.',
-        identificador_requisicao: requestId(request),
-      });
+      let updated;
+      try {
+        updated = await updateEmpresaTema(pool, idEmpresaSessao, body?.dados || body || {});
+      } catch (error) {
+        if (error instanceof AdminError) throw error;
+        throw new AdminError(500, 'internal_error', `Falha ao salvar tema (${error?.code || 'db'}).`);
+      }
+      try {
+        await recordAudit(pool, {
+          id_usuario_admin: session.id_usuario_admin,
+          acao: 'alterar_branding',
+          entidade: 'empresa_tema',
+          id_registro: idEmpresaSessao,
+          sucesso: true,
+          descricao_evento: 'Tema da empresa atualizado.',
+          identificador_requisicao: requestId(request),
+        });
+      } catch { /* auditoria best-effort */ }
       try {
         await broadcastSiteUpdated(pool);
       } catch { /* ignore */ }
@@ -527,16 +535,24 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
       if (!isSuperAdminPerfil(session)) {
         throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode cadastrar empresa.');
       }
-      const created = await createEmpresa(pool, body?.dados || body || {});
-      await recordAudit(pool, {
-        id_usuario_admin: session.id_usuario_admin,
-        acao: 'criar_empresa',
-        entidade: 'empresa',
-        id_registro: created.empresa.id_empresa,
-        sucesso: true,
-        descricao_evento: `Empresa ${created.empresa.slug} criada.`,
-        identificador_requisicao: requestId(request),
-      });
+      let created;
+      try {
+        created = await createEmpresa(pool, body?.dados || body || {});
+      } catch (error) {
+        if (error instanceof AdminError) throw error;
+        throw new AdminError(500, 'internal_error', `Falha ao criar empresa (${error?.code || 'db'}).`);
+      }
+      try {
+        await recordAudit(pool, {
+          id_usuario_admin: session.id_usuario_admin,
+          acao: 'criar_empresa',
+          entidade: 'empresa',
+          id_registro: created.empresa.id_empresa,
+          sucesso: true,
+          descricao_evento: `Empresa ${created.empresa.slug} criada.`,
+          identificador_requisicao: requestId(request),
+        });
+      } catch { /* auditoria best-effort */ }
       sendJson(response, 200, { ok: true, ...created });
       return;
     }
