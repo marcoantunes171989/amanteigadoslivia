@@ -63,8 +63,9 @@
       }
     });
     document.querySelectorAll('[data-order-track-badge]').forEach((badge) => {
-      badge.hidden = !active;
-      badge.textContent = active ? String(order.numero_pedido || '1') : '';
+      // Sempre oculto: o atalho não exibe número no balão.
+      badge.hidden = true;
+      badge.textContent = '';
     });
   }
 
