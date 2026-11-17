@@ -25,19 +25,23 @@
     },
     {
       "source": "/loja/:empresa",
-      "destination": "/produtos.html"
+      "destination": "/produtos"
+    },
+    {
+      "source": "/loja/:empresa/",
+      "destination": "/produtos"
     },
     {
       "source": "/loja/:empresa/produtos",
-      "destination": "/produtos.html"
+      "destination": "/produtos"
     },
     {
       "source": "/loja/:empresa/carrinho",
-      "destination": "/carrinho.html"
+      "destination": "/carrinho"
     },
     {
       "source": "/loja/:empresa/acompanhar",
-      "destination": "/acompanhar.html"
+      "destination": "/acompanhar"
     }
   ]
 }
