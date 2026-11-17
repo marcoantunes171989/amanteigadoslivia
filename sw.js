@@ -1,12 +1,11 @@
-/* Service worker leve — cache de shell apenas. Pedidos sempre vão ao servidor. */
-const SHELL = 'amanteigados-shell-v1';
+/* Service worker leve — cache só de assets estáticos. HTML/API sempre da rede. */
+const SHELL = 'amanteigados-shell-v2';
 const ASSETS = [
-  '/produtos',
-  '/carrinho',
   '/storefront.css',
   '/produtos.js',
   '/carrinho.js',
   '/catalog-core.js',
+  '/catalog-demo-data.js',
   '/cart.js',
   '/assets/brand/logo-topo.jpeg',
 ];
@@ -30,26 +29,34 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  if (url.pathname.startsWith('/api/')) {
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
+
+  // Navegação/HTML: rede primeiro, sem cache stale do cardápio.
+  const isDocument = request.mode === 'navigate'
+    || request.destination === 'document'
+    || url.pathname === '/'
+    || url.pathname === '/produtos'
+    || url.pathname === '/carrinho'
+    || url.pathname.endsWith('.html');
+
+  if (isDocument) {
+    event.respondWith(
+      fetch(request).catch(async () => (await caches.match('/produtos')) || Response.error()),
+    );
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        const copy = response.clone();
-        if (response.ok && (url.origin === self.location.origin)) {
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
           caches.open(SHELL).then((cache) => cache.put(request, copy)).catch(() => {});
         }
         return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        if (request.mode === 'navigate') {
-          return caches.match('/produtos');
-        }
-        return Response.error();
-      }),
+      });
+    }),
   );
 });
