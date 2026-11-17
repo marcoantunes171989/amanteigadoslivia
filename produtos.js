@@ -142,8 +142,9 @@
     img.alt = product.name;
     img.loading = 'lazy';
     img.decoding = 'async';
-    img.width = 140;
-    img.height = 140;
+    img.width = 160;
+    img.height = 160;
+    img.sizes = '(min-width: 1024px) 176px, (min-width: 600px) 144px, 30vw';
     media.appendChild(img);
 
     const name = document.createElement('h3');

@@ -1,12 +1,12 @@
-/* Service worker leve — cache só de assets estáticos. HTML/API sempre da rede. */
-const SHELL = 'amanteigados-shell-v2';
+/* Service worker leve — HTML/API sempre da rede; CSS/JS com rede primeiro. */
+const SHELL = 'amanteigados-shell-v3';
 const ASSETS = [
-  '/storefront.css',
-  '/produtos.js',
-  '/carrinho.js',
-  '/catalog-core.js',
-  '/catalog-demo-data.js',
-  '/cart.js',
+  '/storefront.css?v=3',
+  '/produtos.js?v=3',
+  '/carrinho.js?v=3',
+  '/catalog-core.js?v=3',
+  '/catalog-demo-data.js?v=3',
+  '/cart.js?v=3',
   '/assets/brand/logo-topo.jpeg',
 ];
 
@@ -32,7 +32,6 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
 
-  // Navegação/HTML: rede primeiro, sem cache stale do cardápio.
   const isDocument = request.mode === 'navigate'
     || request.destination === 'document'
     || url.pathname === '/'
@@ -43,6 +42,22 @@ self.addEventListener('fetch', (event) => {
   if (isDocument) {
     event.respondWith(
       fetch(request).catch(async () => (await caches.match('/produtos')) || Response.error()),
+    );
+    return;
+  }
+
+  const isCode = /\.(?:css|js)$/i.test(url.pathname);
+  if (isCode) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(SHELL).then((cache) => cache.put(request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error())),
     );
     return;
   }

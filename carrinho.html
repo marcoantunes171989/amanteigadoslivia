@@ -11,8 +11,8 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="storefront.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="storefront.css?v=3" />
   <link rel="icon" href="assets/brand/logo-topo.jpeg" type="image/jpeg" />
   <link rel="apple-touch-icon" href="assets/brand/logo-topo.jpeg" />
 </head>
@@ -92,7 +92,7 @@
           </label>
           <label class="field" for="checkoutAddress" id="addressField" hidden>
             <span class="sr-only">Endereço para entrega</span>
-            <input id="checkoutAddress" name="endereco" type="text" autocomplete="street-address" placeholder="Endereço para entrega" maxlength="160" style="padding-left:14px;background-image:none;" />
+            <input id="checkoutAddress" name="endereco" type="text" class="field-input--plain" autocomplete="street-address" placeholder="Endereço para entrega" maxlength="160" />
           </label>
           <button type="submit" class="wa-submit" id="checkoutBtn">
             <svg width="18" height="18" aria-hidden="true"><use href="#i-whatsapp"/></svg>
@@ -107,11 +107,11 @@
 
   <p id="cartLiveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></p>
 
-  <script src="site-content.js"></script>
-  <script src="catalog-demo-data.js"></script>
-  <script src="catalog-core.js"></script>
-  <script src="cart.js"></script>
-  <script src="carrinho.js"></script>
-  <script type="module" src="catalog-sync.js"></script>
+  <script src="site-content.js?v=3"></script>
+  <script src="catalog-demo-data.js?v=3"></script>
+  <script src="catalog-core.js?v=3"></script>
+  <script src="cart.js?v=3"></script>
+  <script src="carrinho.js?v=3"></script>
+  <script type="module" src="catalog-sync.js?v=3"></script>
 </body>
 </html>

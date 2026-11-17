@@ -5,7 +5,7 @@
   "description": "Amanteigados Livia storefront and homolog catalog API.",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": "24.x"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.57.4",
