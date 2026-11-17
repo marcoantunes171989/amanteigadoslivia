@@ -23,10 +23,38 @@
   function readSlugFromPage() {
     try {
       const params = new URLSearchParams(window.location.search);
-      return params.get('empresa') || params.get('slug') || '';
+      const fromQuery = params.get('empresa') || params.get('slug') || '';
+      if (fromQuery) return fromQuery;
+      const match = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
+      return match ? match[1] : '';
     } catch {
       return '';
     }
+  }
+
+  function googleFontsHref(titulo, corpo) {
+    const families = [...new Set([titulo, corpo].filter(Boolean).map((name) => String(name).trim()))];
+    if (!families.length) return '';
+    const query = families.map((name) => `family=${encodeURIComponent(name)}:wght@500;600;700;800`).join('&');
+    return `https://fonts.googleapis.com/css2?${query}&display=swap`;
+  }
+
+  function applyFonts(tema) {
+    const titulo = tema.fonte_titulo || 'Nunito';
+    const corpo = tema.fonte_corpo || 'Nunito';
+    const root = document.documentElement;
+    root.style.setProperty('--sans', `"${corpo}", system-ui, -apple-system, "Segoe UI", sans-serif`);
+    root.style.setProperty('--font-title', `"${titulo}", system-ui, -apple-system, "Segoe UI", sans-serif`);
+    let link = document.getElementById('empresa-fonts');
+    const href = googleFontsHref(titulo, corpo);
+    if (!href) return;
+    if (!link) {
+      link = document.createElement('link');
+      link.id = 'empresa-fonts';
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+    }
+    link.href = href;
   }
 
   function absoluteAsset(url) {
@@ -46,6 +74,7 @@
     root.style.setProperty('--creme', tema.cor_fundo || FALLBACK.tema.cor_fundo);
     root.style.setProperty('--texto', tema.cor_texto || FALLBACK.tema.cor_texto);
     root.style.setProperty('--dourado', tema.cor_destaque || FALLBACK.tema.cor_destaque);
+    applyFonts(tema);
 
     const nome = tema.nome_exibicao || empresa.nome_fantasia || FALLBACK.tema.nome_exibicao;
     const logo = absoluteAsset(tema.logo_topo_url);
@@ -78,13 +107,33 @@
       document.title = `${nome} | ${page}`;
     }
 
+    const slug = empresa.slug || FALLBACK.empresa.slug;
     window.AmanteigadosStorefrontTheme = Object.freeze({
       empresa,
       tema,
       nomeExibicao: nome,
       whatsappPhone: String(tema.whatsapp_telefone || FALLBACK.tema.whatsapp_telefone).replace(/\D/g, ''),
       logoTopoUrl: logo,
+      empresaSlug: slug,
+      urlPath: empresa.url_path || `/loja/${slug}`,
     });
+
+    // Mantém links internos no escopo da loja quando acessada via /loja/{slug}.
+    const base = `/loja/${slug}`;
+    if (String(window.location.pathname || '').startsWith('/loja/')) {
+      document.querySelectorAll('a[href="/produtos"], a[href="/carrinho"], a[href="/acompanhar"]').forEach((anchor) => {
+        const href = anchor.getAttribute('href');
+        if (href === '/produtos') anchor.setAttribute('href', `${base}/produtos`);
+        if (href === '/carrinho') anchor.setAttribute('href', `${base}/carrinho`);
+        if (href === '/acompanhar') anchor.setAttribute('href', `${base}/acompanhar`);
+      });
+      document.querySelectorAll('[data-order-track]').forEach((el) => {
+        const current = el.getAttribute('href') || '/acompanhar';
+        if (current.startsWith('/acompanhar')) {
+          el.setAttribute('href', current.replace('/acompanhar', `${base}/acompanhar`));
+        }
+      });
+    }
 
     // Compatível com storefront-config / carrinho.
     if (window.AmanteigadosStorefrontConfig) {

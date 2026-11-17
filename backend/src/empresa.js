@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { AdminError } from './admin-errors.js';
 import { normalizeWhatsAppPhone } from './whatsapp.js';
 
@@ -23,7 +24,11 @@ export const DEFAULT_TEMA = Object.freeze({
   logo_topo_url: 'assets/brand/logo-topo.jpeg',
   logo_favicon_url: 'assets/brand/logo-topo.jpeg',
   whatsapp_telefone: '5518981465499',
+  fonte_titulo: 'Nunito',
+  fonte_corpo: 'Nunito',
 });
+
+const FONT_SAFE = /^[A-Za-z0-9][A-Za-z0-9 \-_]{0,60}$/;
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -41,13 +46,21 @@ export function normalizeEmpresaSlug(raw) {
 }
 
 export function mapEmpresa(row) {
-  if (!row) return { ...DEFAULT_EMPRESA };
+  if (!row) return { ...DEFAULT_EMPRESA, url_path: `/loja/${EMPRESA_PADRAO_SLUG}` };
+  const slug = row.slug || EMPRESA_PADRAO_SLUG;
   return {
     id_empresa: String(row.id_empresa || EMPRESA_PADRAO_ID),
-    slug: row.slug || EMPRESA_PADRAO_SLUG,
+    slug,
     nome_fantasia: row.nome_fantasia || DEFAULT_EMPRESA.nome_fantasia,
     ativo: row.ativo !== false,
+    url_path: `/loja/${slug}`,
   };
+}
+
+function safeFont(value, fallback) {
+  const text = String(value || '').trim();
+  if (!text || !FONT_SAFE.test(text)) return fallback;
+  return text;
 }
 
 export function mapTema(row, empresa = DEFAULT_EMPRESA) {
@@ -64,15 +77,20 @@ export function mapTema(row, empresa = DEFAULT_EMPRESA) {
     logo_topo_url: row.logo_topo_url || base.logo_topo_url,
     logo_favicon_url: row.logo_favicon_url || row.logo_topo_url || base.logo_favicon_url,
     whatsapp_telefone: normalizeWhatsAppPhone(row.whatsapp_telefone) || base.whatsapp_telefone,
+    fonte_titulo: safeFont(row.fonte_titulo, base.fonte_titulo),
+    fonte_corpo: safeFont(row.fonte_corpo, base.fonte_corpo),
   };
 }
 
 export function publicEmpresaPayload(empresa, tema) {
+  const mapped = mapEmpresa(empresa);
   return {
     empresa: {
-      id_empresa: empresa.id_empresa,
-      slug: empresa.slug,
-      nome_fantasia: empresa.nome_fantasia,
+      id_empresa: mapped.id_empresa,
+      slug: mapped.slug,
+      nome_fantasia: mapped.nome_fantasia,
+      url_path: mapped.url_path,
+      ativo: mapped.ativo,
     },
     tema,
   };
@@ -104,8 +122,7 @@ export async function getEmpresaPadrao(queryable) {
     const result = await queryable.query(
       `-- op:get_empresa_padrao
         SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
-               t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
-               t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
+               t.*
         FROM public.tab_empresa e
         LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
         WHERE e.id_empresa = $1 OR e.slug = $2
@@ -151,8 +168,7 @@ export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
     const result = await queryable.query(
       `-- op:get_empresa_by_slug
         SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
-               t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
-               t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
+               t.*
         FROM public.tab_empresa e
         LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
         WHERE e.slug = $1 AND e.ativo = true
@@ -194,8 +210,7 @@ export async function getEmpresaTemaById(queryable, idEmpresa) {
   const result = await queryable.query(
     `-- op:get_empresa_tema_by_id
       SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
-             t.nome_exibicao, t.cor_primaria, t.cor_primaria_escura, t.cor_fundo,
-             t.cor_texto, t.cor_destaque, t.logo_topo_url, t.logo_favicon_url, t.whatsapp_telefone
+             t.*
       FROM public.tab_empresa e
       LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
       WHERE e.id_empresa = $1
@@ -254,39 +269,86 @@ export async function updateEmpresaTema(queryable, idEmpresa, payload = {}) {
     whatsapp_telefone: payload.whatsapp_telefone != null
       ? (normalizeWhatsAppPhone(payload.whatsapp_telefone) || tema.whatsapp_telefone)
       : tema.whatsapp_telefone,
+    fonte_titulo: payload.fonte_titulo != null
+      ? safeFont(payload.fonte_titulo, tema.fonte_titulo)
+      : tema.fonte_titulo,
+    fonte_corpo: payload.fonte_corpo != null
+      ? safeFont(payload.fonte_corpo, tema.fonte_corpo)
+      : tema.fonte_corpo,
   };
 
-  await queryable.query(
-    `-- op:upsert_empresa_tema
-      INSERT INTO public.tab_empresa_tema (
-        id_empresa, nome_exibicao, cor_primaria, cor_primaria_escura, cor_fundo,
-        cor_texto, cor_destaque, logo_topo_url, logo_favicon_url, whatsapp_telefone
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT (id_empresa) DO UPDATE SET
-        nome_exibicao = EXCLUDED.nome_exibicao,
-        cor_primaria = EXCLUDED.cor_primaria,
-        cor_primaria_escura = EXCLUDED.cor_primaria_escura,
-        cor_fundo = EXCLUDED.cor_fundo,
-        cor_texto = EXCLUDED.cor_texto,
-        cor_destaque = EXCLUDED.cor_destaque,
-        logo_topo_url = EXCLUDED.logo_topo_url,
-        logo_favicon_url = EXCLUDED.logo_favicon_url,
-        whatsapp_telefone = EXCLUDED.whatsapp_telefone,
-        data_atualizacao = now()
-    `,
-    [
-      id,
-      next.nome_exibicao,
-      next.cor_primaria,
-      next.cor_primaria_escura,
-      next.cor_fundo,
-      next.cor_texto,
-      next.cor_destaque,
-      next.logo_topo_url,
-      next.logo_favicon_url,
-      next.whatsapp_telefone,
-    ],
-  );
+  try {
+    await queryable.query(
+      `-- op:upsert_empresa_tema
+        INSERT INTO public.tab_empresa_tema (
+          id_empresa, nome_exibicao, cor_primaria, cor_primaria_escura, cor_fundo,
+          cor_texto, cor_destaque, logo_topo_url, logo_favicon_url, whatsapp_telefone,
+          fonte_titulo, fonte_corpo
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (id_empresa) DO UPDATE SET
+          nome_exibicao = EXCLUDED.nome_exibicao,
+          cor_primaria = EXCLUDED.cor_primaria,
+          cor_primaria_escura = EXCLUDED.cor_primaria_escura,
+          cor_fundo = EXCLUDED.cor_fundo,
+          cor_texto = EXCLUDED.cor_texto,
+          cor_destaque = EXCLUDED.cor_destaque,
+          logo_topo_url = EXCLUDED.logo_topo_url,
+          logo_favicon_url = EXCLUDED.logo_favicon_url,
+          whatsapp_telefone = EXCLUDED.whatsapp_telefone,
+          fonte_titulo = EXCLUDED.fonte_titulo,
+          fonte_corpo = EXCLUDED.fonte_corpo,
+          data_atualizacao = now()
+      `,
+      [
+        id,
+        next.nome_exibicao,
+        next.cor_primaria,
+        next.cor_primaria_escura,
+        next.cor_fundo,
+        next.cor_texto,
+        next.cor_destaque,
+        next.logo_topo_url,
+        next.logo_favicon_url,
+        next.whatsapp_telefone,
+        next.fonte_titulo,
+        next.fonte_corpo,
+      ],
+    );
+  } catch (error) {
+    // Compatível antes da migration 0010 (sem colunas de tipografia).
+    if (error?.code !== '42703') throw error;
+    await queryable.query(
+      `-- op:upsert_empresa_tema_legacy
+        INSERT INTO public.tab_empresa_tema (
+          id_empresa, nome_exibicao, cor_primaria, cor_primaria_escura, cor_fundo,
+          cor_texto, cor_destaque, logo_topo_url, logo_favicon_url, whatsapp_telefone
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (id_empresa) DO UPDATE SET
+          nome_exibicao = EXCLUDED.nome_exibicao,
+          cor_primaria = EXCLUDED.cor_primaria,
+          cor_primaria_escura = EXCLUDED.cor_primaria_escura,
+          cor_fundo = EXCLUDED.cor_fundo,
+          cor_texto = EXCLUDED.cor_texto,
+          cor_destaque = EXCLUDED.cor_destaque,
+          logo_topo_url = EXCLUDED.logo_topo_url,
+          logo_favicon_url = EXCLUDED.logo_favicon_url,
+          whatsapp_telefone = EXCLUDED.whatsapp_telefone,
+          data_atualizacao = now()
+      `,
+      [
+        id,
+        next.nome_exibicao,
+        next.cor_primaria,
+        next.cor_primaria_escura,
+        next.cor_fundo,
+        next.cor_texto,
+        next.cor_destaque,
+        next.logo_topo_url,
+        next.logo_favicon_url,
+        next.whatsapp_telefone,
+      ],
+    );
+  }
 
   if (payload.nome_fantasia != null) {
     const nome = String(payload.nome_fantasia).trim().slice(0, 120);
@@ -312,6 +374,65 @@ export function empresaScopeClause(alias, idEmpresa, paramIndex) {
     sql: `(${alias}.id_empresa = $${paramIndex} OR ${alias}.id_empresa IS NULL)`,
     params: [id],
   };
+}
+
+export async function createEmpresa(queryable, payload = {}) {
+  const ready = await ensureEmpresaSupport(queryable);
+  if (!ready) {
+    throw new AdminError(503, 'schema_unavailable', 'Cadastro de empresa indisponível.');
+  }
+  const slug = normalizeEmpresaSlug(payload.slug);
+  if (!slug) {
+    throw new AdminError(400, 'validation_error', 'Slug inválido. Use letras minúsculas, números e hífen.');
+  }
+  if (slug === EMPRESA_PADRAO_SLUG) {
+    throw new AdminError(400, 'validation_error', 'Slug reservado para a empresa padrão.');
+  }
+  const nome = String(payload.nome_fantasia || payload.nome || '').trim().slice(0, 120);
+  if (!nome) {
+    throw new AdminError(400, 'validation_error', 'Nome da empresa é obrigatório.');
+  }
+  const id = String(payload.id_empresa || randomUUID());
+  try {
+    await queryable.query(
+      `INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
+       VALUES ($1, $2, $3, true)`,
+      [id, slug, nome],
+    );
+  } catch (error) {
+    if (error?.code === '23505') {
+      throw new AdminError(409, 'conflict', 'Já existe empresa com este slug.');
+    }
+    throw error;
+  }
+  await updateEmpresaTema(queryable, id, {
+    nome_exibicao: payload.nome_exibicao || nome,
+    nome_fantasia: nome,
+    cor_primaria: payload.cor_primaria,
+    cor_primaria_escura: payload.cor_primaria_escura,
+    cor_fundo: payload.cor_fundo,
+    cor_texto: payload.cor_texto,
+    cor_destaque: payload.cor_destaque,
+    logo_topo_url: payload.logo_topo_url,
+    logo_favicon_url: payload.logo_favicon_url,
+    whatsapp_telefone: payload.whatsapp_telefone,
+    fonte_titulo: payload.fonte_titulo,
+    fonte_corpo: payload.fonte_corpo,
+  });
+  return getEmpresaTemaById(queryable, id);
+}
+
+export async function setEmpresaAtivo(queryable, idEmpresa, ativo) {
+  const id = String(idEmpresa || '');
+  if (!id) throw new AdminError(400, 'validation_error', 'Empresa obrigatória.');
+  if (id === EMPRESA_PADRAO_ID && ativo === false) {
+    throw new AdminError(400, 'validation_error', 'A empresa padrão não pode ser desativada.');
+  }
+  await queryable.query(
+    `UPDATE public.tab_empresa SET ativo = $2, data_atualizacao = now() WHERE id_empresa = $1`,
+    [id, ativo === true],
+  );
+  return getEmpresaTemaById(queryable, id);
 }
 
 export function resetEmpresaSchemaCacheForTests() {

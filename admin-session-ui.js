@@ -48,7 +48,7 @@ export function canAccessUsuarios(session) {
 
 // Grupo Gestão (Publicações, Auditoria, Usuários): só SUPER_ADMIN confirmado pela sessão real.
 // Sessão ausente, carregando, sem perfil ou perfil desconhecido resultam em acesso negado (fail closed).
-export const GESTAO_VIEWS = Object.freeze(['publications', 'audit', 'users']);
+export const GESTAO_VIEWS = Object.freeze(['publications', 'audit', 'users', 'empresas']);
 
 export function canAccessGestao(session) {
   const perfil = String(session?.perfil || session?.perfil_usuario || '').trim().toUpperCase();

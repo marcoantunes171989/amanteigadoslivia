@@ -1,28 +1,35 @@
-# SaaS multi-estabelecimento — Fase 1
+# SaaS multi-estabelecimento
 
-Fundação adicionativa sobre o sistema atual. A loja **Amanteigados Lívia** permanece a empresa padrão; URLs e fluxo de pedido não mudam.
+Fundação adicionativa. A loja **Amanteigados Lívia** permanece a empresa padrão; `/produtos` continua funcionando.
 
-## O que entrou
+## Migrations (SQL Editor)
 
-- `public.tab_empresa` + `public.tab_empresa_tema` (SQL Editor não tem CREATE em `app`)
-- Seed fixo: slug `amanteigados-livia`, id `a0000000-0000-4000-8000-000000000001`
-- `id_empresa` em `public.tab_pedido_numero` (nullable + backfill)
-- `GET /api/empresa` (tema público; fallback hardcoded se schema ausente)
-- `GET|POST /api/admin/empresa` (tema + switcher SUPER_ADMIN)
-- Storefront aplica tema via `storefront-theme.js` sem alterar a estrutura do pedido
+1. `0009_adicionar_empresa_saas.sql` — tabelas `public.tab_empresa` / `tab_empresa_tema`
+2. `0010_empresa_vinculos_e_tipografia.sql` — tipografia + vínculos usuário/produto/categoria/venda
 
-## Migration (SQL Editor)
+Rodar cada uma em **query nova**.
 
-Arquivo: `backend/database/migrations/0009_adicionar_empresa_saas.sql`
+## URL por empresa
 
-Rodar **este** arquivo no SQL Editor do Supabase (PROD/HML). Ele usa só `public.*`, no mesmo padrão da `0008`.
+- `/loja/{slug}`
+- `/loja/{slug}/produtos`
+- `/loja/{slug}/carrinho`
+- `/loja/{slug}/acompanhar`
 
-Opcional (Migrator/Owner, **não** SQL Editor): `0009b_empresa_id_em_app_DRAFT.sql` adiciona `id_empresa` nas tabelas `app.*`.
+Exemplo: `/loja/amanteigados-livia/produtos`
 
-Sem a `0009`, a API/admin continuam com o fallback da loja atual.
+## Admin
 
-## Próximas fases (não nesta entrega)
+- **Gestão → Empresas**: cadastrar, URL, ativar/desativar, selecionar no painel
+- **Branding**: cores, logo, WhatsApp e tipografia da empresa ativa
+- Usuários, produtos e vendas filtrados pela empresa selecionada
 
-- Unique composto `(id_empresa, slug_*)` e `NOT NULL`
-- Subdomínio automático / onboarding self-serve
-- Upload dedicado e numeração de pedido por empresa
+## Isolamento
+
+Vínculos em `public`:
+- `tab_usuario_empresa`
+- `tab_categoria_empresa`
+- `tab_produto_empresa`
+- `tab_venda_empresa`
+
+Sem misturar dados entre estabelecimentos.

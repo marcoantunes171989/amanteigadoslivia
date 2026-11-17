@@ -84,8 +84,24 @@
     return cached;
   }
 
+  function currentEmpresaSlug() {
+    try {
+      const fromTheme = window.AmanteigadosStorefrontTheme?.empresaSlug;
+      if (fromTheme) return String(fromTheme);
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('empresa') || params.get('slug');
+      if (fromQuery) return fromQuery;
+      const match = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  }
+
   async function loadFromApi() {
-    const response = await fetch('/api/catalogo', {
+    const slug = currentEmpresaSlug();
+    const url = slug ? `/api/catalogo?empresa=${encodeURIComponent(slug)}` : '/api/catalogo';
+    const response = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
       cache: 'no-store',

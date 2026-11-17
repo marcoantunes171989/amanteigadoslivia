@@ -27,31 +27,46 @@ import {
   DEFAULT_EMPRESA,
   DEFAULT_TEMA,
   EMPRESA_PADRAO_ID,
-  ensureEmpresaSupport,
+  createEmpresa,
   getEmpresaTemaById,
   listEmpresas,
   publicEmpresaPayload,
   resolveEmpresa,
+  setEmpresaAtivo,
   updateEmpresaTema,
 } from './empresa.js';
+import {
+  filterRowsByEmpresaIds,
+  getUsuarioEmpresaId,
+  linkCategoriaEmpresa,
+  linkProdutoEmpresa,
+  linkUsuarioEmpresa,
+  linkVendaEmpresa,
+  listIdsByEmpresa,
+} from './empresa-scope.js';
 import { hashPassword, verifyPassword } from './password.js';
 
 async function resolveUsuarioEmpresaId(pool, idUsuarioAdmin) {
-  if (!(await ensureEmpresaSupport(pool))) return EMPRESA_PADRAO_ID;
-  try {
-    const result = await pool.query(
-      `-- op:get_usuario_empresa
-        SELECT id_empresa
-        FROM app.tab_usuario_admin
-        WHERE id_usuario_admin = $1
-        LIMIT 1
-      `,
-      [idUsuarioAdmin],
-    );
-    return result.rows[0]?.id_empresa || EMPRESA_PADRAO_ID;
-  } catch {
-    return EMPRESA_PADRAO_ID;
-  }
+  return getUsuarioEmpresaId(pool, idUsuarioAdmin);
+}
+
+async function scopedAdminCatalog(pool, idEmpresa) {
+  const catalog = await getAdminCatalog(pool);
+  const catIds = await listIdsByEmpresa(pool, 'tab_categoria_empresa', 'id_categoria', idEmpresa);
+  const prodIds = await listIdsByEmpresa(pool, 'tab_produto_empresa', 'id_produto', idEmpresa);
+  if (!catIds && !prodIds) return catalog;
+  const categorias = filterRowsByEmpresaIds(catalog.categorias, 'id_categoria', catIds);
+  const produtos = filterRowsByEmpresaIds(catalog.produtos, 'id_produto', prodIds);
+  return {
+    ...catalog,
+    categorias,
+    produtos,
+    resumo: {
+      ...(catalog.resumo || {}),
+      total_categorias: categorias.length,
+      total_produtos: produtos.length,
+    },
+  };
 }
 
 function sessionEmpresaId(session) {
@@ -508,6 +523,46 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
       return;
     }
 
+    if (acao === 'criar_empresa') {
+      if (!isSuperAdminPerfil(session.perfil)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode cadastrar empresa.');
+      }
+      const created = await createEmpresa(pool, body?.dados || body || {});
+      await recordAudit(pool, {
+        id_usuario_admin: session.id_usuario_admin,
+        acao: 'criar_empresa',
+        entidade: 'empresa',
+        id_registro: created.empresa.id_empresa,
+        sucesso: true,
+        descricao_evento: `Empresa ${created.empresa.slug} criada.`,
+        identificador_requisicao: requestId(request),
+      });
+      sendJson(response, 200, { ok: true, ...created });
+      return;
+    }
+
+    if (acao === 'ativar_empresa' || acao === 'desativar_empresa') {
+      if (!isSuperAdminPerfil(session.perfil)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode ativar/desativar empresa.');
+      }
+      const idEmpresa = String(body?.id_empresa || '').trim();
+      const updated = await setEmpresaAtivo(pool, idEmpresa, acao === 'ativar_empresa');
+      sendJson(response, 200, { ok: true, ...updated });
+      return;
+    }
+
+    if (acao === 'vincular_usuario') {
+      if (!isSuperAdminPerfil(session.perfil)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode vincular usuários.');
+      }
+      const idUsuario = String(body?.id_usuario_admin || body?.id_usuario || '').trim();
+      const idEmpresa = String(body?.id_empresa || idEmpresaSessao).trim();
+      if (!idUsuario) throw new AdminError(400, 'validation_error', 'Usuário obrigatório.');
+      await linkUsuarioEmpresa(pool, idUsuario, idEmpresa);
+      sendJson(response, 200, { ok: true, id_usuario_admin: idUsuario, id_empresa: idEmpresa });
+      return;
+    }
+
     throw new AdminError(400, 'validation_error', 'Ação de empresa inválida.');
   });
 }
@@ -521,14 +576,16 @@ export async function handleAdminCatalog(request, response, deps = {}) {
 
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
+      const idEmpresa = sessionEmpresaId(session);
       sendJson(response, 200, {
-        ...(await getAdminCatalog(pool)),
+        ...(await scopedAdminCatalog(pool, idEmpresa)),
         sessao: {
           id_usuario_admin: session.id_usuario_admin || null,
           email: session.email || null,
           perfil: session.perfil || null,
           protegido: session.protegido === true,
           nome_usuario: session.nome_usuario || null,
+          id_empresa: idEmpresa,
         },
       });
       return;
@@ -584,6 +641,13 @@ export async function handleAdminCatalog(request, response, deps = {}) {
     }
 
     const result = await executeAdminAction(pool, body);
+    const idEmpresa = sessionEmpresaId(session);
+    if (result?.categoria?.id_categoria) {
+      await linkCategoriaEmpresa(pool, result.categoria.id_categoria, idEmpresa);
+    }
+    if (result?.produto?.id_produto) {
+      await linkProdutoEmpresa(pool, result.produto.id_produto, idEmpresa);
+    }
     await recordAudit(pool, {
       id_usuario_admin: session.id_usuario_admin,
       acao: catalogActionName(recurso, acao),
@@ -603,10 +667,15 @@ export async function handleAdminVendas(request, response, deps = {}) {
   await withAdmin(request, response, deps, async ({ pool, session, requestId: reqId }) => {
     if (request.method === 'GET') {
       const url = new URL(request.url || 'http://localhost/api/admin/vendas', 'http://localhost');
-      const vendas = await listVendas(pool, {
+      const idEmpresa = sessionEmpresaId(session);
+      let vendas = await listVendas(pool, {
         ...Object.fromEntries(url.searchParams.entries()),
-        id_empresa: sessionEmpresaId(session),
+        id_empresa: idEmpresa,
       });
+      const vendaIds = await listIdsByEmpresa(pool, 'tab_venda_empresa', 'id_venda', idEmpresa);
+      if (vendaIds) {
+        vendas = vendas.filter((item) => vendaIds.has(String(item.id_venda)));
+      }
       sendJson(response, 200, { vendas });
       return;
     }
@@ -774,7 +843,13 @@ export async function handleAdminUsuarios(request, response, deps = {}) {
     const actor = await loadActor(pool, session);
     assertSuperAdmin(actor);
     if (request.method === 'GET') {
-      sendJson(response, 200, { usuarios: await listUsuarios(pool) });
+      const usuarios = await listUsuarios(pool);
+      const idEmpresa = sessionEmpresaId(session);
+      const userIds = await listIdsByEmpresa(pool, 'tab_usuario_empresa', 'id_usuario_admin', idEmpresa);
+      const scoped = userIds
+        ? usuarios.filter((user) => userIds.has(String(user.id_usuario_admin)))
+        : usuarios;
+      sendJson(response, 200, { usuarios: scoped, id_empresa: idEmpresa });
       return;
     }
     if (request.method !== 'POST') {
@@ -786,6 +861,8 @@ export async function handleAdminUsuarios(request, response, deps = {}) {
     let result;
     if (acao === 'criar') {
       result = { usuario: await createUsuario(pool, body.dados || body, actor) };
+      const idEmpresaDestino = String(body?.dados?.id_empresa || body?.id_empresa || sessionEmpresaId(session));
+      await linkUsuarioEmpresa(pool, result.usuario.id_usuario_admin, idEmpresaDestino);
       await recordAudit(pool, {
         id_usuario_admin: actor.id_usuario_admin,
         acao: AUDIT_ACTIONS.CRIAR_USUARIO,
@@ -1079,7 +1156,19 @@ export async function handlePublicVenda(request, response, deps = {}) {
   }
   try {
     const body = await readJsonBody(request);
-    const result = await captureVenda(requirePool(deps.getPool), body);
+    const pool = requirePool(deps.getPool);
+    const host = request?.headers?.host || request?.headers?.['x-forwarded-host'] || '';
+    const empresaCtx = await resolveEmpresa(pool, {
+      slug: body?.empresa_slug || body?.empresa || '',
+      host: Array.isArray(host) ? host[0] : host,
+    });
+    const result = await captureVenda(pool, {
+      ...body,
+      id_empresa: empresaCtx.empresa.id_empresa,
+    });
+    if (result?.venda?.id_venda) {
+      await linkVendaEmpresa(pool, result.venda.id_venda, empresaCtx.empresa.id_empresa);
+    }
     sendJson(response, 200, { ok: true, ...result });
   } catch (error) {
     logRequestFailure(deps.logDatabaseError, '[vendas] request failed', error);
@@ -1138,7 +1227,13 @@ export async function handlePublicCatalog(request, response, deps = {}) {
   try {
     const pool = requirePool(deps.getPool);
     await applyDueJobsIfNeeded(pool);
-    sendJson(response, 200, await getCatalogPayload(pool));
+    const url = new URL(request.url || 'http://localhost/api/catalogo', 'http://localhost');
+    const host = request?.headers?.host || request?.headers?.['x-forwarded-host'] || '';
+    const empresaCtx = await resolveEmpresa(pool, {
+      slug: url.searchParams.get('empresa') || url.searchParams.get('slug') || '',
+      host: Array.isArray(host) ? host[0] : host,
+    });
+    sendJson(response, 200, await getCatalogPayload(pool, { idEmpresa: empresaCtx.empresa.id_empresa }));
   } catch (error) {
     if (typeof deps.logDatabaseError === 'function') {
       deps.logDatabaseError('[catalog-api] database request failed', error);

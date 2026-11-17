@@ -316,6 +316,9 @@
         telefone_cliente: formData.telefoneDigits,
         modalidade: formData.modalidade,
         endereco_entrega: formData.endereco || null,
+        empresa_slug: window.AmanteigadosStorefrontTheme?.empresaSlug
+          || window.AmanteigadosStorefrontConfig?.empresaSlug
+          || null,
         itens: items.map((item) => ({
           id_produto: item.productId,
           quantidade: item.quantity,

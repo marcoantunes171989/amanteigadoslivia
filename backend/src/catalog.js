@@ -115,7 +115,7 @@ export function mapCatalogRows({
   };
 }
 
-export async function getCatalogPayload(queryable) {
+export async function getCatalogPayload(queryable, { idEmpresa = null } = {}) {
   const result = await queryable.query(`
       SELECT
         COALESCE((
@@ -153,11 +153,33 @@ export async function getCatalogPayload(queryable) {
     `);
 
   const row = result.rows[0] || {};
+  let categories = row.categories || [];
+  let products = row.products || [];
+  let images = row.images || [];
+  let prices = row.prices || [];
+
+  if (idEmpresa) {
+    try {
+      const { listIdsByEmpresa, filterRowsByEmpresaIds } = await import('./empresa-scope.js');
+      const catIds = await listIdsByEmpresa(queryable, 'tab_categoria_empresa', 'id_categoria', idEmpresa);
+      const prodIds = await listIdsByEmpresa(queryable, 'tab_produto_empresa', 'id_produto', idEmpresa);
+      if (catIds) categories = filterRowsByEmpresaIds(categories, 'id_categoria', catIds);
+      if (prodIds) {
+        products = filterRowsByEmpresaIds(products, 'id_produto', prodIds);
+        const allowed = prodIds;
+        images = (images || []).filter((img) => allowed.has(String(img.id_produto)));
+        prices = (prices || []).filter((price) => allowed.has(String(price.id_produto)));
+      }
+    } catch {
+      // Sem vínculos: mantém catálogo completo (loja padrão / legado).
+    }
+  }
+
   const payload = mapCatalogRows({
-    categories: row.categories || [],
-    products: row.products || [],
-    images: row.images || [],
-    prices: row.prices || [],
+    categories,
+    products,
+    images,
+    prices,
     now: new Date(),
   });
 

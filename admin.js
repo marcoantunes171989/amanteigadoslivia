@@ -83,6 +83,7 @@ import {
     publications: document.getElementById('publicationsView'),
     audit: document.getElementById('auditView'),
     users: document.getElementById('usersView'),
+    empresas: document.getElementById('empresasView'),
   };
 
   const TITLES = {
@@ -100,6 +101,7 @@ import {
     publications: ['Gestão', 'Publicações', 'Controle a validação e a promoção das versões homologadas para produção.'],
     audit: ['Gestão', 'Auditoria', 'Consulte o histórico de ações administrativas.'],
     users: ['Gestão', 'Usuários', 'Gerencie acessos do painel.'],
+    empresas: ['Gestão', 'Empresas', 'Cadastre estabelecimentos, URL, cores e tipografia.'],
   };
 
   // Última requisição de Dashboard vence: respostas antigas são descartadas (ver createLatestGate).
@@ -871,6 +873,7 @@ import {
     else if (view === 'publications') renderPublications();
     else if (view === 'audit') renderAudit();
     else if (view === 'users') renderUsers();
+    else if (view === 'empresas') renderEmpresas();
   }
 
   // Primeiro acesso sem dados: estrutura da tela imediatamente, sem overlay e sem bloquear o menu.
@@ -1572,6 +1575,18 @@ import {
         type: 'text',
         value: tema.whatsapp_telefone || '',
       })),
+      field('tema_fonte_titulo', 'Fonte do título', el('input', {
+        id: 'tema_fonte_titulo',
+        type: 'text',
+        value: tema.fonte_titulo || 'Nunito',
+        placeholder: 'Nunito',
+      })),
+      field('tema_fonte_corpo', 'Fonte do corpo', el('input', {
+        id: 'tema_fonte_corpo',
+        type: 'text',
+        value: tema.fonte_corpo || 'Nunito',
+        placeholder: 'Nunito',
+      })),
       el('button', {
         className: 'btn btn-primary',
         type: 'button',
@@ -1593,6 +1608,8 @@ import {
                   logo_topo_url: document.getElementById('tema_logo_topo_url')?.value,
                   logo_favicon_url: document.getElementById('tema_logo_topo_url')?.value,
                   whatsapp_telefone: document.getElementById('tema_whatsapp_telefone')?.value,
+                  fonte_titulo: document.getElementById('tema_fonte_titulo')?.value,
+                  fonte_corpo: document.getElementById('tema_fonte_corpo')?.value,
                 },
               }),
             });
@@ -1605,6 +1622,100 @@ import {
         },
       }),
     ]);
+  }
+
+  function renderEmpresas() {
+    const target = views.empresas;
+    if (!target) return;
+    const empresas = state.empresa?.empresas || [];
+    target.replaceChildren(
+      pageHeading('empresas', [
+        createBtn('+ Nova empresa', () => openEmpresaForm()),
+      ]),
+      empresas.length
+        ? el('div', { className: 'content-admin-grid' }, empresas.map((item) => el('article', { className: 'card content-admin-card' }, [
+          el('strong', { text: item.nome_fantasia || item.slug }),
+          el('p', { className: 'muted', text: `Slug: ${item.slug}` }),
+          el('p', { className: 'muted', text: `URL: ${item.url_path || `/loja/${item.slug}`}` }),
+          el('p', { className: 'muted', text: item.ativo === false ? 'Inativa' : 'Ativa' }),
+          el('div', { className: 'actions' }, [
+            el('a', {
+              className: 'btn btn-ghost btn-small',
+              href: item.url_path || `/loja/${item.slug}`,
+              target: '_blank',
+              rel: 'noopener',
+              text: 'Abrir loja',
+            }),
+            el('button', {
+              className: 'btn btn-primary btn-small',
+              type: 'button',
+              text: 'Usar no painel',
+              onClick: async () => {
+                try {
+                  await request('/api/admin/empresa', {
+                    method: 'POST',
+                    body: JSON.stringify({ acao: 'selecionar_empresa', id_empresa: item.id_empresa }),
+                  });
+                  viewCache.invalidateAll();
+                  toast(`Painel em ${item.nome_fantasia}`);
+                  await refreshView();
+                } catch (error) {
+                  toast(error.message || 'Falha ao selecionar empresa.', false);
+                }
+              },
+            }),
+            item.id_empresa === 'a0000000-0000-4000-8000-000000000001'
+              ? null
+              : el('button', {
+                className: 'btn btn-ghost btn-small',
+                type: 'button',
+                text: item.ativo === false ? 'Ativar' : 'Desativar',
+                onClick: async () => {
+                  try {
+                    await request('/api/admin/empresa', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        acao: item.ativo === false ? 'ativar_empresa' : 'desativar_empresa',
+                        id_empresa: item.id_empresa,
+                      }),
+                    });
+                    viewCache.invalidateAll();
+                    await refreshView();
+                  } catch (error) {
+                    toast(error.message || 'Falha ao atualizar empresa.', false);
+                  }
+                },
+              }),
+          ].filter(Boolean)),
+        ])))
+        : emptyState('Nenhuma empresa cadastrada.'),
+    );
+  }
+
+  function openEmpresaForm() {
+    resourceForm.replaceChildren(dialogFrame({
+      eyebrow: 'Empresas',
+      title: 'Nova empresa',
+      description: 'Cria um estabelecimento com URL própria e identidade visual.',
+      children: [
+        field('emp_nome', 'Nome fantasia *', el('input', { id: 'emp_nome', name: 'nome_fantasia', required: true })),
+        field('emp_slug', 'Slug da URL *', el('input', {
+          id: 'emp_slug',
+          name: 'slug',
+          required: true,
+          placeholder: 'minha-loja',
+          pattern: '[a-z0-9]+(?:-[a-z0-9]+)*',
+        })),
+        field('emp_whatsapp', 'WhatsApp com DDI', el('input', { id: 'emp_whatsapp', name: 'whatsapp_telefone', placeholder: '5511999999999' })),
+        field('emp_cor', 'Cor primária', el('input', { id: 'emp_cor', name: 'cor_primaria', value: '#800020' })),
+        field('emp_fonte', 'Fonte', el('input', { id: 'emp_fonte', name: 'fonte_titulo', value: 'Nunito' })),
+      ],
+      submitLabel: 'Criar empresa',
+      onClose: () => formDialog.close(),
+    }));
+    resourceForm.dataset.kind = 'empresa';
+    bindFormDirty(resourceForm);
+    formDialog.showModal();
   }
 
   async function saveConfig(chave, valor) {
@@ -2754,6 +2865,30 @@ import {
           }
           toast('Usuário criado.');
         }
+        await refreshView();
+      } else if (kind === 'empresa') {
+        const slug = String(data.get('slug') || '').trim().toLowerCase();
+        const nome = String(data.get('nome_fantasia') || '').trim();
+        if (!nome || !slug) {
+          formError('Informe nome e slug.');
+          return;
+        }
+        const created = await request('/api/admin/empresa', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: 'criar_empresa',
+            dados: {
+              nome_fantasia: nome,
+              slug,
+              whatsapp_telefone: String(data.get('whatsapp_telefone') || ''),
+              cor_primaria: String(data.get('cor_primaria') || '#800020'),
+              fonte_titulo: String(data.get('fonte_titulo') || 'Nunito'),
+              fonte_corpo: String(data.get('fonte_titulo') || 'Nunito'),
+            },
+          }),
+        });
+        toast(`Empresa criada. URL: ${created?.empresa?.url_path || `/loja/${slug}`}`);
+        viewCache.invalidateAll();
         await refreshView();
       } else if (kind === 'reset-senha') {
         const id = data.get('id_usuario_admin');

@@ -17,6 +17,7 @@ export const VIEW_RESOURCES = Object.freeze({
   publications: Object.freeze(['publications']),
   audit: Object.freeze(['audit']),
   users: Object.freeze(['users']),
+  empresas: Object.freeze(['empresa']),
 });
 
 // Janela em que um recurso já carregado é considerado atual (sem nova request ao reentrar na view).
