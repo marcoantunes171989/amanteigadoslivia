@@ -52,14 +52,17 @@
       const fromQuery = params.get('empresa') || params.get('slug');
       if (fromQuery) return fromQuery;
       const match = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
-      return match ? match[1] : 'amanteigados-livia';
+      if (match) return match[1];
+      // Domínio próprio: sem slug no path — a API resolve pelo Host.
+      return '';
     } catch {
-      return 'amanteigados-livia';
+      return '';
     }
   }
 
   function catalogCacheKey(slug = currentEmpresaSlug()) {
-    return `${CATALOG_CACHE_PREFIX}${slug || 'amanteigados-livia'}`;
+    const host = (typeof location !== 'undefined' && location.hostname) || 'local';
+    return `${CATALOG_CACHE_PREFIX}${slug || host}`;
   }
 
   function readLiveCache() {

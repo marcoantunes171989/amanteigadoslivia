@@ -8,6 +8,16 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/",
+      "has": [{ "type": "host", "value": "doce-aurora.pedidoprime.com.br" }],
+      "destination": "/produtos"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "padaria-norte.pedidoprime.com.br" }],
+      "destination": "/produtos"
+    },
+    {
       "source": "/api/admin/:path*",
       "destination": "/api/admin-router?slug=:path*"
     },

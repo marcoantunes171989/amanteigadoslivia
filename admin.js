@@ -1629,6 +1629,14 @@ import {
     return `/loja/${slug}/produtos`;
   }
 
+  function empresaOpenHref(item) {
+    const acesso = String(item?.url_acesso || '').trim();
+    if (/^https?:\/\//i.test(acesso)) {
+      return acesso.replace(/\/$/, '') + '/produtos';
+    }
+    return empresaPreviewPath(item);
+  }
+
   function renderEmpresas() {
     const target = views.empresas;
     if (!target) return;
@@ -1642,17 +1650,26 @@ import {
           el('strong', { text: item.nome_fantasia || item.slug }),
           el('p', { className: 'muted', text: `Slug: ${item.slug}` }),
           el('p', { className: 'muted', text: item.dominio ? `Domínio: ${item.dominio}` : 'Domínio: (não definido)' }),
-          el('p', { className: 'muted', text: `URL oficial: ${item.url_acesso || item.url_path || empresaPreviewPath(item)}` }),
-          el('p', { className: 'muted', text: `Preview: ${empresaPreviewPath(item)}` }),
+          el('p', { className: 'muted', text: `URL oficial: ${item.url_acesso || '(defina o domínio)'}` }),
+          el('p', { className: 'muted', text: `Preview plataforma: ${empresaPreviewPath(item)}` }),
           el('p', { className: 'muted', text: item.ativo === false ? 'Inativa' : 'Ativa' }),
           el('div', { className: 'actions' }, [
             el('a', {
-              className: 'btn btn-ghost btn-small',
-              href: empresaPreviewPath(item),
+              className: 'btn btn-primary btn-small',
+              href: empresaOpenHref(item),
               target: '_blank',
               rel: 'noopener',
-              text: 'Abrir loja',
+              text: item.dominio ? 'Abrir no domínio' : 'Abrir preview',
             }),
+            item.dominio
+              ? el('a', {
+                className: 'btn btn-ghost btn-small',
+                href: empresaPreviewPath(item),
+                target: '_blank',
+                rel: 'noopener',
+                text: 'Preview',
+              })
+              : null,
             el('button', {
               className: 'btn btn-ghost btn-small',
               type: 'button',

@@ -175,6 +175,7 @@
   async function loadTheme() {
     applyTheme(FALLBACK);
     const slug = readSlugFromPage();
+    // Sem slug no path (domínio próprio): a API resolve pelo Host.
     const url = slug ? `/api/empresa?empresa=${encodeURIComponent(slug)}` : '/api/empresa';
     try {
       const response = await fetch(url, {
