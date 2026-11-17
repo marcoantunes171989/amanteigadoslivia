@@ -45,8 +45,9 @@
   function syncUi(order = read()) {
     const active = isActive(order);
     document.querySelectorAll('[data-order-track]').forEach((el) => {
-      el.hidden = !order;
-      if (order) {
+      // Ícone sempre visível para o cliente consultar/acompanhar.
+      el.hidden = false;
+      if (order?.numero_pedido) {
         el.setAttribute('href', `/acompanhar?numero=${encodeURIComponent(order.numero_pedido)}`);
         el.setAttribute(
           'aria-label',
@@ -54,11 +55,14 @@
             ? `Acompanhar pedido ${order.numero_pedido}`
             : `Ver pedido ${order.numero_pedido}`,
         );
+      } else {
+        el.setAttribute('href', '/acompanhar');
+        el.setAttribute('aria-label', 'Acompanhar pedido');
       }
     });
     document.querySelectorAll('[data-order-track-badge]').forEach((badge) => {
       badge.hidden = !active;
-      badge.textContent = active ? '1' : '';
+      badge.textContent = active ? String(order.numero_pedido || '1') : '';
     });
   }
 

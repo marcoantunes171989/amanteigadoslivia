@@ -347,6 +347,8 @@
           nome: formData.nome,
           status_venda: data.venda.status_venda || 'PENDENTE',
         });
+      } else {
+        window.AmanteigadosOrderTrack?.syncUi?.();
       }
 
       const opened = window.open(url, '_blank', 'noopener');

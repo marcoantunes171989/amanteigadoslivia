@@ -69,17 +69,25 @@ export async function ensureNumeroPedidoSupport(queryable) {
 }
 
 async function attachNumeroPedido(client, { idVenda, telefone }) {
-  const inserted = await client.query(
-    `-- op:insert_pedido_numero
-      INSERT INTO public.tab_pedido_numero (id_venda, telefone_normalizado)
-      VALUES ($1, $2)
-      ON CONFLICT (id_venda) DO UPDATE
-        SET telefone_normalizado = EXCLUDED.telefone_normalizado
-      RETURNING numero_pedido
-    `,
-    [idVenda, telefone],
-  );
-  return Number(inserted.rows[0]?.numero_pedido) || null;
+  await client.query('SAVEPOINT sp_pedido_numero');
+  try {
+    const inserted = await client.query(
+      `-- op:insert_pedido_numero
+        INSERT INTO public.tab_pedido_numero (id_venda, telefone_normalizado)
+        VALUES ($1, $2)
+        ON CONFLICT (id_venda) DO UPDATE
+          SET telefone_normalizado = EXCLUDED.telefone_normalizado
+        RETURNING numero_pedido
+      `,
+      [idVenda, telefone],
+    );
+    await client.query('RELEASE SAVEPOINT sp_pedido_numero');
+    return Number(inserted.rows[0]?.numero_pedido) || null;
+  } catch (error) {
+    await client.query('ROLLBACK TO SAVEPOINT sp_pedido_numero');
+    console.warn('[vendas] attachNumeroPedido', error?.code || error?.message || error);
+    return null;
+  }
 }
 
 function effectiveUnitCentavos(product) {
@@ -117,27 +125,16 @@ export async function captureVenda(pool, payload = {}) {
   try {
     return await withTransaction(pool, async (client) => {
       const numberingReady = await ensureNumeroPedidoSupport(client);
+      // Busca a venda sem depender de JOIN em public (evita 42501/RLS no caminho crítico).
       const existing = await client.query(
         `-- op:get_venda_chave
-          SELECT ${VENDA_BASE_COLS}, n.numero_pedido
-          FROM app.tab_venda v
-          LEFT JOIN public.tab_pedido_numero n ON n.id_venda = v.id_venda
-          WHERE v.chave_idempotencia = $1
+          SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
+                 telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+          FROM app.tab_venda
+          WHERE chave_idempotencia = $1
         `,
         [chave],
-      ).catch(async (error) => {
-        if (error?.code !== '42P01') throw error;
-        return client.query(
-          `-- op:get_venda_chave_legacy
-            SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
-                   telefone_cliente, valor_total_centavos, data_venda, data_atualizacao,
-                   NULL::bigint AS numero_pedido
-            FROM app.tab_venda
-            WHERE chave_idempotencia = $1
-          `,
-          [chave],
-        );
-      });
+      );
       if (existing.rows[0]) {
         const itens = await client.query(
           `-- op:list_venda_itens
@@ -149,7 +146,17 @@ export async function captureVenda(pool, payload = {}) {
           `,
           [existing.rows[0].id_venda],
         );
-        return { duplicated: true, venda: publicSale(existing.rows[0], itens.rows) };
+        let numeroPedido = null;
+        if (numberingReady) {
+          numeroPedido = await attachNumeroPedido(client, {
+            idVenda: existing.rows[0].id_venda,
+            telefone: existing.rows[0].telefone_cliente || telefoneCliente,
+          });
+        }
+        return {
+          duplicated: true,
+          venda: publicSale({ ...existing.rows[0], numero_pedido: numeroPedido }, itens.rows),
+        };
       }
 
       const catalog = await getCatalogPayload(client);
@@ -237,10 +244,10 @@ export async function captureVenda(pool, payload = {}) {
     if (error?.code === '23505') {
       const existing = await pool.query(
         `-- op:get_venda_chave
-          SELECT ${VENDA_BASE_COLS}, n.numero_pedido
-          FROM app.tab_venda v
-          LEFT JOIN public.tab_pedido_numero n ON n.id_venda = v.id_venda
-          WHERE v.chave_idempotencia = $1
+          SELECT id_venda, chave_idempotencia, status_venda, origem_venda, nome_cliente,
+                 telefone_cliente, valor_total_centavos, data_venda, data_atualizacao
+          FROM app.tab_venda
+          WHERE chave_idempotencia = $1
         `,
         [chave],
       ).catch(() => ({ rows: [] }));
@@ -255,7 +262,7 @@ export async function captureVenda(pool, payload = {}) {
           `,
           [existing.rows[0].id_venda],
         );
-        return { duplicated: true, venda: publicSale(existing.rows[0], itens.rows) };
+        return { duplicated: true, venda: publicSale({ ...existing.rows[0], numero_pedido: null }, itens.rows) };
       }
     }
     throw mapDatabaseError(error);
