@@ -150,18 +150,32 @@ export async function getEmpresaPadrao(queryable) {
     return publicEmpresaPayload(DEFAULT_EMPRESA, DEFAULT_TEMA);
   }
   try {
-    const result = await queryable.query(
-      `-- op:get_empresa_padrao
-        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
-               t.*
-        FROM public.tab_empresa e
-        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
-        WHERE e.id_empresa = $1 OR e.slug = $2
-        ORDER BY CASE WHEN e.id_empresa = $1 THEN 0 ELSE 1 END
-        LIMIT 1
-      `,
-      [EMPRESA_PADRAO_ID, EMPRESA_PADRAO_SLUG],
-    );
+    let result;
+    try {
+      result = await queryable.query(
+        `-- op:get_empresa_padrao
+          SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
+                 t.*
+          FROM public.tab_empresa e
+          LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+          WHERE e.id_empresa = $1 OR e.slug = $2
+          ORDER BY CASE WHEN e.id_empresa = $1 THEN 0 ELSE 1 END
+          LIMIT 1
+        `,
+        [EMPRESA_PADRAO_ID, EMPRESA_PADRAO_SLUG],
+      );
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      result = await queryable.query(
+        `SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo, t.*
+         FROM public.tab_empresa e
+         LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+         WHERE e.id_empresa = $1 OR e.slug = $2
+         ORDER BY CASE WHEN e.id_empresa = $1 THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [EMPRESA_PADRAO_ID, EMPRESA_PADRAO_SLUG],
+      );
+    }
     const row = result.rows[0];
     const empresa = mapEmpresa(row || DEFAULT_EMPRESA);
     const tema = mapTema(row, empresa);
@@ -290,17 +304,30 @@ export async function getEmpresaTemaById(queryable, idEmpresa) {
   if (!ready) {
     return publicEmpresaPayload(DEFAULT_EMPRESA, DEFAULT_TEMA);
   }
-  const result = await queryable.query(
-    `-- op:get_empresa_tema_by_id
-      SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
-             t.*
-      FROM public.tab_empresa e
-      LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
-      WHERE e.id_empresa = $1
-      LIMIT 1
-    `,
-    [id],
-  );
+  let result;
+  try {
+    result = await queryable.query(
+      `-- op:get_empresa_tema_by_id
+        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
+               t.*
+        FROM public.tab_empresa e
+        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+        WHERE e.id_empresa = $1
+        LIMIT 1
+      `,
+      [id],
+    );
+  } catch (error) {
+    if (error?.code !== '42703') throw error;
+    result = await queryable.query(
+      `SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo, t.*
+       FROM public.tab_empresa e
+       LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+       WHERE e.id_empresa = $1
+       LIMIT 1`,
+      [id],
+    );
+  }
   if (!result.rows[0]) {
     return getEmpresaPadrao(queryable);
   }
