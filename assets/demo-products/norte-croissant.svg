@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f5f8ff"/>
+  <path d="M90 170 C140 90, 260 90, 310 170 C270 150, 130 150, 90 170 Z" fill="#e8b15a"/>
+  <path d="M115 165 C155 115, 245 115, 285 165" fill="none" stroke="#c4862e" stroke-width="6" stroke-linecap="round"/>
+  <text x="200" y="278" text-anchor="middle" fill="#1d4ed8" font-family="Nunito,sans-serif" font-size="18" font-weight="700">Croissant</text>
+</svg>

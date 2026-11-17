@@ -106,6 +106,8 @@
     });
 
     const slug = empresa.slug || FALLBACK.empresa.slug;
+    const onLojaPath = String(window.location.pathname || '').startsWith('/loja/');
+    const base = onLojaPath ? `/loja/${slug}` : '';
     window.AmanteigadosStorefrontTheme = Object.freeze({
       empresa,
       tema,
@@ -113,12 +115,18 @@
       whatsappPhone: String(tema.whatsapp_telefone || FALLBACK.tema.whatsapp_telefone).replace(/\D/g, ''),
       logoTopoUrl: logo,
       empresaSlug: slug,
+      dominio: empresa.dominio || null,
       urlPath: empresa.url_path || `/loja/${slug}`,
+      urlAcesso: empresa.url_acesso || empresa.url_path || `/loja/${slug}`,
     });
 
-    // Mantém links internos no escopo da loja quando acessada via /loja/{slug}.
-    const base = `/loja/${slug}`;
-    if (String(window.location.pathname || '').startsWith('/loja/')) {
+    document.querySelectorAll('.app-header__logo').forEach((el) => {
+      el.setAttribute('aria-label', nome);
+      el.setAttribute('href', onLojaPath ? `${base}/produtos` : '/produtos');
+    });
+
+    // Em /loja/{slug}: prefixa rotas. Em domínio próprio: permanece na raiz (/produtos).
+    if (onLojaPath) {
       document.querySelectorAll('a[href="/produtos"], a[href="/carrinho"], a[href="/acompanhar"]').forEach((anchor) => {
         const href = anchor.getAttribute('href');
         if (href === '/produtos') anchor.setAttribute('href', `${base}/produtos`);
@@ -129,6 +137,11 @@
         const current = el.getAttribute('href') || '/acompanhar';
         if (current.startsWith('/acompanhar')) {
           el.setAttribute('href', current.replace('/acompanhar', `${base}/acompanhar`));
+        }
+      });
+      document.querySelectorAll('#orderBarCta, a.order-bar__cta').forEach((el) => {
+        if ((el.getAttribute('href') || '') === '/carrinho' || el.id === 'orderBarCta') {
+          el.setAttribute('href', `${base}/carrinho`);
         }
       });
     }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f3fbf8"/>
+  <path d="M90 190 L200 80 L310 190 Z" fill="#f6e27a"/>
+  <path d="M110 190 L200 105 L290 190 Z" fill="#fff8c8"/>
+  <ellipse cx="200" cy="190" rx="110" ry="18" fill="#0f6a5a" opacity=".12"/>
+  <circle cx="200" cy="140" r="10" fill="#0f6a5a" opacity=".35"/>
+  <text x="200" y="278" text-anchor="middle" fill="#0f6a5a" font-family="Nunito,sans-serif" font-size="18" font-weight="700">Torta Limão</text>
+</svg>

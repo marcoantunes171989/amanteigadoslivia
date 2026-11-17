@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f3fbf8"/>
+  <rect x="110" y="90" width="180" height="120" rx="14" fill="#5b3a2e"/>
+  <rect x="122" y="102" width="156" height="28" rx="6" fill="#3f281f" opacity=".55"/>
+  <circle cx="160" cy="160" r="6" fill="#e0a100" opacity=".7"/>
+  <circle cx="200" cy="150" r="5" fill="#e0a100" opacity=".55"/>
+  <circle cx="235" cy="168" r="6" fill="#e0a100" opacity=".65"/>
+  <text x="200" y="278" text-anchor="middle" fill="#0f6a5a" font-family="Nunito,sans-serif" font-size="18" font-weight="700">Brownie Café</text>
+</svg>

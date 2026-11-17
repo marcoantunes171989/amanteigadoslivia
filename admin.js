@@ -1624,6 +1624,11 @@ import {
     ]);
   }
 
+  function empresaPreviewPath(item) {
+    const slug = item?.slug || 'amanteigados-livia';
+    return `/loja/${slug}/produtos`;
+  }
+
   function renderEmpresas() {
     const target = views.empresas;
     if (!target) return;
@@ -1636,15 +1641,23 @@ import {
         ? el('div', { className: 'content-admin-grid' }, empresas.map((item) => el('article', { className: 'card content-admin-card' }, [
           el('strong', { text: item.nome_fantasia || item.slug }),
           el('p', { className: 'muted', text: `Slug: ${item.slug}` }),
-          el('p', { className: 'muted', text: `URL: ${item.url_path || `/loja/${item.slug}`}` }),
+          el('p', { className: 'muted', text: item.dominio ? `Domínio: ${item.dominio}` : 'Domínio: (não definido)' }),
+          el('p', { className: 'muted', text: `URL oficial: ${item.url_acesso || item.url_path || empresaPreviewPath(item)}` }),
+          el('p', { className: 'muted', text: `Preview: ${empresaPreviewPath(item)}` }),
           el('p', { className: 'muted', text: item.ativo === false ? 'Inativa' : 'Ativa' }),
           el('div', { className: 'actions' }, [
             el('a', {
               className: 'btn btn-ghost btn-small',
-              href: item.url_path || `/loja/${item.slug}`,
+              href: empresaPreviewPath(item),
               target: '_blank',
               rel: 'noopener',
               text: 'Abrir loja',
+            }),
+            el('button', {
+              className: 'btn btn-ghost btn-small',
+              type: 'button',
+              text: 'Editar',
+              onClick: () => openEmpresaForm(item),
             }),
             el('button', {
               className: 'btn btn-primary btn-small',
@@ -1692,28 +1705,59 @@ import {
     );
   }
 
-  function openEmpresaForm() {
+  function openEmpresaForm(item = null) {
+    const editing = Boolean(item?.id_empresa);
     resourceForm.replaceChildren(dialogFrame({
       eyebrow: 'Empresas',
-      title: 'Nova empresa',
-      description: 'Cria um estabelecimento com URL própria e identidade visual.',
+      title: editing ? 'Editar empresa' : 'Nova empresa',
+      description: editing
+        ? 'Atualize nome, domínio e identidade da loja.'
+        : 'Cria um estabelecimento com domínio próprio e identidade visual.',
       children: [
-        field('emp_nome', 'Nome fantasia *', el('input', { id: 'emp_nome', name: 'nome_fantasia', required: true })),
-        field('emp_slug', 'Slug da URL *', el('input', {
+        editing ? el('input', { type: 'hidden', name: 'id_empresa', value: item.id_empresa }) : null,
+        field('emp_nome', 'Nome fantasia *', el('input', {
+          id: 'emp_nome',
+          name: 'nome_fantasia',
+          required: true,
+          value: item?.nome_fantasia || '',
+        })),
+        field('emp_slug', 'Slug interno *', el('input', {
           id: 'emp_slug',
           name: 'slug',
           required: true,
           placeholder: 'minha-loja',
           pattern: '[a-z0-9]+(?:-[a-z0-9]+)*',
+          value: item?.slug || '',
+          disabled: item?.id_empresa === 'a0000000-0000-4000-8000-000000000001',
         })),
-        field('emp_whatsapp', 'WhatsApp com DDI', el('input', { id: 'emp_whatsapp', name: 'whatsapp_telefone', placeholder: '5511999999999' })),
-        field('emp_cor', 'Cor primária', el('input', { id: 'emp_cor', name: 'cor_primaria', value: '#800020' })),
-        field('emp_fonte', 'Fonte', el('input', { id: 'emp_fonte', name: 'fonte_titulo', value: 'Nunito' })),
-      ],
-      submitLabel: 'Criar empresa',
+        field('emp_dominio', 'Domínio próprio', el('input', {
+          id: 'emp_dominio',
+          name: 'dominio',
+          placeholder: 'www.minhaloja.com.br',
+          value: item?.dominio || '',
+        })),
+        field('emp_whatsapp', 'WhatsApp com DDI', el('input', {
+          id: 'emp_whatsapp',
+          name: 'whatsapp_telefone',
+          placeholder: '5511999999999',
+          value: '',
+        })),
+        field('emp_cor', 'Cor primária', el('input', {
+          id: 'emp_cor',
+          name: 'cor_primaria',
+          value: '#800020',
+        })),
+        field('emp_fonte', 'Fonte', el('input', {
+          id: 'emp_fonte',
+          name: 'fonte_titulo',
+          value: 'Nunito',
+        })),
+      ].filter(Boolean),
+      submitLabel: editing ? 'Salvar alterações' : 'Criar empresa',
       onClose: () => formDialog.close(),
     }));
     resourceForm.dataset.kind = 'empresa';
+    resourceForm.dataset.empresaEdit = editing ? '1' : '0';
     bindFormDirty(resourceForm);
     formDialog.showModal();
   }
@@ -2869,25 +2913,30 @@ import {
       } else if (kind === 'empresa') {
         const slug = String(data.get('slug') || '').trim().toLowerCase();
         const nome = String(data.get('nome_fantasia') || '').trim();
+        const dominio = String(data.get('dominio') || '').trim().toLowerCase();
+        const idEmpresa = String(data.get('id_empresa') || '').trim();
+        const editing = resourceForm.dataset.empresaEdit === '1' && idEmpresa;
         if (!nome || !slug) {
           formError('Informe nome e slug.');
           return;
         }
-        const created = await request('/api/admin/empresa', {
+        const dados = {
+          nome_fantasia: nome,
+          slug,
+          dominio: dominio || null,
+          whatsapp_telefone: String(data.get('whatsapp_telefone') || ''),
+          cor_primaria: String(data.get('cor_primaria') || '#800020'),
+          fonte_titulo: String(data.get('fonte_titulo') || 'Nunito'),
+          fonte_corpo: String(data.get('fonte_titulo') || 'Nunito'),
+        };
+        const result = await request('/api/admin/empresa', {
           method: 'POST',
-          body: JSON.stringify({
-            acao: 'criar_empresa',
-            dados: {
-              nome_fantasia: nome,
-              slug,
-              whatsapp_telefone: String(data.get('whatsapp_telefone') || ''),
-              cor_primaria: String(data.get('cor_primaria') || '#800020'),
-              fonte_titulo: String(data.get('fonte_titulo') || 'Nunito'),
-              fonte_corpo: String(data.get('fonte_titulo') || 'Nunito'),
-            },
-          }),
+          body: JSON.stringify(editing
+            ? { acao: 'editar_empresa', id_empresa: idEmpresa, dados }
+            : { acao: 'criar_empresa', dados }),
         });
-        toast(`Empresa criada. URL: ${created?.empresa?.url_path || `/loja/${slug}`}`);
+        const urlOficial = result?.empresa?.url_acesso || result?.empresa?.url_path || `/loja/${slug}`;
+        toast(editing ? `Empresa atualizada. URL: ${urlOficial}` : `Empresa criada. URL: ${urlOficial}`);
         viewCache.invalidateAll();
         await refreshView();
       } else if (kind === 'reset-senha') {

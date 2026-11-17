@@ -33,6 +33,7 @@ import {
   publicEmpresaPayload,
   resolveEmpresa,
   setEmpresaAtivo,
+  updateEmpresa,
   updateEmpresaTema,
 } from './empresa.js';
 import {
@@ -554,6 +555,33 @@ export async function handleAdminEmpresa(request, response, deps = {}) {
         });
       } catch { /* auditoria best-effort */ }
       sendJson(response, 200, { ok: true, ...created });
+      return;
+    }
+
+    if (acao === 'editar_empresa') {
+      if (!isSuperAdminPerfil(session)) {
+        throw new AdminError(403, 'forbidden', 'Somente SUPER_ADMIN pode editar empresa.');
+      }
+      const idEmpresa = String(body?.id_empresa || body?.dados?.id_empresa || '').trim();
+      let updated;
+      try {
+        updated = await updateEmpresa(pool, idEmpresa, body?.dados || body || {});
+      } catch (error) {
+        if (error instanceof AdminError) throw error;
+        throw new AdminError(500, 'internal_error', `Falha ao editar empresa (${error?.code || 'db'}).`);
+      }
+      try {
+        await recordAudit(pool, {
+          id_usuario_admin: session.id_usuario_admin,
+          acao: 'editar_empresa',
+          entidade: 'empresa',
+          id_registro: updated.empresa.id_empresa,
+          sucesso: true,
+          descricao_evento: `Empresa ${updated.empresa.slug} atualizada.`,
+          identificador_requisicao: requestId(request),
+        });
+      } catch { /* auditoria best-effort */ }
+      sendJson(response, 200, { ok: true, ...updated });
       return;
     }
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f5f8ff"/>
+  <rect x="70" y="140" width="260" height="48" rx="24" fill="#e2b36a" transform="rotate(-12 200 164)"/>
+  <path d="M100 155 L140 145 M160 148 L200 138 M220 142 L260 132 M280 136 L310 128" stroke="#c48a3a" stroke-width="4" stroke-linecap="round" fill="none" transform="rotate(-12 200 164)"/>
+  <text x="200" y="278" text-anchor="middle" fill="#1d4ed8" font-family="Nunito,sans-serif" font-size="18" font-weight="700">Baguete</text>
+</svg>

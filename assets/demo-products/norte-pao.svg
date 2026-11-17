@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f5f8ff"/>
+  <ellipse cx="200" cy="200" rx="95" ry="55" fill="#f0c27a"/>
+  <ellipse cx="200" cy="185" rx="78" ry="38" fill="#f7d59a"/>
+  <ellipse cx="200" cy="230" rx="100" ry="14" fill="#1d4ed8" opacity=".1"/>
+  <text x="200" y="278" text-anchor="middle" fill="#1d4ed8" font-family="Nunito,sans-serif" font-size="18" font-weight="700">Pão de Queijo</text>
+</svg>

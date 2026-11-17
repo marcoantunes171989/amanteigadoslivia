@@ -3,8 +3,10 @@ import { test } from 'node:test';
 import {
   DEFAULT_TEMA,
   EMPRESA_PADRAO_SLUG,
+  empresaUrlAcesso,
   mapEmpresa,
   mapTema,
+  normalizeEmpresaDominio,
   normalizeEmpresaSlug,
   publicEmpresaPayload,
 } from './empresa.js';
@@ -38,6 +40,21 @@ test('mapEmpresa de outra loja gera URL própria', () => {
     ativo: true,
   });
   assert.equal(empresa.url_path, '/loja/confeitaria-sol');
+  assert.equal(empresa.url_acesso, '/loja/confeitaria-sol');
+});
+
+test('domínio próprio define url_acesso https sem herdar path amanteigados', () => {
+  assert.equal(normalizeEmpresaDominio('https://WWW.DoceAurora.com.br/loja'), 'www.doceaurora.com.br');
+  const empresa = mapEmpresa({
+    id_empresa: 'b1000000-0000-4000-8000-000000000001',
+    slug: 'doce-aurora',
+    nome_fantasia: 'Doce Aurora',
+    dominio: 'www.doceaurora.com.br',
+    ativo: true,
+  });
+  assert.equal(empresa.url_acesso, 'https://www.doceaurora.com.br');
+  assert.equal(empresaUrlAcesso(empresa), 'https://www.doceaurora.com.br');
+  assert.equal(empresa.url_path, '/loja/doce-aurora');
 });
 
 test('vercel.json aponta /loja/:empresa para páginas cleanUrls', async () => {

@@ -10,6 +10,7 @@ export const DEFAULT_EMPRESA = Object.freeze({
   id_empresa: EMPRESA_PADRAO_ID,
   slug: EMPRESA_PADRAO_SLUG,
   nome_fantasia: 'Amanteigados Lívia',
+  dominio: null,
   ativo: true,
 });
 
@@ -45,15 +46,43 @@ export function normalizeEmpresaSlug(raw) {
   return slug;
 }
 
+/** Normaliza domínio/host (sem protocolo, path ou barra final). */
+export function normalizeEmpresaDominio(raw) {
+  let value = String(raw || '').trim().toLowerCase();
+  if (!value) return null;
+  value = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+  if (!value || value.includes(' ') || value.includes('/')) return null;
+  if (!/^[a-z0-9][a-z0-9.-]{0,250}[a-z0-9]$/.test(value) && !/^[a-z0-9]{1,63}$/.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+export function empresaUrlAcesso({ slug, dominio } = {}) {
+  const normalizedSlug = normalizeEmpresaSlug(slug) || EMPRESA_PADRAO_SLUG;
+  const host = normalizeEmpresaDominio(dominio);
+  if (host) return `https://${host}`;
+  return `/loja/${normalizedSlug}`;
+}
+
 export function mapEmpresa(row) {
-  if (!row) return { ...DEFAULT_EMPRESA, url_path: `/loja/${EMPRESA_PADRAO_SLUG}` };
+  if (!row) {
+    return {
+      ...DEFAULT_EMPRESA,
+      url_path: `/loja/${EMPRESA_PADRAO_SLUG}`,
+      url_acesso: empresaUrlAcesso(DEFAULT_EMPRESA),
+    };
+  }
   const slug = row.slug || EMPRESA_PADRAO_SLUG;
+  const dominio = normalizeEmpresaDominio(row.dominio);
   return {
     id_empresa: String(row.id_empresa || EMPRESA_PADRAO_ID),
     slug,
     nome_fantasia: row.nome_fantasia || DEFAULT_EMPRESA.nome_fantasia,
+    dominio,
     ativo: row.ativo !== false,
     url_path: `/loja/${slug}`,
+    url_acesso: empresaUrlAcesso({ slug, dominio }),
   };
 }
 
@@ -89,7 +118,9 @@ export function publicEmpresaPayload(empresa, tema) {
       id_empresa: mapped.id_empresa,
       slug: mapped.slug,
       nome_fantasia: mapped.nome_fantasia,
+      dominio: mapped.dominio,
       url_path: mapped.url_path,
+      url_acesso: mapped.url_acesso,
       ativo: mapped.ativo,
     },
     tema,
@@ -121,7 +152,7 @@ export async function getEmpresaPadrao(queryable) {
   try {
     const result = await queryable.query(
       `-- op:get_empresa_padrao
-        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
+        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
                t.*
         FROM public.tab_empresa e
         LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
@@ -141,8 +172,44 @@ export async function getEmpresaPadrao(queryable) {
   }
 }
 
+async function loadEmpresaRowBySlug(queryable, candidate) {
+  const result = await queryable.query(
+    `-- op:get_empresa_by_slug
+      SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
+             t.*
+      FROM public.tab_empresa e
+      LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+      WHERE e.slug = $1 AND e.ativo = true
+      LIMIT 1
+    `,
+    [candidate],
+  );
+  return result.rows[0] || null;
+}
+
+async function loadEmpresaRowByDominio(queryable, dominio) {
+  try {
+    const result = await queryable.query(
+      `-- op:get_empresa_by_dominio
+        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
+               t.*
+        FROM public.tab_empresa e
+        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+        WHERE lower(e.dominio) = lower($1) AND e.ativo = true
+        LIMIT 1
+      `,
+      [dominio],
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    // Coluna dominio ainda não migrada.
+    if (error?.code === '42703') return null;
+    throw error;
+  }
+}
+
 /**
- * Resolve empresa por slug (query), host (subdomínio futuro) ou default.
+ * Resolve empresa por slug, domínio (Host) ou default.
  * Fallback permanente: Amanteigados Lívia.
  */
 export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
@@ -151,37 +218,45 @@ export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
     return publicEmpresaPayload(DEFAULT_EMPRESA, DEFAULT_TEMA);
   }
 
-  let candidate = normalizeEmpresaSlug(slug);
-  if (!candidate && host) {
-    const hostName = String(host).split(':')[0].toLowerCase();
-    const first = hostName.split('.')[0];
-    if (first && first !== 'www' && first !== 'amanteigadoslivia' && first !== 'localhost') {
-      candidate = normalizeEmpresaSlug(first);
-    }
-  }
-
-  if (!candidate || candidate === EMPRESA_PADRAO_SLUG) {
-    return getEmpresaPadrao(queryable);
-  }
-
+  const hostName = normalizeEmpresaDominio(String(host || '').split(',')[0]);
   try {
-    const result = await queryable.query(
-      `-- op:get_empresa_by_slug
-        SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
-               t.*
-        FROM public.tab_empresa e
-        LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
-        WHERE e.slug = $1 AND e.ativo = true
-        LIMIT 1
-      `,
-      [candidate],
-    );
-    if (!result.rows[0]) {
+    if (hostName) {
+      const byHost = await loadEmpresaRowByDominio(queryable, hostName);
+      if (byHost) {
+        const empresa = mapEmpresa(byHost);
+        return publicEmpresaPayload(empresa, mapTema(byHost, empresa));
+      }
+    }
+
+    let candidate = normalizeEmpresaSlug(slug);
+    if (!candidate && hostName) {
+      const first = hostName.split('.')[0];
+      if (first && first !== 'www' && first !== 'amanteigadoslivia' && first !== 'localhost') {
+        candidate = normalizeEmpresaSlug(first);
+      }
+    }
+
+    if (!candidate || candidate === EMPRESA_PADRAO_SLUG) {
       return getEmpresaPadrao(queryable);
     }
-    const empresa = mapEmpresa(result.rows[0]);
-    const tema = mapTema(result.rows[0], empresa);
-    return publicEmpresaPayload(empresa, tema);
+
+    let row;
+    try {
+      row = await loadEmpresaRowBySlug(queryable, candidate);
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      const legacy = await queryable.query(
+        `SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo, t.*
+         FROM public.tab_empresa e
+         LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
+         WHERE e.slug = $1 AND e.ativo = true LIMIT 1`,
+        [candidate],
+      );
+      row = legacy.rows[0] || null;
+    }
+    if (!row) return getEmpresaPadrao(queryable);
+    const empresa = mapEmpresa(row);
+    return publicEmpresaPayload(empresa, mapTema(row, empresa));
   } catch (error) {
     console.warn('[empresa] resolveEmpresa', error?.code || error?.message || error);
     return getEmpresaPadrao(queryable);
@@ -190,15 +265,23 @@ export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
 
 export async function listEmpresas(queryable) {
   const ready = await ensureEmpresaSupport(queryable);
-  if (!ready) return [DEFAULT_EMPRESA];
-  const result = await queryable.query(
-    `-- op:list_empresas
-      SELECT id_empresa, slug, nome_fantasia, ativo
-      FROM public.tab_empresa
-      ORDER BY nome_fantasia ASC
-    `,
-  );
-  return result.rows.length ? result.rows.map(mapEmpresa) : [DEFAULT_EMPRESA];
+  if (!ready) return [mapEmpresa(DEFAULT_EMPRESA)];
+  try {
+    const result = await queryable.query(
+      `-- op:list_empresas
+        SELECT id_empresa, slug, nome_fantasia, dominio, ativo
+        FROM public.tab_empresa
+        ORDER BY nome_fantasia ASC
+      `,
+    );
+    return result.rows.length ? result.rows.map(mapEmpresa) : [mapEmpresa(DEFAULT_EMPRESA)];
+  } catch (error) {
+    if (error?.code !== '42703') throw error;
+    const legacy = await queryable.query(
+      `SELECT id_empresa, slug, nome_fantasia, ativo FROM public.tab_empresa ORDER BY nome_fantasia ASC`,
+    );
+    return legacy.rows.length ? legacy.rows.map(mapEmpresa) : [mapEmpresa(DEFAULT_EMPRESA)];
+  }
 }
 
 export async function getEmpresaTemaById(queryable, idEmpresa) {
@@ -209,7 +292,7 @@ export async function getEmpresaTemaById(queryable, idEmpresa) {
   }
   const result = await queryable.query(
     `-- op:get_empresa_tema_by_id
-      SELECT e.id_empresa, e.slug, e.nome_fantasia, e.ativo,
+      SELECT e.id_empresa, e.slug, e.nome_fantasia, e.dominio, e.ativo,
              t.*
       FROM public.tab_empresa e
       LEFT JOIN public.tab_empresa_tema t ON t.id_empresa = e.id_empresa
@@ -393,18 +476,108 @@ export async function createEmpresa(queryable, payload = {}) {
     throw new AdminError(400, 'validation_error', 'Nome da empresa é obrigatório.');
   }
   const id = String(payload.id_empresa || randomUUID());
+  const dominio = normalizeEmpresaDominio(payload.dominio);
   try {
-    await queryable.query(
-      `INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
-       VALUES ($1, $2, $3, true)`,
-      [id, slug, nome],
-    );
+    try {
+      await queryable.query(
+        `INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, dominio, ativo)
+         VALUES ($1, $2, $3, $4, true)`,
+        [id, slug, nome, dominio],
+      );
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      await queryable.query(
+        `INSERT INTO public.tab_empresa (id_empresa, slug, nome_fantasia, ativo)
+         VALUES ($1, $2, $3, true)`,
+        [id, slug, nome],
+      );
+    }
   } catch (error) {
     if (error?.code === '23505') {
-      throw new AdminError(409, 'conflict', 'Já existe empresa com este slug.');
+      throw new AdminError(409, 'conflict', 'Já existe empresa com este slug ou domínio.');
     }
     throw error;
   }
+  await updateEmpresaTema(queryable, id, {
+    nome_exibicao: payload.nome_exibicao || nome,
+    nome_fantasia: nome,
+    cor_primaria: payload.cor_primaria,
+    cor_primaria_escura: payload.cor_primaria_escura,
+    cor_fundo: payload.cor_fundo,
+    cor_texto: payload.cor_texto,
+    cor_destaque: payload.cor_destaque,
+    logo_topo_url: payload.logo_topo_url,
+    logo_favicon_url: payload.logo_favicon_url,
+    whatsapp_telefone: payload.whatsapp_telefone,
+    fonte_titulo: payload.fonte_titulo,
+    fonte_corpo: payload.fonte_corpo,
+  });
+  return getEmpresaTemaById(queryable, id);
+}
+
+export async function updateEmpresa(queryable, idEmpresa, payload = {}) {
+  const ready = await ensureEmpresaSupport(queryable);
+  if (!ready) {
+    throw new AdminError(503, 'schema_unavailable', 'Cadastro de empresa indisponível.');
+  }
+  const id = String(idEmpresa || '').trim();
+  if (!id) throw new AdminError(400, 'validation_error', 'Empresa obrigatória.');
+
+  const current = await getEmpresaTemaById(queryable, id);
+  if (!current?.empresa?.id_empresa) {
+    throw new AdminError(404, 'not_found', 'Empresa não encontrada.');
+  }
+
+  const nome = String(payload.nome_fantasia || payload.nome || current.empresa.nome_fantasia || '').trim().slice(0, 120);
+  if (!nome) throw new AdminError(400, 'validation_error', 'Nome da empresa é obrigatório.');
+
+  let slug = current.empresa.slug;
+  if (payload.slug != null && String(payload.slug).trim() !== '') {
+    slug = normalizeEmpresaSlug(payload.slug);
+    if (!slug) {
+      throw new AdminError(400, 'validation_error', 'Slug inválido. Use letras minúsculas, números e hífen.');
+    }
+  }
+  if (id === EMPRESA_PADRAO_ID && slug !== EMPRESA_PADRAO_SLUG) {
+    throw new AdminError(400, 'validation_error', 'O slug da empresa padrão não pode ser alterado.');
+  }
+  if (id !== EMPRESA_PADRAO_ID && slug === EMPRESA_PADRAO_SLUG) {
+    throw new AdminError(400, 'validation_error', 'Slug reservado para a empresa padrão.');
+  }
+
+  const dominio = payload.dominio === undefined
+    ? current.empresa.dominio
+    : normalizeEmpresaDominio(payload.dominio);
+
+  try {
+    try {
+      await queryable.query(
+        `UPDATE public.tab_empresa
+            SET slug = $2,
+                nome_fantasia = $3,
+                dominio = $4,
+                data_atualizacao = now()
+          WHERE id_empresa = $1`,
+        [id, slug, nome, dominio],
+      );
+    } catch (error) {
+      if (error?.code !== '42703') throw error;
+      await queryable.query(
+        `UPDATE public.tab_empresa
+            SET slug = $2,
+                nome_fantasia = $3,
+                data_atualizacao = now()
+          WHERE id_empresa = $1`,
+        [id, slug, nome],
+      );
+    }
+  } catch (error) {
+    if (error?.code === '23505') {
+      throw new AdminError(409, 'conflict', 'Já existe empresa com este slug ou domínio.');
+    }
+    throw error;
+  }
+
   await updateEmpresaTema(queryable, id, {
     nome_exibicao: payload.nome_exibicao || nome,
     nome_fantasia: nome,
