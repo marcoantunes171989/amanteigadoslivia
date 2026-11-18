@@ -8,7 +8,8 @@ Landing de marketing do **PedidoPrime**: cardápio online com pedidos pelo Whats
 
 ## Rotas
 
-- Domínio oficial: `https://cardapio.pedidoprime.com.br` → `landing.html`
+- Domínio oficial da landing: `https://cardapio.pedidoprime.com.br` → `landing.html`
+- Cardápio Amanteigados Lívia: `https://amanteigadoslivia.pedidoprime.com.br` → `/produtos`
 - Página: `/landing` → `landing.html` (também em amanteigadoslivia.vercel.app/landing)
 - CTAs WhatsApp: `https://wa.me/5518996075887`
 
