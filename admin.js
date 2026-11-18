@@ -1632,8 +1632,9 @@ import {
   function empresaOpenHref(item) {
     const acesso = String(item?.url_acesso || '').trim();
     if (/^https?:\/\//i.test(acesso)) {
-      return acesso.replace(/\/$/, '') + '/produtos';
+      return acesso.replace(/\/$/, '');
     }
+    // Sem domínio próprio: preview na plataforma.
     return empresaPreviewPath(item);
   }
 
@@ -1659,17 +1660,8 @@ import {
               href: empresaOpenHref(item),
               target: '_blank',
               rel: 'noopener',
-              text: item.dominio ? 'Abrir no domínio' : 'Abrir preview',
+              text: 'Preview',
             }),
-            item.dominio
-              ? el('a', {
-                className: 'btn btn-ghost btn-small',
-                href: empresaPreviewPath(item),
-                target: '_blank',
-                rel: 'noopener',
-                text: 'Preview',
-              })
-              : null,
             el('button', {
               className: 'btn btn-ghost btn-small',
               type: 'button',

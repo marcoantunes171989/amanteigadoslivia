@@ -436,6 +436,30 @@ export async function handleAdminSessao(request, response, deps = {}) {
   }
 }
 
+function slugFromReferer(refererHeader) {
+  try {
+    const raw = Array.isArray(refererHeader) ? refererHeader[0] : refererHeader;
+    if (!raw) return '';
+    const path = new URL(String(raw), 'http://localhost').pathname || '';
+    const match = path.match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
+    return match ? match[1].toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
+function temaToCss(tema) {
+  const t = tema || DEFAULT_TEMA;
+  const lines = [
+    t.cor_primaria ? `--bordo: ${t.cor_primaria};` : '',
+    t.cor_primaria_escura ? `--bordo-escuro: ${t.cor_primaria_escura};` : '',
+    t.cor_fundo ? `--creme: ${t.cor_fundo};` : '',
+    t.cor_texto ? `--texto: ${t.cor_texto};` : '',
+    t.cor_destaque ? `--dourado: ${t.cor_destaque};` : '',
+  ].filter(Boolean);
+  return `:root{${lines.join('')}}`;
+}
+
 export async function handlePublicEmpresa(request, response, deps = {}) {
   response.setHeader('Cache-Control', 'no-store');
   if (request.method !== 'GET') {
@@ -456,6 +480,34 @@ export async function handlePublicEmpresa(request, response, deps = {}) {
     }
     // Fallback permanente: nunca quebra a loja atual.
     sendJson(response, 200, { ok: true, ...publicEmpresaPayload(DEFAULT_EMPRESA, DEFAULT_TEMA) });
+  }
+}
+
+/** CSS bloqueante com as cores do estabelecimento (Host / ?empresa / Referer /loja/{slug}). */
+export async function handlePublicTemaCss(request, response, deps = {}) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    sendText(response, 405, 'text/plain; charset=utf-8', 'method_not_allowed');
+    return;
+  }
+  try {
+    const url = new URL(request.url || 'http://localhost/api/tema-css', 'http://localhost');
+    const host = request.headers?.host || request.headers?.['x-forwarded-host'] || '';
+    const slug = url.searchParams.get('empresa')
+      || url.searchParams.get('slug')
+      || slugFromReferer(request.headers?.referer || request.headers?.Referer)
+      || '';
+    const payload = await resolveEmpresa(requirePool(deps.getPool), {
+      slug,
+      host: Array.isArray(host) ? host[0] : host,
+    });
+    response.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=300');
+    sendText(response, 200, 'text/css; charset=utf-8', temaToCss(payload?.tema));
+  } catch (error) {
+    if (typeof deps.logDatabaseError === 'function') {
+      deps.logDatabaseError('[tema-css] public request failed', error);
+    }
+    response.setHeader('Cache-Control', 'no-store');
+    sendText(response, 200, 'text/css; charset=utf-8', temaToCss(DEFAULT_TEMA));
   }
 }
 

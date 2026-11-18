@@ -19,18 +19,6 @@
     }
   }
 
-  function isNonDefaultTenant(key) {
-    if (!key || key === 'default') return false;
-    if (key === 'slug:amanteigados-livia') return false;
-    if (key.indexOf('host:') === 0) {
-      var host = key.slice(5);
-      if (host === 'amanteigadoslivia.vercel.app' || host === 'localhost' || host === '127.0.0.1') return false;
-      if (/\.vercel\.app$/i.test(host)) return false;
-      return true;
-    }
-    return key.indexOf('slug:') === 0;
-  }
-
   function applyVars(tema) {
     if (!tema) return;
     var root = document.documentElement;
@@ -60,7 +48,5 @@
     }
   } catch (e) { /* ignore */ }
 
-  if (isNonDefaultTenant(key)) {
-    document.documentElement.classList.add('theme-booting');
-  }
+  // Sem cache: /api/tema-css (bloqueante no <head>) já aplica a cor parametrizada.
 })();
