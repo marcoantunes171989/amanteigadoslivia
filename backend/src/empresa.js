@@ -234,16 +234,16 @@ export async function resolveEmpresa(queryable, { slug = '', host = '' } = {}) {
 
   const hostName = normalizeEmpresaDominio(String(host || '').split(',')[0]);
   try {
-    if (hostName) {
+    // Slug explícito (query/path) tem prioridade sobre o Host da plataforma.
+    let candidate = normalizeEmpresaSlug(slug);
+
+    // Sem slug: resolve pelo domínio próprio (Host).
+    if (!candidate && hostName) {
       const byHost = await loadEmpresaRowByDominio(queryable, hostName);
       if (byHost) {
         const empresa = mapEmpresa(byHost);
         return publicEmpresaPayload(empresa, mapTema(byHost, empresa));
       }
-    }
-
-    let candidate = normalizeEmpresaSlug(slug);
-    if (!candidate && hostName) {
       const first = hostName.split('.')[0];
       if (first && first !== 'www' && first !== 'amanteigadoslivia' && first !== 'localhost') {
         candidate = normalizeEmpresaSlug(first);
