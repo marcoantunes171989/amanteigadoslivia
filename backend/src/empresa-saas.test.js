@@ -66,6 +66,7 @@ test('vercel.json aponta /loja/:empresa para páginas cleanUrls', async () => {
   assert.ok(sources.includes('/loja/:empresa/produtos'));
   assert.ok(sources.includes('/loja/:empresa/carrinho'));
   assert.ok(sources.includes('/loja/:empresa/acompanhar'));
+  assert.ok(sources.includes('/loja/:empresa/admin'));
   const produtos = config.rewrites.find((item) => item.source === '/loja/:empresa/produtos');
   assert.equal(produtos.destination, '/produtos');
 });

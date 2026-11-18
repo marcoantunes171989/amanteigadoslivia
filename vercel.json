@@ -52,6 +52,14 @@
     {
       "source": "/loja/:empresa/acompanhar",
       "destination": "/acompanhar"
+    },
+    {
+      "source": "/loja/:empresa/admin",
+      "destination": "/admin"
+    },
+    {
+      "source": "/loja/:empresa/admin/",
+      "destination": "/admin"
     }
   ]
 }

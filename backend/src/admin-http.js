@@ -330,17 +330,45 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
     }
 
     await touchUltimoLogin(pool, user.id_usuario_admin);
+
+    // Empresa da URL (Host / ?empresa / body.empresa) deve ser respeitada no login.
+    const host = request.headers?.host || request.headers?.['x-forwarded-host'] || '';
+    const hostName = String(Array.isArray(host) ? host[0] : host).split(',')[0].trim().toLowerCase().replace(/:\d+$/, '');
+    const slugUrl = String(body?.empresa || body?.slug || body?.empresa_slug || '').trim();
+    const urlEmpresa = await resolveEmpresa(pool, {
+      slug: slugUrl,
+      host: hostName,
+    });
+    const userEmpresaId = String(await resolveUsuarioEmpresaId(pool, user.id_usuario_admin));
+    const isSuper = isSuperAdminPerfil({ perfil: user.perfil_usuario });
+    const platformHost = !hostName
+      || hostName === 'localhost'
+      || hostName === '127.0.0.1'
+      || hostName === 'amanteigadoslivia.vercel.app'
+      || hostName.endsWith('.vercel.app');
+    const urlForcesTenant = Boolean(slugUrl) || !platformHost;
+
+    if (urlForcesTenant && !isSuper && String(urlEmpresa.empresa.id_empresa) !== userEmpresaId) {
+      await fail(pool);
+      return;
+    }
+
+    const idEmpresa = (isSuper && urlForcesTenant)
+      ? String(urlEmpresa.empresa.id_empresa)
+      : userEmpresaId;
+
     await recordAudit(pool, {
       id_usuario_admin: user.id_usuario_admin,
       acao: AUDIT_ACTIONS.LOGIN_SUCESSO,
       entidade: 'usuario_admin',
       id_registro: user.id_usuario_admin,
       sucesso: true,
-      descricao_evento: 'Login administrativo.',
+      descricao_evento: urlForcesTenant
+        ? `Login administrativo (${urlEmpresa.empresa.slug}).`
+        : 'Login administrativo.',
       identificador_requisicao: requestId(request),
     });
 
-    const idEmpresa = await resolveUsuarioEmpresaId(pool, user.id_usuario_admin);
     const token = signSession(process.env.ADMIN_SESSION_SECRET, {
       id_usuario_admin: String(user.id_usuario_admin),
       email: user.email_usuario,
@@ -362,6 +390,8 @@ export async function handleAdminLogin(request, response, { getPool, logDatabase
         protegido: user.protegido === true,
         id_empresa: String(idEmpresa),
       },
+      empresa: urlForcesTenant ? urlEmpresa.empresa : undefined,
+      tema: urlForcesTenant ? urlEmpresa.tema : undefined,
     });
   } catch (error) {
     if (typeof logDatabaseError === 'function') {

@@ -330,6 +330,94 @@ test('LOGIN: zero inicial do PIN é preservado na autenticação', async () => {
   assert.equal((await doLogin(pool, { usuario: 'gerente.zero', senha: '123' })).statusCode, 401);
 });
 
+function loginPoolComEmpresa({ users = [], userEmpresaId = null, empresasBySlug = {}, empresasByHost = {} } = {}) {
+  const base = loginPool(users);
+  return {
+    ...base,
+    async query(sql, params = []) {
+      const text = String(sql);
+      if (text.includes('information_schema.tables')) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+      if (text.includes('tab_usuario_empresa')) {
+        return { rows: userEmpresaId ? [{ id_empresa: userEmpresaId }] : [] };
+      }
+      if (text.includes('get_empresa_by_dominio') || (text.includes('lower(e.dominio)') && params[0])) {
+        const row = empresasByHost[String(params[0]).toLowerCase()];
+        return { rows: row ? [row] : [] };
+      }
+      if (text.includes('e.slug = $1') || text.includes('WHERE e.slug')) {
+        const row = empresasBySlug[String(params[0]).toLowerCase()];
+        return { rows: row ? [row] : [] };
+      }
+      if (text.includes('get_empresa_padrao') || text.includes("slug = 'amanteigados-livia'") || text.includes('EMPRESA_PADRAO')) {
+        const row = empresasBySlug['amanteigados-livia'];
+        return { rows: row ? [row] : [] };
+      }
+      return base.query(sql, params);
+    },
+  };
+}
+
+test('LOGIN: usuário de outra empresa é rejeitado quando a URL força o estabelecimento', async () => {
+  const user = await userFixture({ senha: 'SenhaForte123', perfil_usuario: 'ADMIN' });
+  const norte = {
+    id_empresa: 'b2000000-0000-4000-8000-000000000002',
+    slug: 'padaria-norte',
+    nome_fantasia: 'Padaria Norte',
+    dominio: 'padaria-norte.pedidoprime.com.br',
+    ativo: true,
+  };
+  const pool = loginPoolComEmpresa({
+    users: [user],
+    userEmpresaId: 'a0000000-0000-4000-8000-000000000001',
+    empresasBySlug: { 'padaria-norte': norte },
+    empresasByHost: { 'padaria-norte.pedidoprime.com.br': norte },
+  });
+  const response = await doLogin(
+    pool,
+    { usuario: 'teste.login', senha: 'SenhaForte123', empresa: 'padaria-norte' },
+    { headers: { host: 'padaria-norte.pedidoprime.com.br' }, socket: { remoteAddress: '198.51.100.7' } },
+  );
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.body.message, GENERIC);
+});
+
+test('LOGIN: SUPER_ADMIN na URL do estabelecimento assume a empresa da URL', async () => {
+  const user = await userFixture({
+    senha: 'SenhaForte123',
+    perfil_usuario: 'SUPER_ADMIN',
+    protegido: true,
+    login_usuario: 'super.admin',
+  });
+  const norte = {
+    id_empresa: 'b2000000-0000-4000-8000-000000000002',
+    slug: 'padaria-norte',
+    nome_fantasia: 'Padaria Norte',
+    dominio: 'padaria-norte.pedidoprime.com.br',
+    ativo: true,
+  };
+  const pool = loginPoolComEmpresa({
+    users: [user],
+    userEmpresaId: 'a0000000-0000-4000-8000-000000000001',
+    empresasBySlug: { 'padaria-norte': norte, 'amanteigados-livia': {
+      id_empresa: 'a0000000-0000-4000-8000-000000000001',
+      slug: 'amanteigados-livia',
+      nome_fantasia: 'Amanteigados Lívia',
+      ativo: true,
+    } },
+    empresasByHost: { 'padaria-norte.pedidoprime.com.br': norte },
+  });
+  const response = await doLogin(
+    pool,
+    { usuario: 'super.admin', senha: 'SenhaForte123', empresa: 'padaria-norte' },
+    { headers: { host: 'padaria-norte.pedidoprime.com.br' }, socket: { remoteAddress: '198.51.100.8' } },
+  );
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.usuario.id_empresa, norte.id_empresa);
+  assert.equal(response.body.empresa?.slug, 'padaria-norte');
+});
+
 test('LOGIN: usuário com formato inválido responde genérico sem consultar o banco', async () => {
   const pool = loginPool([]);
   const response = await doLogin(pool, { usuario: 'ab', senha: 'x' });

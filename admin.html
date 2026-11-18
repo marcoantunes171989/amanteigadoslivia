@@ -16,16 +16,17 @@
 <body>
   <div id="loginView" class="login-shell hidden">
     <form id="loginForm" class="login-card">
-      <img src="assets/logo.jpg" alt="Amanteigados Lívia" width="88" height="88" />
-      <p class="eyebrow">Amanteigados Lívia</p>
+      <img id="loginLogo" src="assets/logo.jpg" alt="Amanteigados Lívia" width="88" height="88" />
+      <p class="eyebrow" id="loginBrand">Amanteigados Lívia</p>
       <h1>Painel Administrativo</h1>
+      <p class="muted" id="loginEmpresaHint" hidden></p>
       <label for="adminLogin">Usuário</label>
       <input id="adminLogin" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
       <label for="adminPassword">Senha</label>
       <input id="adminPassword" name="senha" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn btn-primary" id="loginButton">Entrar</button>
       <p id="loginError" class="form-error" role="alert" hidden></p>
-      <a class="login-back" href="/">← Voltar para o site</a>
+      <a class="login-back" id="loginBack" href="/">← Voltar para o site</a>
     </form>
   </div>
 

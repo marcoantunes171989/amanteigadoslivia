@@ -115,6 +115,8 @@ import {
     requestStatus: 'NOVA',
     conteudo: { configuracoes: [], conteudos: [] },
     empresa: { empresa: null, tema: null, empresas: [] },
+    loginEmpresaSlug: '',
+    loginEmpresa: null,
     usuarios: [],
     auditoria: [],
     publicacoes: null,
@@ -3058,6 +3060,75 @@ import {
     }
   });
 
+  function adminEmpresaSlugFromUrl() {
+    try {
+      const pathMatch = String(window.location.pathname || '').match(/^\/loja\/([a-z0-9-]+)(?:\/|$)/i);
+      if (pathMatch) return pathMatch[1].toLowerCase();
+      const fromQuery = new URLSearchParams(window.location.search).get('empresa')
+        || new URLSearchParams(window.location.search).get('slug');
+      return fromQuery ? String(fromQuery).toLowerCase() : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function absoluteAssetUrl(url) {
+    const value = String(url || '').trim();
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value) || value.startsWith('/')) return value;
+    return `/${value.replace(/^\.\//, '')}`;
+  }
+
+  function applyLoginEmpresaContext(payload) {
+    const empresa = payload?.empresa || null;
+    const tema = payload?.tema || null;
+    state.loginEmpresa = empresa;
+    if (empresa?.slug) state.loginEmpresaSlug = empresa.slug;
+    const nome = tema?.nome_exibicao || empresa?.nome_fantasia || 'Painel Administrativo';
+    const logo = absoluteAssetUrl(tema?.logo_topo_url || tema?.logo_favicon_url);
+    const brandEl = document.getElementById('loginBrand');
+    const logoEl = document.getElementById('loginLogo');
+    const hintEl = document.getElementById('loginEmpresaHint');
+    const backEl = document.getElementById('loginBack');
+    if (brandEl) brandEl.textContent = nome;
+    if (logoEl && logo) {
+      logoEl.src = logo;
+      logoEl.alt = nome;
+    }
+    if (hintEl) {
+      if (empresa?.slug && empresa.slug !== 'amanteigados-livia') {
+        hintEl.hidden = false;
+        hintEl.textContent = `Acesso do estabelecimento: ${nome}`;
+      } else {
+        hintEl.hidden = true;
+        hintEl.textContent = '';
+      }
+    }
+    if (backEl) {
+      const acesso = String(empresa?.url_acesso || '').trim();
+      backEl.href = /^https?:\/\//i.test(acesso) ? acesso.replace(/\/$/, '') : (empresa?.url_path || '/');
+    }
+    if (tema?.cor_primaria) {
+      document.documentElement.style.setProperty('--bordo', tema.cor_primaria);
+      if (tema.cor_primaria_escura) {
+        document.documentElement.style.setProperty('--bordo-escuro', tema.cor_primaria_escura);
+      }
+    }
+    document.title = `${nome} | Painel Administrativo`;
+  }
+
+  async function loadLoginEmpresaContext() {
+    const slug = adminEmpresaSlugFromUrl();
+    state.loginEmpresaSlug = slug;
+    try {
+      const url = slug ? `/api/empresa?empresa=${encodeURIComponent(slug)}` : '/api/empresa';
+      const payload = await request(url);
+      applyLoginEmpresaContext(payload);
+    } catch {
+      // Mantém branding padrão do HTML se a API falhar.
+    }
+  }
+
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     loginError.hidden = true;
@@ -3069,6 +3140,7 @@ import {
         body: JSON.stringify({
           usuario: document.getElementById('adminLogin').value,
           senha: document.getElementById('adminPassword').value,
+          empresa: state.loginEmpresaSlug || adminEmpresaSlugFromUrl() || undefined,
         }),
       });
       loginForm.reset();
@@ -3082,11 +3154,20 @@ import {
           id_empresa: payload.usuario.id_empresa || null,
         };
       }
+      if (payload?.empresa || payload?.tema) {
+        state.empresa = {
+          empresa: payload.empresa || state.empresa?.empresa || null,
+          tema: payload.tema || state.empresa?.tema || null,
+          empresas: state.empresa?.empresas || [],
+        };
+      }
       renderAmbiente((await request('/api/admin/sessao').catch(() => null))?.ambiente);
       await showApp();
     } catch (error) {
       loginError.hidden = false;
-      loginError.textContent = error.status === 401 ? 'Usuário ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.';
+      loginError.textContent = error.status === 401
+        ? 'Usuário ou senha inválidos para este estabelecimento.'
+        : 'Não foi possível entrar. Tente novamente.';
     } finally {
       loginButton.disabled = false;
       loginButton.textContent = 'Entrar';
@@ -3143,6 +3224,7 @@ import {
     loginView.classList.remove('hidden');
     hideDataError();
     clearAdminData();
+    loadLoginEmpresaContext().catch(() => {});
   }
 
   function renderAmbiente(codigo) {
@@ -3180,6 +3262,7 @@ import {
   }
 
   async function boot() {
+    await loadLoginEmpresaContext().catch(() => {});
     try {
       const sessao = await request('/api/admin/sessao');
       applySessaoPayload(sessao);
