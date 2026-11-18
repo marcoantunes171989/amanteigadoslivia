@@ -55,6 +55,15 @@
   --fs-xl: clamp(1.125rem, 1rem + 0.5vw, 1.35rem);
 }
 
+/* Subdomínio/tenant sem cache: neutro até o tema da loja (evita flash bordô). */
+html.theme-booting {
+  --bordo: #6b7280;
+  --bordo-escuro: #4b5563;
+  --creme: #f9fafb;
+  --texto: #111827;
+  --dourado: #9ca3af;
+}
+
 *,
 *::before,
 *::after {
