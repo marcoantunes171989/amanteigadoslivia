@@ -12,6 +12,11 @@ const PLATFORM_HOSTS = new Set([
   '127.0.0.1',
 ]);
 
+/** Hosts de marketing: raiz serve a landing, não o cardápio da loja. */
+const LANDING_HOSTS = new Set([
+  'cardapio.pedidoprime.com.br',
+]);
+
 export default function middleware(request) {
   const host = String(request.headers.get('host') || '')
     .split(',')[0]
@@ -19,7 +24,7 @@ export default function middleware(request) {
     .toLowerCase()
     .replace(/:\d+$/, '');
 
-  if (!host || PLATFORM_HOSTS.has(host) || host.endsWith('.vercel.app')) {
+  if (!host || PLATFORM_HOSTS.has(host) || host.endsWith('.vercel.app') || LANDING_HOSTS.has(host)) {
     return;
   }
 

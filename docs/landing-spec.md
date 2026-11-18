@@ -8,8 +8,9 @@ Landing de marketing do **PedidoPrime**: cardápio online com pedidos pelo Whats
 
 ## Rotas
 
-- Página: `/landing` → `landing.html`
-- CTAs WhatsApp: `https://wa.me/5500000000000` (placeholder)
+- Domínio oficial: `https://cardapio.pedidoprime.com.br` → `landing.html`
+- Página: `/landing` → `landing.html` (também em amanteigadoslivia.vercel.app/landing)
+- CTAs WhatsApp: `https://wa.me/5518996075887`
 
 ## Tokens (CSS variables)
 

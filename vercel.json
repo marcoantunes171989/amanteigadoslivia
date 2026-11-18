@@ -9,6 +9,11 @@
   "rewrites": [
     {
       "source": "/",
+      "has": [{ "type": "host", "value": "cardapio.pedidoprime.com.br" }],
+      "destination": "/landing"
+    },
+    {
+      "source": "/",
       "has": [{ "type": "host", "value": "doce-aurora.pedidoprime.com.br" }],
       "destination": "/produtos"
     },
