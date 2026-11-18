@@ -1642,11 +1642,18 @@ import {
 
   function empresaOpenHref(item) {
     const acesso = String(item?.url_acesso || '').trim();
+    const slug = String(item?.slug || '').trim();
+    // Preview sempre com slug no path na plataforma — evita flash do catálogo padrão.
+    // Domínio próprio: abre a URL oficial (Host resolve a empresa).
     if (/^https?:\/\//i.test(acesso)) {
-      return acesso.replace(/\/$/, '');
+      const host = (() => {
+        try { return new URL(acesso).hostname.toLowerCase(); } catch { return ''; }
+      })();
+      if (host && !host.endsWith('.vercel.app') && host !== 'localhost') {
+        return acesso.replace(/\/$/, '');
+      }
     }
-    // Sem domínio próprio: preview na plataforma.
-    return empresaPreviewPath(item);
+    return empresaPreviewPath(item || { slug });
   }
 
   function renderEmpresas() {

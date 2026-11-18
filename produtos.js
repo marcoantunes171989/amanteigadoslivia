@@ -356,7 +356,8 @@
     bindMenu();
     Cart.loadCart();
     Catalog.hydrateFromCache?.();
-    if (Catalog.getProducts()?.length) {
+    // Só pinta cedo com cache live da própria loja — nunca o demo Amanteigados.
+    if (Catalog.getMode() === 'live' && Catalog.getProducts()?.length) {
       els.loading.hidden = true;
       els.unavailable.hidden = true;
       renderAll();
@@ -371,12 +372,12 @@
     } catch {
       apiOnline = false;
       els.loading.hidden = true;
-      if (!Catalog.getProducts()?.length) {
-        els.unavailable.hidden = false;
-        els.sections.hidden = true;
-      } else {
+      if (Catalog.getMode() === 'live' && Catalog.getProducts()?.length) {
         els.unavailable.hidden = true;
         renderAll();
+      } else {
+        els.unavailable.hidden = false;
+        els.sections.hidden = true;
       }
     }
   }

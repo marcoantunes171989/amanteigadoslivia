@@ -1,18 +1,18 @@
 /* Service worker leve — HTML/API sempre da rede; CSS/JS com rede primeiro. */
-const SHELL = 'amanteigados-shell-v27';
+const SHELL = 'amanteigados-shell-v28';
 const ASSETS = [
-  '/storefront.css?v=27',
-  '/storefront-theme-boot.js?v=27',
+  '/storefront.css?v=28',
+  '/storefront-theme-boot.js?v=28',
   '/api/tema-css',
   '/no-zoom.js?v=18',
   '/storefront-config.js?v=18',
-  '/storefront-theme.js?v=27',
+  '/storefront-theme.js?v=28',
   '/order-track.js?v=18',
   '/acompanhar.js?v=18',
-  '/produtos.js?v=18',
-  '/carrinho.js?v=18',
-  '/catalog-core.js?v=18',
-  '/catalog-demo-data.js?v=18',
+  '/produtos.js?v=28',
+  '/carrinho.js?v=28',
+  '/catalog-core.js?v=28',
+  '/catalog-demo-data.js?v=28',
   '/cart.js?v=18',
   '/assets/brand/logo-topo.jpeg',
 ];

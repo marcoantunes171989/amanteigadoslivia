@@ -35,15 +35,6 @@
     return CATALOG_SOURCE;
   }
 
-  function loadCatalogSource() {
-    return applyCatalogSource((typeof window !== 'undefined' && window.CATALOG_DATA) || null);
-  }
-
-  let CATALOG_SOURCE = emptyCatalogSource();
-  loadCatalogSource();
-
-  const CATALOG_CACHE_PREFIX = 'amanteigados_catalogo_live_v2:';
-
   function currentEmpresaSlug() {
     try {
       const fromTheme = window.AmanteigadosStorefrontTheme?.empresaSlug;
@@ -59,6 +50,36 @@
       return '';
     }
   }
+
+  /** Loja/tenant (subdomínio ou /loja/{slug}): nunca pintar o demo da Amanteigados. */
+  function isTenantStorefrontContext() {
+    try {
+      const slug = currentEmpresaSlug();
+      if (slug && slug !== 'amanteigados-livia') return true;
+      const host = String(location.hostname || '').toLowerCase();
+      if (!host || host === 'localhost' || host === '127.0.0.1') return false;
+      if (host === 'amanteigadoslivia.vercel.app' || host.endsWith('.vercel.app')) {
+        return Boolean(slug && slug !== 'amanteigados-livia');
+      }
+      // Domínio próprio / subdomínio pedidoprime = loja.
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function loadCatalogSource() {
+    const data = (typeof window !== 'undefined' && window.CATALOG_DATA) || null;
+    if (data?.mode === 'demo' && isTenantStorefrontContext()) {
+      return applyCatalogSource(null);
+    }
+    return applyCatalogSource(data);
+  }
+
+  let CATALOG_SOURCE = emptyCatalogSource();
+  loadCatalogSource();
+
+  const CATALOG_CACHE_PREFIX = 'amanteigados_catalogo_live_v2:';
 
   function catalogCacheKey(slug = currentEmpresaSlug()) {
     const host = (typeof location !== 'undefined' && location.hostname) || 'local';
