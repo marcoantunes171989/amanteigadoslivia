@@ -95,8 +95,8 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function sendText(response, status, contentType, body) {
-  response.setHeader('Cache-Control', 'no-store');
+function sendText(response, status, contentType, body, { cacheControl = 'no-store' } = {}) {
+  response.setHeader('Cache-Control', cacheControl);
   response.setHeader('Content-Type', contentType);
   if (typeof response.status === 'function') {
     response.status(status);
@@ -457,7 +457,8 @@ function temaToCss(tema) {
     t.cor_texto ? `--texto: ${t.cor_texto};` : '',
     t.cor_destaque ? `--dourado: ${t.cor_destaque};` : '',
   ].filter(Boolean);
-  return `:root{${lines.join('')}}`;
+  // html:root vence o :root do storefront.css (cor parametrizada sem flash).
+  return `html:root{${lines.join('')}}`;
 }
 
 export async function handlePublicEmpresa(request, response, deps = {}) {
@@ -500,13 +501,13 @@ export async function handlePublicTemaCss(request, response, deps = {}) {
       slug,
       host: Array.isArray(host) ? host[0] : host,
     });
-    response.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=300');
-    sendText(response, 200, 'text/css; charset=utf-8', temaToCss(payload?.tema));
+    sendText(response, 200, 'text/css; charset=utf-8', temaToCss(payload?.tema), {
+      cacheControl: 'public, max-age=30, stale-while-revalidate=300',
+    });
   } catch (error) {
     if (typeof deps.logDatabaseError === 'function') {
       deps.logDatabaseError('[tema-css] public request failed', error);
     }
-    response.setHeader('Cache-Control', 'no-store');
     sendText(response, 200, 'text/css; charset=utf-8', temaToCss(DEFAULT_TEMA));
   }
 }

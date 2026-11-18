@@ -1,12 +1,12 @@
 /* Service worker leve — HTML/API sempre da rede; CSS/JS com rede primeiro. */
-const SHELL = 'amanteigados-shell-v26';
+const SHELL = 'amanteigados-shell-v27';
 const ASSETS = [
-  '/storefront.css?v=26',
-  '/storefront-theme-boot.js?v=26',
+  '/storefront.css?v=27',
+  '/storefront-theme-boot.js?v=27',
   '/api/tema-css',
   '/no-zoom.js?v=18',
   '/storefront-config.js?v=18',
-  '/storefront-theme.js?v=26',
+  '/storefront-theme.js?v=27',
   '/order-track.js?v=18',
   '/acompanhar.js?v=18',
   '/produtos.js?v=18',
