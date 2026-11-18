@@ -37,6 +37,7 @@ import {
   updateEmpresaTema,
 } from './empresa.js';
 import {
+  assertRecursoEmpresa,
   filterRowsByEmpresaIds,
   getUsuarioEmpresaId,
   linkCategoriaEmpresa,
@@ -732,6 +733,14 @@ export async function handleAdminCatalog(request, response, deps = {}) {
     const id = body.id || body.id_categoria || body.id_produto || dados.id_categoria || dados.id_produto;
 
     if (aplicar === 'agendar') {
+      const idEmpresaAgenda = sessionEmpresaId(session);
+      if (id) {
+        if (recurso === 'categoria') {
+          await assertRecursoEmpresa(pool, 'tab_categoria_empresa', 'id_categoria', id, idEmpresaAgenda);
+        } else if (recurso === 'produto') {
+          await assertRecursoEmpresa(pool, 'tab_produto_empresa', 'id_produto', id, idEmpresaAgenda);
+        }
+      }
       const vigencia = parseSaoPauloDateTime(dados.data_agendada || body.data_agendada, dados.hora_agendada || body.hora_agendada);
       let dadosAgendamento = { ...dados, recurso, acao, id };
       if (recurso === 'produto' && acao === 'editar' && id) {
@@ -766,8 +775,17 @@ export async function handleAdminCatalog(request, response, deps = {}) {
       return;
     }
 
-    const result = await executeAdminAction(pool, body);
     const idEmpresa = sessionEmpresaId(session);
+    const mutatesExisting = id && ['editar', 'excluir', 'ativar', 'desativar', 'remover'].includes(String(acao || ''));
+    if (mutatesExisting) {
+      if (recurso === 'categoria') {
+        await assertRecursoEmpresa(pool, 'tab_categoria_empresa', 'id_categoria', id, idEmpresa);
+      } else if (recurso === 'produto') {
+        await assertRecursoEmpresa(pool, 'tab_produto_empresa', 'id_produto', id, idEmpresa);
+      }
+    }
+
+    const result = await executeAdminAction(pool, body);
     if (result?.categoria?.id_categoria) {
       await linkCategoriaEmpresa(pool, result.categoria.id_categoria, idEmpresa);
     }
@@ -810,7 +828,9 @@ export async function handleAdminVendas(request, response, deps = {}) {
       return;
     }
     const body = await readJsonBody(request);
-    const venda = await updateVendaStatus(pool, body.id_venda || body.id, body.status_venda || body.status);
+    const idVenda = body.id_venda || body.id;
+    await assertRecursoEmpresa(pool, 'tab_venda_empresa', 'id_venda', idVenda, sessionEmpresaId(session));
+    const venda = await updateVendaStatus(pool, idVenda, body.status_venda || body.status);
     await recordAudit(pool, {
       id_usuario_admin: session.id_usuario_admin,
       acao: venda.status_venda === 'CONFIRMADA' ? AUDIT_ACTIONS.CONFIRMAR_VENDA : AUDIT_ACTIONS.CANCELAR_VENDA,
@@ -837,7 +857,10 @@ export async function handleAdminRelatorios(request, response, deps = {}) {
     if (!incluirAuditoria && query.secao === 'auditoria') {
       throw new AdminError(403, 'forbidden', 'Operação não permitida para este usuário.');
     }
-    const reports = await getReports(pool, query, { incluirAuditoria });
+    const reports = await getReports(pool, query, {
+      incluirAuditoria,
+      idEmpresa: sessionEmpresaId(session),
+    });
     if (query.formato === 'csv') {
       const secao = query.secao || 'vendas';
       let csv = '';
@@ -987,7 +1010,8 @@ export async function handleAdminUsuarios(request, response, deps = {}) {
     let result;
     if (acao === 'criar') {
       result = { usuario: await createUsuario(pool, body.dados || body, actor) };
-      const idEmpresaDestino = String(body?.dados?.id_empresa || body?.id_empresa || sessionEmpresaId(session));
+      // Usuário pertence à empresa selecionada na sessão (1 empresa por vez).
+      const idEmpresaDestino = String(sessionEmpresaId(session));
       await linkUsuarioEmpresa(pool, result.usuario.id_usuario_admin, idEmpresaDestino);
       await recordAudit(pool, {
         id_usuario_admin: actor.id_usuario_admin,
@@ -1311,9 +1335,16 @@ export async function handlePublicPedido(request, response, deps = {}) {
   try {
     assertPublicFormRateLimit(request, 'pedido-acompanhamento', { max: PEDIDO_TRACK_MAX_ATTEMPTS });
     const url = new URL(request.url || 'http://localhost/api/pedido', 'http://localhost');
-    const result = await getPedidoAcompanhamento(requirePool(deps.getPool), {
+    const pool = requirePool(deps.getPool);
+    const host = request?.headers?.host || request?.headers?.['x-forwarded-host'] || '';
+    const empresaCtx = await resolveEmpresa(pool, {
+      slug: url.searchParams.get('empresa') || url.searchParams.get('slug') || '',
+      host: Array.isArray(host) ? host[0] : host,
+    });
+    const result = await getPedidoAcompanhamento(pool, {
       numero_pedido: url.searchParams.get('numero') || url.searchParams.get('numero_pedido'),
       telefone: url.searchParams.get('telefone') || url.searchParams.get('whatsapp'),
+      id_empresa: empresaCtx.empresa.id_empresa,
     });
     sendJson(response, 200, { ok: true, ...result });
   } catch (error) {

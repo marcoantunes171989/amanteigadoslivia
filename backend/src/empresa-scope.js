@@ -50,11 +50,11 @@ export function filterRowsByEmpresaIds(rows, idField, allowedIds) {
 export async function linkRecursoEmpresa(queryable, table, idColumn, idRecurso, idEmpresa) {
   if (!(await ensureEmpresaVinculosSupport(queryable))) return;
   try {
+    // Nunca “rouba” vínculo de outra empresa no UPDATE.
     await queryable.query(
       `INSERT INTO public.${table} (${idColumn}, id_empresa)
        VALUES ($1, $2)
-       ON CONFLICT (${idColumn}) DO UPDATE
-         SET id_empresa = EXCLUDED.id_empresa`,
+       ON CONFLICT (${idColumn}) DO NOTHING`,
       [idRecurso, String(idEmpresa || EMPRESA_PADRAO_ID)],
     );
   } catch (error) {
@@ -64,6 +64,23 @@ export async function linkRecursoEmpresa(queryable, table, idColumn, idRecurso, 
       return;
     }
     throw error;
+  }
+}
+
+/** Garante que o recurso pertence à empresa da sessão (fail-closed com vínculos ativos). */
+export async function assertRecursoEmpresa(queryable, table, idColumn, idRecurso, idEmpresa) {
+  if (!idRecurso) return;
+  if (!(await ensureEmpresaVinculosSupport(queryable))) return;
+  const result = await queryable.query(
+    `SELECT id_empresa FROM public.${table} WHERE ${idColumn} = $1 LIMIT 1`,
+    [String(idRecurso)],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new AdminError(404, 'not_found', 'Recurso não vinculado a nenhuma empresa.');
+  }
+  if (String(row.id_empresa) !== String(idEmpresa || EMPRESA_PADRAO_ID)) {
+    throw new AdminError(403, 'forbidden', 'Recurso pertence a outra empresa.');
   }
 }
 

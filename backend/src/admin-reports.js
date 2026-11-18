@@ -45,8 +45,13 @@ function within(vendas, start, end) {
 
 // Auditoria só entra no relatório quando o chamador é SUPER_ADMIN (incluirAuditoria).
 // Default fail-closed: sem opção explícita, a consulta de auditoria não roda.
-export async function getReports(queryable, query = {}, { incluirAuditoria = false, now = new Date() } = {}) {
-  const vendas = await listVendas(queryable, { ...query, periodo: query.periodo || '30d' }, { now });
+export async function getReports(queryable, query = {}, { incluirAuditoria = false, now = new Date(), idEmpresa = null } = {}) {
+  const scopedQuery = {
+    ...query,
+    periodo: query.periodo || '30d',
+    ...(idEmpresa ? { id_empresa: idEmpresa } : {}),
+  };
+  const vendas = await listVendas(queryable, scopedQuery, { now });
   const faturamento = computeFaturamento(vendas);
   const byDay = new Map();
   const byProduct = new Map();
@@ -75,8 +80,27 @@ export async function getReports(queryable, query = {}, { incluirAuditoria = fal
     }
   }
 
-  const categorias = await queryable.query(`SELECT ativo FROM app.tab_categoria`);
-  const produtos = await queryable.query(`
+  let catIds = null;
+  let prodIds = null;
+  if (idEmpresa) {
+    try {
+      const { listIdsByEmpresa } = await import('./empresa-scope.js');
+      catIds = await listIdsByEmpresa(queryable, 'tab_categoria_empresa', 'id_categoria', idEmpresa);
+      prodIds = await listIdsByEmpresa(queryable, 'tab_produto_empresa', 'id_produto', idEmpresa);
+    } catch {
+      catIds = null;
+      prodIds = null;
+    }
+  }
+
+  const categorias = await queryable.query(
+    catIds
+      ? `SELECT ativo FROM app.tab_categoria WHERE id_categoria = ANY($1::uuid[])`
+      : `SELECT ativo FROM app.tab_categoria`,
+    catIds ? [[...catIds]] : [],
+  );
+  const produtos = await queryable.query(
+    `
     SELECT p.id_produto, p.ativo, p.destaque,
            EXISTS (
              SELECT 1 FROM app.tab_produto_imagem i WHERE i.id_produto = p.id_produto
@@ -94,7 +118,10 @@ export async function getReports(queryable, query = {}, { incluirAuditoria = fal
                AND (pr.fim_vigencia IS NULL OR pr.fim_vigencia > now())
            ) AS promocao_ativa
     FROM app.tab_produto p
-  `);
+    ${prodIds ? 'WHERE p.id_produto = ANY($1::uuid[])' : ''}
+  `,
+    prodIds ? [[...prodIds]] : [],
+  );
 
   const alteracoes = await listScheduledChanges(queryable, {});
   const auditoria = incluirAuditoria

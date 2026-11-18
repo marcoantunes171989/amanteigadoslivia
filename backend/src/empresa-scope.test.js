@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  assertRecursoEmpresa,
   filterRowsByEmpresaIds,
   listIdsByEmpresa,
   resetEmpresaVinculosCacheForTests,
 } from './empresa-scope.js';
+import { AdminError } from './admin-errors.js';
 
 test('filterRowsByEmpresaIds: null allowedIds mantém todas as linhas', () => {
   const rows = [{ id_produto: '1' }, { id_produto: '2' }];
@@ -83,4 +85,33 @@ test('listIdsByEmpresa: retorna ids da empresa', async () => {
   };
   const ids = await listIdsByEmpresa(queryable, 'tab_produto_empresa', 'id_produto', 'a0000000-0000-4000-8000-000000000001');
   assert.deepEqual([...ids].sort(), ['p1', 'p2']);
+});
+
+test('assertRecursoEmpresa: bloqueia recurso de outra empresa', async () => {
+  resetEmpresaVinculosCacheForTests();
+  const queryable = {
+    async query(sql) {
+      if (String(sql).includes('information_schema.tables')) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+      return { rows: [{ id_empresa: 'empresa-b' }] };
+    },
+  };
+  await assert.rejects(
+    () => assertRecursoEmpresa(queryable, 'tab_produto_empresa', 'id_produto', 'p1', 'empresa-a'),
+    (error) => error instanceof AdminError && error.status === 403,
+  );
+});
+
+test('assertRecursoEmpresa: permite recurso da empresa da sessão', async () => {
+  resetEmpresaVinculosCacheForTests();
+  const queryable = {
+    async query(sql) {
+      if (String(sql).includes('information_schema.tables')) {
+        return { rows: [{ '?column?': 1 }] };
+      }
+      return { rows: [{ id_empresa: 'empresa-a' }] };
+    },
+  };
+  await assertRecursoEmpresa(queryable, 'tab_produto_empresa', 'id_produto', 'p1', 'empresa-a');
 });

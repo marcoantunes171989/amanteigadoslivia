@@ -160,7 +160,9 @@ export async function captureVenda(pool, payload = {}) {
         };
       }
 
-      const catalog = await getCatalogPayload(client);
+      const catalog = await getCatalogPayload(client, {
+        idEmpresa: payload.id_empresa || EMPRESA_PADRAO_ID,
+      });
       const productsById = new Map(catalog.products.map((item) => [String(item.id), item]));
       const resolved = [];
       let total = 0;
@@ -328,7 +330,11 @@ export async function listVendas(queryable, query = {}, { now = new Date() } = {
   }
   if (query.id_empresa) {
     params.push(String(query.id_empresa));
-    sql += ` AND (v.id_empresa = $${params.length} OR v.id_empresa IS NULL)`;
+    // Isola via vínculo (fonte de verdade multi-tenant); não incluir vendas de outras lojas.
+    sql += ` AND EXISTS (
+      SELECT 1 FROM public.tab_venda_empresa ve
+      WHERE ve.id_venda = v.id_venda AND ve.id_empresa = $${params.length}
+    )`;
   }
   sql += ' ORDER BY v.data_venda DESC';
   const result = await queryable.query(sql, params).catch(async (error) => {
@@ -481,7 +487,23 @@ async function listPedidosPorTelefoneKeys(queryable, phoneKeys) {
   return result.rows;
 }
 
-export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefone } = {}) {
+async function filterVendaIdsByEmpresa(queryable, ids, idEmpresa) {
+  if (!idEmpresa || !ids?.length) return ids || [];
+  try {
+    const result = await queryable.query(
+      `SELECT id_venda FROM public.tab_venda_empresa
+       WHERE id_empresa = $1 AND id_venda = ANY($2::uuid[])`,
+      [String(idEmpresa), ids],
+    );
+    const allowed = new Set(result.rows.map((row) => String(row.id_venda)));
+    return ids.filter((id) => allowed.has(String(id)));
+  } catch (error) {
+    if (error?.code === '42P01' || error?.code === '42501') return ids;
+    throw error;
+  }
+}
+
+export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefone, id_empresa } = {}) {
   const numeroRaw = String(numero_pedido || '').trim();
   const numero = numeroRaw ? Number.parseInt(numeroRaw, 10) : null;
   const phoneKeys = whatsappPhoneLookupKeys(telefone || '');
@@ -501,7 +523,12 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
 
   // Busca por telefone: histórico ordenado pelo número do pedido (mais recente primeiro).
   if (phone && !hasNumero) {
-    const rows = await listPedidosPorTelefoneKeys(queryable, phoneKeys);
+    let rows = await listPedidosPorTelefoneKeys(queryable, phoneKeys);
+    if (id_empresa) {
+      const allowed = await filterVendaIdsByEmpresa(queryable, rows.map((row) => row.id_venda), id_empresa);
+      const allow = new Set(allowed.map(String));
+      rows = rows.filter((row) => allow.has(String(row.id_venda)));
+    }
     if (!rows.length) {
       throw new AdminError(404, 'not_found', 'Nenhum pedido encontrado para este WhatsApp.');
     }
@@ -531,6 +558,13 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
     params.push(phoneKeys);
     sql += ` AND (n.telefone_normalizado = ANY($2::text[]) OR v.telefone_cliente = ANY($2::text[]))`;
   }
+  if (id_empresa) {
+    params.push(String(id_empresa));
+    sql += ` AND EXISTS (
+      SELECT 1 FROM public.tab_venda_empresa ve
+      WHERE ve.id_venda = v.id_venda AND ve.id_empresa = $${params.length}
+    )`;
+  }
   sql += ' LIMIT 1';
 
   const result = await queryable.query(sql, params);
@@ -543,12 +577,17 @@ export async function getPedidoAcompanhamento(queryable, { numero_pedido, telefo
   const itensByVenda = await loadItensByVendaIds(queryable, [row.id_venda]);
   const selected = wrapPedido(row, itensByVenda.get(String(row.id_venda)) || []);
 
-  // Se houver telefone do pedido, devolve também o histórico desse número.
+  // Se houver telefone do pedido, devolve também o histórico desse número (mesma empresa).
   const telefonePedido = normalizeWhatsAppPhone(row.telefone_cliente || phone || '');
   const histKeys = whatsappPhoneLookupKeys(telefonePedido || phone || '');
   let historico = [selected];
   if (histKeys.length) {
-    const histRows = await listPedidosPorTelefoneKeys(queryable, histKeys);
+    let histRows = await listPedidosPorTelefoneKeys(queryable, histKeys);
+    if (id_empresa) {
+      const allowed = await filterVendaIdsByEmpresa(queryable, histRows.map((item) => item.id_venda), id_empresa);
+      const allow = new Set(allowed.map(String));
+      histRows = histRows.filter((item) => allow.has(String(item.id_venda)));
+    }
     const itensHist = await loadItensByVendaIds(
       queryable,
       histRows.map((item) => item.id_venda),

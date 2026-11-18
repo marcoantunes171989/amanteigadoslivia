@@ -1369,6 +1369,15 @@ import {
                   method: 'POST',
                   body: JSON.stringify({ acao: 'selecionar_empresa', id_empresa: event.target.value }),
                 });
+                // Limpa payloads da empresa anterior — só a selecionada permanece.
+                state.catalog = null;
+                state.sales = null;
+                state.reports = null;
+                state.dashboard = null;
+                state.users = null;
+                state.solicitacoes = null;
+                state.conteudo = null;
+                state.empresa = null;
                 viewCache.invalidateAll();
                 toast('Empresa selecionada.');
                 await refreshView();
@@ -1678,6 +1687,14 @@ import {
                     method: 'POST',
                     body: JSON.stringify({ acao: 'selecionar_empresa', id_empresa: item.id_empresa }),
                   });
+                  state.catalog = null;
+                  state.sales = null;
+                  state.reports = null;
+                  state.dashboard = null;
+                  state.users = null;
+                  state.solicitacoes = null;
+                  state.conteudo = null;
+                  state.empresa = null;
                   viewCache.invalidateAll();
                   toast(`Painel em ${item.nome_fantasia}`);
                   await refreshView();

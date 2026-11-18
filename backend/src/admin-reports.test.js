@@ -309,7 +309,7 @@ test('getReports: KPIs e buckets diários continuam corretos com o novo interval
 test('listVendas: data_fim gera limite exclusivo com dia civil de SP', async () => {
   const calls = [];
   await listVendas(vendasPool([], calls), { data_inicio: '2026-10-07', data_fim: '2026-10-07' }, { now: NOW_SP });
-  assert.match(calls[0].sql, /data_venda >= \$1 AND data_venda < \$2/);
+  assert.match(calls[0].sql, /(?:\w+\.)?data_venda >= \$1 AND (?:\w+\.)?data_venda < \$2/);
   assert.deepEqual(calls[0].params, ['2026-10-07T03:00:00.000Z', '2026-10-08T03:00:00.000Z']);
 });
 
@@ -352,7 +352,7 @@ test('listVendas: SQL de hoje/mês não contém now() nem tolerância; usa um ú
   assert.doesNotMatch(calls[0].sql, /now\(\)/);
   assert.doesNotMatch(calls[0].sql, /interval/i);
   assert.doesNotMatch(calls[0].sql, /2 minutes/);
-  assert.match(calls[0].sql, /data_venda >= \$1 AND data_venda < \$2/);
+  assert.match(calls[0].sql, /(?:\w+\.)?data_venda >= \$1 AND (?:\w+\.)?data_venda < \$2/);
   assert.deepEqual(calls[0].params, ['2026-10-07T03:00:00.000Z', NOW_SP.toISOString()]);
 });
 
