@@ -9,7 +9,8 @@ Landing de marketing do **PedidoPrime**: cardápio online com pedidos pelo Whats
 ## Rotas
 
 - Domínio oficial da landing (único acesso público): `https://cardapio.pedidoprime.com.br`
-- Qualquer `/landing` fora desse host redireciona (308/301) para `https://cardapio.pedidoprime.com.br/`
+- Em `cardapio.pedidoprime.com.br`, `/`, `/produtos`, `/carrinho` e `/acompanhar` redirecionam para `/landing` (nunca cardápio de loja)
+- Qualquer `/landing` fora desse host redireciona (308) para `https://cardapio.pedidoprime.com.br/`
 - Cardápio Amanteigados Lívia: `https://amanteigadoslivia.pedidoprime.com.br` → `/produtos`
 - CTAs WhatsApp: `https://wa.me/5518996075887`
 
