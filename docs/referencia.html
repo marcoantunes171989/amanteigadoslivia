@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PedidoPrime | Cardápio online com pedidos pelo WhatsApp</title>
+<style>
+:root{--bg:#fbfaf7;--surface:#fff;--text:#1d2b25;--muted:#5d6b64;--brand:#128c4a;--brand-d:#0b6b38;--accent:#ffb703;--line:#e6e3da;--soft:#e9f6ee;--chat:#e7ddd0;--bubble:#fff;--out:#d9fdd3;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1713;--surface:#17221c;--text:#eaf3ee;--muted:#9db0a6;--brand:#2fd37a;--brand-d:#25b565;--line:#27362d;--soft:#16281e;--chat:#0e1a14;--bubble:#202c25;--out:#005c4b}}
+:root[data-theme="dark"]{--bg:#0f1713;--surface:#17221c;--text:#eaf3ee;--muted:#9db0a6;--brand:#2fd37a;--brand-d:#25b565;--line:#27362d;--soft:#16281e;--chat:#0e1a14;--bubble:#202c25;--out:#005c4b}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 72px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-text-size-adjust:100%}
+img,svg{max-width:100%}
+a{color:inherit}
+.wrap{width:100%;max-width:1120px;margin:0 auto;padding:0 clamp(16px,4vw,32px)}
+section{padding:clamp(48px,8vw,96px) 0}
+h1{font-size:clamp(2rem,5.5vw,3.5rem);line-height:1.1;margin:0 0 16px;letter-spacing:-.02em}
+h2{font-size:clamp(1.5rem,3.6vw,2.4rem);line-height:1.2;margin:0 0 12px;letter-spacing:-.01em}
+h3{margin:0 0 6px;font-size:1.1rem}
+p{margin:0 0 16px}
+.muted{color:var(--muted)}
+.center{text-align:center}
+.lead{font-size:clamp(1.05rem,2.2vw,1.25rem);color:var(--muted);max-width:56ch}
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px}
+.logo{font-weight:800;font-size:1.25rem;text-decoration:none;display:flex;align-items:center;gap:8px}
+.logo i{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center;color:#fff;font-style:normal;font-size:1rem}
+.links{display:flex;gap:24px;align-items:center}
+.links a{text-decoration:none;color:var(--muted);font-weight:500}
+.links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 24px;border-radius:999px;background:var(--brand);color:#fff!important;font-weight:700;text-decoration:none;border:2px solid var(--brand);transition:transform .15s,background .15s}
+.btn:hover{background:var(--brand-d);transform:translateY(-1px)}
+.btn.ghost{background:transparent;color:var(--text)!important;border-color:var(--line)}
+.btn.sm{min-height:40px;padding:0 18px}
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(24px,5vw,64px);align-items:center}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 16px}
+.badge{display:inline-block;background:var(--soft);color:var(--brand);font-weight:700;font-size:.85rem;padding:6px 14px;border-radius:999px;margin-bottom:16px}
+.proof{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:.92rem;color:var(--muted)}
+.proof span::before{content:"✓ ";color:var(--brand);font-weight:700}
+.phones{display:flex;justify-content:center;gap:16px;align-items:flex-start}
+.phone{width:min(210px,44vw);background:var(--surface);border:6px solid #1d2b25;border-radius:28px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,.18);font-size:.78rem}
+.phone:nth-child(2){margin-top:36px}
+.ph-top{padding:10px 12px;color:#fff;font-weight:700;display:flex;justify-content:space-between;background:var(--brand-d)}
+.ph-cover{height:54px;background:linear-gradient(135deg,var(--accent),#fb8500)}
+.item{display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:center}
+.item b{display:block;line-height:1.2}
+.item small{color:var(--muted)}
+.thumb{width:36px;height:36px;border-radius:10px;background:var(--soft);flex:none;display:grid;place-items:center;font-size:1.1rem}
+.price{margin-left:auto;font-weight:700;color:var(--brand);white-space:nowrap}
+.ph-btn{margin:10px;background:var(--brand);color:#fff;text-align:center;padding:9px;border-radius:12px;font-weight:700}
+.chat{background:var(--chat);padding:10px;display:flex;flex-direction:column;gap:7px;min-height:250px}
+.msg{max-width:88%;padding:7px 9px;border-radius:10px;background:var(--bubble);line-height:1.35;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.msg.out{align-self:flex-end;background:var(--out)}
+.alt{background:var(--surface);border-block:1px solid var(--line)}
+.grid{display:grid;gap:clamp(16px,2.5vw,24px);margin-top:36px}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px}
+.alt .card{background:var(--bg)}
+.ico{width:48px;height:48px;border-radius:14px;background:var(--soft);display:grid;place-items:center;font-size:1.5rem;margin-bottom:14px}
+.num{width:36px;height:36px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;display:grid;place-items:center;margin-bottom:14px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,5vw,64px);align-items:center}
+.ticks{list-style:none;padding:0;margin:16px 0 0}
+.ticks li{padding:8px 0 8px 32px;position:relative}
+.ticks li::before{content:"✓";position:absolute;left:0;top:8px;width:22px;height:22px;border-radius:50%;background:var(--soft);color:var(--brand);font-weight:800;display:grid;place-items:center;font-size:.8rem}
+.status{display:flex;flex-direction:column;gap:12px}
+.step{display:flex;gap:14px;align-items:center;padding:14px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.step.on{border-color:var(--brand);background:var(--soft)}
+.tags{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:28px}
+.tags span{padding:10px 18px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-weight:600}
+.final{background:var(--brand-d);color:#fff;border-radius:28px;padding:clamp(32px,6vw,64px);text-align:center}
+.final p{opacity:.9;max-width:52ch;margin-inline:auto}
+.final .btn{background:#fff;color:var(--brand-d)!important;border-color:#fff}
+details{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 20px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:700}
+details p{margin:10px 0 0;color:var(--muted)}
+footer{border-top:1px solid var(--line);padding:32px 0;color:var(--muted);font-size:.9rem}
+.foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
+@media (max-width:900px){.hero,.split{grid-template-columns:1fr}.g3{grid-template-columns:1fr 1fr}.g4{grid-template-columns:1fr 1fr}.links a:not(.btn){display:none}.hero{text-align:center}.lead{margin-inline:auto}.cta,.proof{justify-content:center}.split .status{order:2}}
+@media (max-width:560px){.g3,.g4{grid-template-columns:1fr}.btn{width:100%}.nav .btn{width:auto}.phones{gap:10px}.phone:nth-child(2){margin-top:24px}.foot{flex-direction:column}}
+@media (min-width:1400px){.wrap{max-width:1240px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<header>
+<div class="wrap nav">
+<a class="logo" href="#topo"><i>P</i>PedidoPrime</a>
+<nav class="links" aria-label="Principal">
+<a href="#como">Como funciona</a><a href="#recursos">Recursos</a><a href="#faq">Dúvidas</a>
+<a class="btn sm" href="https://wa.me/5500000000000?text=Quero%20conhecer%20o%20PedidoPrime">Falar no WhatsApp</a>
+</nav>
+</div>
+</header>
+
+<main id="topo">
+<section>
+<div class="wrap hero">
+<div>
+<span class="badge">Cardápio online + WhatsApp</span>
+<h1>Seu cardápio online. Os pedidos chegam direto no WhatsApp.</h1>
+<p class="lead">Sem aplicativo para baixar e sem taxa por pedido. Seu cliente escolhe, envia, e você e ele acompanham tudo pela conversa.</p>
+<div class="cta">
+<a class="btn" href="https://wa.me/5500000000000?text=Quero%20criar%20meu%20card%C3%A1pio">Quero meu cardápio</a>
+<a class="btn ghost" href="#como">Ver como funciona</a>
+</div>
+<div class="proof"><span>Pronto em minutos</span><span>Sua cor e seu logo</span><span>Funciona em qualquer celular</span></div>
+</div>
+<div class="phones" aria-hidden="true">
+<div class="phone">
+<div class="ph-top"><span>Sua Loja</span><span>🛒 2</span></div>
+<div class="ph-cover"></div>
+<div class="item"><div class="thumb">🍕</div><div><b>Pizza Grande</b><small>Mussarela e tomate</small></div><span class="price">R$ 49</span></div>
+<div class="item"><div class="thumb">🍔</div><div><b>Burger Duplo</b><small>Com batata</small></div><span class="price">R$ 32</span></div>
+<div class="item"><div class="thumb">🥤</div><div><b>Suco 500 ml</b><small>Natural</small></div><span class="price">R$ 9</span></div>
+<div class="ph-btn">Enviar pedido</div>
+</div>
+<div class="phone">
+<div class="ph-top"><span>Sua Loja</span><span>online</span></div>
+<div class="chat">
+<div class="msg out">Novo pedido #128<br>1x Pizza Grande<br>Total: R$ 49,00</div>
+<div class="msg">Pedido recebido ✅</div>
+<div class="msg">Em preparo 👨‍🍳</div>
+<div class="msg">Saiu para entrega 🛵</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="alt" id="como">
+<div class="wrap">
+<div class="center"><h2>Como funciona</h2><p class="muted">Três passos, do cardápio ao pedido entregue.</p></div>
+<div class="grid g3">
+<div class="card"><div class="num">1</div><h3>O cliente abre seu link</h3><p class="muted">Ele vê produtos, fotos e preços atualizados, direto do celular.</p></div>
+<div class="card"><div class="num">2</div><h3>Monta o pedido</h3><p class="muted">Escolhe itens, quantidade, forma de pagamento e endereço.</p></div>
+<div class="card"><div class="num">3</div><h3>Envia pelo WhatsApp</h3><p class="muted">O pedido chega pronto e organizado na conversa da sua loja.</p></div>
+</div>
+</div>
+</section>
+
+<section id="recursos">
+<div class="wrap">
+<div class="center"><h2>Tudo o que sua loja precisa</h2><p class="muted">Simples para quem vende e para quem compra.</p></div>
+<div class="grid g3">
+<div class="card"><div class="ico">📱</div><h3>Cardápio digital</h3><p class="muted">Categorias, fotos, descrições e adicionais que você edita quando quiser.</p></div>
+<div class="card"><div class="ico">🎨</div><h3>Com a sua marca</h3><p class="muted">Seu logo, suas cores e seu endereço próprio, como cardapio.sualoja.com.br.</p></div>
+<div class="card"><div class="ico">💬</div><h3>Pedido no WhatsApp</h3><p class="muted">Resumo completo com itens, valores, entrega e observações.</p></div>
+<div class="card"><div class="ico">🧾</div><h3>Painel de pedidos</h3><p class="muted">Acompanhe e organize comandas e vendas em um só lugar.</p></div>
+<div class="card"><div class="ico">⏰</div><h3>Horário e disponibilidade</h3><p class="muted">Loja aberta ou fechada e produtos em falta, sempre atualizados.</p></div>
+<div class="card"><div class="ico">🔒</div><h3>Dados separados por loja</h3><p class="muted">Cada estabelecimento acessa apenas as próprias informações.</p></div>
+</div>
+</div>
+</section>
+
+<section class="alt">
+<div class="wrap split">
+<div class="status" aria-label="Exemplo de acompanhamento">
+<div class="step on"><span class="ico" style="margin:0">✅</span><div><b>Pedido recebido</b><br><small class="muted">Confirmação automática</small></div></div>
+<div class="step on"><span class="ico" style="margin:0">👨‍🍳</span><div><b>Em preparo</b><br><small class="muted">Cliente avisado na hora</small></div></div>
+<div class="step"><span class="ico" style="margin:0">🛵</span><div><b>Saiu para entrega</b><br><small class="muted">Ou pronto para retirada</small></div></div>
+</div>
+<div>
+<h2>Acompanhamento pelo WhatsApp</h2>
+<p class="muted">O cliente não precisa instalar nada nem criar conta. Cada etapa do pedido é conversada no app que ele já usa todos os dias.</p>
+<ul class="ticks"><li>Menos erros: o pedido chega escrito, sem áudio nem confusão</li><li>Mais rapidez no atendimento</li><li>Relacionamento direto com o seu cliente</li></ul>
+</div>
+</div>
+</section>
+
+<section>
+<div class="wrap center">
+<h2>Para todo tipo de negócio</h2>
+<p class="muted">Se você vende e atende pelo WhatsApp, o PedidoPrime serve para você.</p>
+<div class="tags"><span>🍕 Pizzarias</span><span>🍔 Lanchonetes</span><span>🥖 Padarias</span><span>🍰 Doces e bolos</span><span>🍽️ Restaurantes</span><span>🍺 Bares</span><span>🛍️ Lojas</span><span>💊 Farmácias</span><span>🌿 Hortifrúti</span></div>
+</div>
+</section>
+
+<section class="alt" id="faq">
+<div class="wrap" style="max-width:760px">
+<div class="center"><h2>Dúvidas frequentes</h2></div>
+<div style="margin-top:28px">
+<details><summary>Meu cliente precisa baixar algum aplicativo?</summary><p>Não. O cardápio abre no navegador do celular, tablet ou computador.</p></details>
+<details><summary>Posso usar meu próprio domínio?</summary><p>Sim. Você pode usar um endereço próprio ou o subdomínio padrão do sistema.</p></details>
+<details><summary>Consigo mudar preços e produtos sozinho?</summary><p>Sim, pelo painel, a qualquer momento e sem depender de ninguém.</p></details>
+<details><summary>Quanto tempo leva para começar?</summary><p>Depois de cadastrar logo e produtos, seu cardápio pode estar no ar no mesmo dia.</p></details>
+</div>
+</div>
+</section>
+
+<section>
+<div class="wrap">
+<div class="final">
+<h2>Pronto para receber pedidos de forma organizada?</h2>
+<p>Fale com a gente pelo WhatsApp e veja seu cardápio funcionando.</p>
+<a class="btn" href="https://wa.me/5500000000000?text=Quero%20criar%20meu%20card%C3%A1pio">Falar no WhatsApp</a>
+</div>
+</div>
+</section>
+</main>
+
+<footer>
+<div class="wrap foot"><span>© 2026 PedidoPrime. Todos os direitos reservados.</span><span>pedidoprime.com.br</span></div>
+</footer>
+</body>
+</html>
