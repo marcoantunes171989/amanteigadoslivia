@@ -6,6 +6,20 @@
   "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/landing",
+      "missing": [{ "type": "host", "value": "cardapio.pedidoprime.com.br" }],
+      "destination": "https://cardapio.pedidoprime.com.br/",
+      "permanent": true
+    },
+    {
+      "source": "/landing.html",
+      "missing": [{ "type": "host", "value": "cardapio.pedidoprime.com.br" }],
+      "destination": "https://cardapio.pedidoprime.com.br/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/",

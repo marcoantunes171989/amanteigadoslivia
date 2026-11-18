@@ -1,9 +1,11 @@
 /**
- * Multi-tenant: em domínio próprio da loja, a raiz vira o cardápio.
- * Em amanteigadoslivia.vercel.app, /loja/{slug} continua como preview.
+ * Multi-tenant + landing:
+ * - cardapio.pedidoprime.com.br → landing (só nesse host)
+ * - demais domínios de loja → / vira cardápio
+ * - /landing fora do host da landing → redireciona para o domínio oficial
  */
 export const config = {
-  matcher: ['/', '/index', '/index.html'],
+  matcher: ['/', '/index', '/index.html', '/landing', '/landing.html'],
 };
 
 const PLATFORM_HOSTS = new Set([
@@ -12,24 +14,35 @@ const PLATFORM_HOSTS = new Set([
   '127.0.0.1',
 ]);
 
-/** Hosts de marketing: raiz serve a landing, não o cardápio da loja. */
-const LANDING_HOSTS = new Set([
-  'cardapio.pedidoprime.com.br',
-]);
+const LANDING_HOST = 'cardapio.pedidoprime.com.br';
+const LANDING_URL = `https://${LANDING_HOST}/`;
 
-export default function middleware(request) {
-  const host = String(request.headers.get('host') || '')
+function requestHost(request) {
+  return String(request.headers.get('host') || '')
     .split(',')[0]
     .trim()
     .toLowerCase()
     .replace(/:\d+$/, '');
+}
 
-  if (!host || PLATFORM_HOSTS.has(host) || host.endsWith('.vercel.app') || LANDING_HOSTS.has(host)) {
+export default function middleware(request) {
+  const host = requestHost(request);
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // Landing oficial: só em cardapio.pedidoprime.com.br
+  if (path === '/landing' || path === '/landing.html') {
+    if (host !== LANDING_HOST) {
+      return Response.redirect(LANDING_URL, 308);
+    }
     return;
   }
 
-  const url = new URL(request.url);
-  if (url.pathname === '/' || url.pathname === '/index' || url.pathname === '/index.html') {
+  if (!host || PLATFORM_HOSTS.has(host) || host.endsWith('.vercel.app') || host === LANDING_HOST) {
+    return;
+  }
+
+  if (path === '/' || path === '/index' || path === '/index.html') {
     url.pathname = '/produtos';
     return Response.redirect(url, 307);
   }
